@@ -167,7 +167,7 @@ export default function AdminPosts() {
                         </button>
                         <button onClick={() => handleDelete(post.id)}
                           className="p-1.5 rounded-lg transition-colors btn-glass"
-                          style={{ color: '#f87171' }} title="删除">
+                          style={{ color: 'var(--color-error)' }} title="删除">
                           <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
@@ -375,7 +375,7 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
       {/* Error */}
       {error && (
         <div className="mx-4 mt-3 px-4 py-2.5 rounded-xl text-sm flex-shrink-0 glass-card"
-          style={{ color: '#f87171', borderColor: 'rgba(248, 113, 113, 0.2)' }}>
+          style={{ color: 'var(--color-error)' }}>
           {error}
         </div>
       )}

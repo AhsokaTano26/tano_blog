@@ -21,16 +21,20 @@ export default function AdminTags() {
   useEffect(() => { load(); }, []);
 
   async function handleSave() {
-    if (editing) await api.admin.tags.update(editing.id, { name, slug });
-    else await api.admin.tags.create({ name, slug });
-    setEditing(null); setName(''); setSlug('');
-    load();
+    try {
+      if (editing) await api.admin.tags.update(editing.id, { name, slug });
+      else await api.admin.tags.create({ name, slug });
+      setEditing(null); setName(''); setSlug('');
+      load();
+    } catch (e) { console.error(e); }
   }
 
   async function handleDelete(id: string) {
     if (!confirm('确定删除此标签？')) return;
-    await api.admin.tags.delete(id);
-    load();
+    try {
+      await api.admin.tags.delete(id);
+      load();
+    } catch (e) { console.error(e); }
   }
 
   return (

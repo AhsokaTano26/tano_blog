@@ -237,36 +237,68 @@ func (h *PostHandler) Update(c *gin.Context) {
 		return
 	}
 
-	var input map[string]interface{}
+	var input struct {
+		Title        string   `json:"title"`
+		Slug         string   `json:"slug"`
+		Content      string   `json:"content"`
+		Excerpt      string   `json:"excerpt"`
+		CoverImage   string   `json:"cover_image"`
+		Status       string   `json:"status"`
+		IsTop        *bool    `json:"is_top"`
+		AllowComment *bool    `json:"allow_comment"`
+		CategoryID   *string  `json:"category_id"`
+		TagIDs       []string `json:"tag_ids"`
+	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
 		return
 	}
 
-	// Handle publish action
-	if status, ok := input["status"]; ok && status == "published" {
-		now := time.Now()
-		input["published_at"] = now
+	updates := map[string]interface{}{}
+	if input.Title != "" {
+		updates["title"] = input.Title
 	}
-	// Handle tags separately
-	if tagIDs, ok := input["tag_ids"]; ok {
-		delete(input, "tag_ids")
-		if ids, ok := tagIDs.([]interface{}); ok {
-			var tagUUIDs []uuid.UUID
-			for _, tid := range ids {
-				if idStr, ok := tid.(string); ok {
-					if parsed, err := uuid.Parse(idStr); err == nil {
-						tagUUIDs = append(tagUUIDs, parsed)
-					}
-				}
-			}
-			if len(tagUUIDs) > 0 {
-				h.repo.SetTags(id, tagUUIDs)
-			}
+	if input.Slug != "" {
+		updates["slug"] = input.Slug
+	}
+	updates["content"] = input.Content
+	updates["excerpt"] = input.Excerpt
+	updates["cover_image"] = input.CoverImage
+	if input.Status != "" {
+		updates["status"] = input.Status
+		if input.Status == "published" {
+			now := time.Now()
+			updates["published_at"] = now
+		}
+	}
+	if input.IsTop != nil {
+		updates["is_top"] = *input.IsTop
+	}
+	if input.AllowComment != nil {
+		updates["allow_comment"] = *input.AllowComment
+	}
+	if input.CategoryID != nil {
+		if *input.CategoryID == "" {
+			updates["category_id"] = nil
+		} else if cid, err := uuid.Parse(*input.CategoryID); err == nil {
+			updates["category_id"] = cid
 		}
 	}
 
-	if err := h.repo.Update(id, input); err != nil {
+	// Handle tags separately
+	if len(input.TagIDs) > 0 {
+		var tagUUIDs []uuid.UUID
+		for _, tid := range input.TagIDs {
+			if parsed, err := uuid.Parse(tid); err == nil {
+				tagUUIDs = append(tagUUIDs, parsed)
+			}
+		}
+		if len(tagUUIDs) > 0 {
+			h.repo.SetTags(id, tagUUIDs)
+		}
+	}
+
+	if err := h.repo.Update(id, updates); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "更新文章失败"})
 		return
 	}
@@ -304,6 +336,11 @@ func (h *PostHandler) UpdateStatus(c *gin.Context) {
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
+		return
+	}
+
+	if input.Status != "draft" && input.Status != "published" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的状态值"})
 		return
 	}
 

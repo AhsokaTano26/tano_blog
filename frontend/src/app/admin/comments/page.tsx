@@ -26,14 +26,18 @@ export default function AdminComments() {
   useEffect(() => { load(); }, [page, filter]);
 
   async function handleStatus(id: string, status: string) {
-    await api.admin.comments.updateStatus(id, status);
-    load();
+    try {
+      await api.admin.comments.updateStatus(id, status);
+      load();
+    } catch (e) { console.error(e); }
   }
 
   async function handleDelete(id: string) {
     if (!confirm('确定删除此评论？')) return;
-    await api.admin.comments.delete(id);
-    load();
+    try {
+      await api.admin.comments.delete(id);
+      load();
+    } catch (e) { console.error(e); }
   }
 
   const tabs = [
@@ -93,11 +97,7 @@ export default function AdminComments() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
                       <span className="font-medium text-sm" style={{ color: 'var(--text-primary)' }}>{item.nickname}</span>
-                      <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${
-                        item.status === 'approved' ? '' :
-                        item.status === 'rejected' ? '' :
-                        ''
-                      }`}
+                      <span className="px-1.5 py-0.5 rounded text-xs font-medium"
                         style={{
                           background: item.status === 'approved' ? 'hsla(142, 60%, 50%, 0.1)' :
                             item.status === 'rejected' ? 'hsla(0, 60%, 50%, 0.1)' :

@@ -74,14 +74,32 @@ func (h *CategoryHandler) Update(c *gin.Context) {
 		return
 	}
 
-	var input map[string]interface{}
+	var input struct {
+		Name        string `json:"name"`
+		Slug        string `json:"slug"`
+		Description string `json:"description"`
+		SortOrder   *int   `json:"sort_order"`
+	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
 		return
 	}
 
-	input["updated_at"] = time.Now()
-	if err := h.db.Model(&model.Category{}).Where("id = ?", id).Updates(input).Error; err != nil {
+	updates := map[string]interface{}{
+		"updated_at": time.Now(),
+	}
+	if input.Name != "" {
+		updates["name"] = input.Name
+	}
+	if input.Slug != "" {
+		updates["slug"] = input.Slug
+	}
+	updates["description"] = input.Description
+	if input.SortOrder != nil {
+		updates["sort_order"] = *input.SortOrder
+	}
+
+	if err := h.db.Model(&model.Category{}).Where("id = ?", id).Updates(updates).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "更新分类失败"})
 		return
 	}
@@ -162,13 +180,29 @@ func (h *TagHandler) Update(c *gin.Context) {
 		return
 	}
 
-	var input map[string]interface{}
+	var input struct {
+		Name string `json:"name"`
+		Slug string `json:"slug"`
+	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
 		return
 	}
 
-	if err := h.db.Model(&model.Tag{}).Where("id = ?", id).Updates(input).Error; err != nil {
+	updates := map[string]interface{}{}
+	if input.Name != "" {
+		updates["name"] = input.Name
+	}
+	if input.Slug != "" {
+		updates["slug"] = input.Slug
+	}
+
+	if len(updates) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无有效更新字段"})
+		return
+	}
+
+	if err := h.db.Model(&model.Tag{}).Where("id = ?", id).Updates(updates).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "更新标签失败"})
 		return
 	}

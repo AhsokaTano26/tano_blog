@@ -1,10 +1,14 @@
 # Go
 backend/tmp/
 backend/uploads/
+backend/.next/
+backend/server
 
 # Node
 frontend/.next/
 frontend/node_modules/
+frontend/CLAUDE.md
+frontend/AGENTS.md
 
 # Env
 .env

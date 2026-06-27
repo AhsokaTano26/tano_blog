@@ -1,9 +1,15 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
+	"os/signal"
+	"strings"
+	"syscall"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/driver/postgres"
@@ -37,7 +43,7 @@ func main() {
 	log.Println("Database migrated")
 
 	// Seed default admin user if not exists
-	seedAdmin(db)
+	seedAdmin(db, cfg.AdminPassword)
 
 	// Seed default configs
 	seedSiteConfigs(db)
@@ -60,11 +66,16 @@ func main() {
 	feedHandler := handler.NewFeedHandler(db)
 
 	// Setup router
-	r := gin.Default()
-
-	// Global middleware
-	r.Use(middleware.CORS())
+	r := gin.New()
+	r.Use(gin.Recovery())
 	r.Use(middleware.AccessLogger(db))
+
+	// CORS: allow frontend origin
+	allowedOrigins := strings.Split(os.Getenv("CORS_ORIGINS"), ",")
+	if len(allowedOrigins) == 1 && allowedOrigins[0] == "" {
+		allowedOrigins = []string{"http://localhost:3000"}
+	}
+	r.Use(middleware.CORS(allowedOrigins))
 
 	// Serve uploaded files
 	r.Static("/uploads", cfg.Upload.Dir)
@@ -112,6 +123,7 @@ func main() {
 
 			// Admin: posts
 			admin := authRequired.Group("/admin")
+			admin.Use(middleware.RoleRequired("admin"))
 			{
 				admin.GET("/posts", postHandler.AdminList)
 				admin.POST("/posts", postHandler.Create)
@@ -155,22 +167,39 @@ func main() {
 	})
 
 	port := cfg.Server.Port
-	log.Printf("Server starting on port %s", port)
-	if err := r.Run(":" + port); err != nil {
-		log.Fatalf("Failed to start server: %v", err)
+	srv := &http.Server{
+		Addr:         ":" + port,
+		Handler:      r,
+		ReadTimeout:  cfg.Server.ReadTimeout,
+		WriteTimeout: cfg.Server.WriteTimeout,
 	}
+
+	// Graceful shutdown
+	go func() {
+		log.Printf("Server starting on port %s", port)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("Failed to start server: %v", err)
+		}
+	}()
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	log.Println("Shutting down server...")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Fatalf("Server forced to shutdown: %v", err)
+	}
+	log.Println("Server exited")
 }
 
-func seedAdmin(db *gorm.DB) {
+func seedAdmin(db *gorm.DB, password string) {
 	var count int64
 	db.Model(&model.User{}).Count(&count)
 	if count > 0 {
 		return
-	}
-
-	password := os.Getenv("ADMIN_PASSWORD")
-	if password == "" {
-		password = "admin123"
 	}
 
 	hash, err := utils.HashPassword(password)
@@ -191,7 +220,7 @@ func seedAdmin(db *gorm.DB) {
 		log.Fatalf("Failed to seed admin user: %v", err)
 	}
 
-	log.Printf("Default admin user created: admin / %s (CHANGE THIS IN PRODUCTION!)", password)
+	log.Println("Default admin user created: admin")
 }
 
 func seedSiteConfigs(db *gorm.DB) {

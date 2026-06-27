@@ -28,7 +28,7 @@ export function Banner({ height = '50vh' }: BannerProps) {
   }, []);
 
   return (
-    <section className="banner-container relative overflow-hidden w-full" style={{ height, margin: '0 calc(-50vw + 50vw)' }}>
+    <section className="banner-container relative overflow-hidden w-full" style={{ height }}>
       <div
         ref={bgRef}
         className="absolute inset-0 bg-cover bg-center bg-no-repeat will-change-transform"

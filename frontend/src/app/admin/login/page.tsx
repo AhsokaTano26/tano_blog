@@ -113,7 +113,7 @@ export default function LoginPage() {
         <div className="glass-card rounded-2xl p-6">
           {error && (
             <div className="mb-4 px-4 py-3 rounded-xl text-sm glass-card"
-              style={{ color: '#f87171', borderColor: 'rgba(248, 113, 113, 0.2)' }}>
+              style={{ color: 'var(--color-error)' }}>
               {error}
             </div>
           )}

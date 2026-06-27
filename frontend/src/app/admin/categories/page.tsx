@@ -22,18 +22,22 @@ export default function AdminCategories() {
   useEffect(() => { load(); }, []);
 
   async function handleSave() {
-    const data: any = { name, slug };
-    if (description) data.description = description;
-    if (editing) await api.admin.categories.update(editing.id, data);
-    else await api.admin.categories.create(data);
-    setEditing(null); setName(''); setSlug(''); setDescription('');
-    load();
+    try {
+      const data: any = { name, slug };
+      if (description) data.description = description;
+      if (editing) await api.admin.categories.update(editing.id, data);
+      else await api.admin.categories.create(data);
+      setEditing(null); setName(''); setSlug(''); setDescription('');
+      load();
+    } catch (e) { console.error(e); }
   }
 
   async function handleDelete(id: string) {
     if (!confirm('确定删除此分类？')) return;
-    await api.admin.categories.delete(id);
-    load();
+    try {
+      await api.admin.categories.delete(id);
+      load();
+    } catch (e) { console.error(e); }
   }
 
   function startEdit(item: any) {

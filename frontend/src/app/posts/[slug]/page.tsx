@@ -104,7 +104,7 @@ function SharePanel({ url, title }: { url: string; title: string }) {
         </button>
       ))}
       {copied && (
-        <span className="text-xs text-green-600 dark:text-green-400">已复制</span>
+        <span className="text-xs" style={{ color: 'hsl(142, 60%, 50%)' }}>已复制</span>
       )}
     </div>
   );
@@ -290,9 +290,9 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
 
   if (!post) {
     return (
-      <div className="text-center py-20 text-gray-500 dark:text-gray-400">
+      <div className="text-center py-20" style={{ color: 'var(--text-secondary)' }}>
         <p className="text-lg mb-2">文章不存在</p>
-        <a href="/" className="text-blue-600 dark:text-blue-400 hover:underline text-sm">返回首页</a>
+        <a href="/" className="hover:underline text-sm" style={{ color: 'var(--primary)' }}>返回首页</a>
       </div>
     );
   }
@@ -319,12 +319,12 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
           )}
 
           {/* Title */}
-          <h1 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-4 leading-tight">
+          <h1 className="text-3xl md:text-4xl font-bold mb-4 leading-tight" style={{ color: 'var(--text-primary)' }}>
             {post.title}
           </h1>
 
           {/* Meta */}
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500 dark:text-gray-400 mb-4">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm mb-4" style={{ color: 'var(--text-secondary)' }}>
             {post.published_at && (
               <span className="flex items-center gap-1">
                 <Calendar className="w-3.5 h-3.5" />
@@ -332,7 +332,7 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
               </span>
             )}
             {post.updated_at && post.published_at && (
-              <span className="text-xs text-gray-400 dark:text-gray-500">
+              <span className="text-xs" style={{ color: 'var(--text-info)' }}>
                 更新于 {new Date(post.updated_at).toLocaleDateString('zh-CN')}
               </span>
             )}
@@ -468,12 +468,12 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
           {/* Comment form */}
           <h3 className="text-lg font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>发表评论</h3>
           {commentError && (
-            <div className="glass-card rounded-2xl px-4 py-3 mb-4 text-sm" style={{ color: '#f87171', borderColor: 'rgba(248, 113, 113, 0.2)' }}>
+            <div className="glass-card rounded-2xl px-4 py-3 mb-4 text-sm" style={{ color: 'var(--color-error)' }}>
               {commentError}
             </div>
           )}
           {commentSuccess && (
-            <div className="glass-card rounded-2xl px-4 py-3 mb-4 text-sm" style={{ color: '#4ade80', borderColor: 'rgba(74, 222, 128, 0.2)' }}>
+            <div className="glass-card rounded-2xl px-4 py-3 mb-4 text-sm" style={{ color: 'var(--color-success)' }}>
               {commentSuccess}
             </div>
           )}
@@ -519,9 +519,10 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
                     e.preventDefault();
                     document.getElementById(item.id)?.scrollIntoView({ behavior: 'smooth' });
                   }}
-                  className={`toc-link block py-1.5 pr-2 text-gray-500 dark:text-gray-400 transition-colors ${
+                  className={`toc-link block py-1.5 pr-2 transition-colors ${
                     item.level === 3 ? 'pl-4 text-xs' : 'pl-2 text-sm'
-                  } ${activeId === item.id ? '!text-blue-600 dark:!text-blue-400 border-l-blue-500' : ''}`}
+                  }`}
+                  style={{ color: activeId === item.id ? 'var(--primary)' : 'var(--text-secondary)' }}
                 >
                   {item.text}
                 </a>

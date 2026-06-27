@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -18,6 +19,9 @@ func AuthRequired(cfg *config.JWTConfig) gin.HandlerFunc {
 		}
 		claims := &jwtClaims{}
 		token, err := jwt.ParseWithClaims(tokenStr, claims, func(t *jwt.Token) (interface{}, error) {
+			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
+			}
 			return []byte(cfg.Secret), nil
 		})
 		if err != nil || !token.Valid {
@@ -71,4 +75,16 @@ func IsPublicRoute(path string) bool {
 
 func IsAdminRoute(path string) bool {
 	return strings.HasPrefix(path, "/api/v1/admin/")
+}
+
+// RoleRequired checks that the authenticated user has the required role
+func RoleRequired(role string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userRole, exists := c.Get("role")
+		if !exists || userRole != role {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "权限不足"})
+			return
+		}
+		c.Next()
+	}
 }

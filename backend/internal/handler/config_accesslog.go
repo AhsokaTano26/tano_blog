@@ -43,7 +43,17 @@ func (h *SiteConfigHandler) Update(c *gin.Context) {
 		return
 	}
 
+	allowedKeys := map[string]bool{
+		"site_title": true, "site_description": true, "site_url": true,
+		"footer_text": true, "comment_enabled": true, "default_theme": true,
+		"accent_color": true, "posts_per_page": true, "excerpt_length": true,
+		"head_injection": true, "content_head_injection": true, "footer_injection": true,
+	}
+
 	for key, value := range input {
+		if !allowedKeys[key] {
+			continue
+		}
 		h.repo.Upsert(key, value, "string")
 	}
 

@@ -2,11 +2,11 @@ package utils
 
 import (
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha1"
 	"encoding/base32"
 	"encoding/binary"
 	"fmt"
-	"math/rand"
 	"net/url"
 	"strings"
 	"time"
@@ -16,8 +16,8 @@ import (
 func GenerateTOTPSecret(username string) (secret string, qrURL string, err error) {
 	// Generate a random 160-bit key
 	key := make([]byte, 20)
-	for i := range key {
-		key[i] = byte(rand.Intn(256))
+	if _, err := rand.Read(key); err != nil {
+		return "", "", fmt.Errorf("failed to generate random key: %w", err)
 	}
 	secret = base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(key)
 

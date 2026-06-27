@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -35,7 +36,22 @@ func (h *MediaHandler) Upload(c *gin.Context) {
 		return
 	}
 
-	ext := filepath.Ext(file.Filename)
+	// Validate file type
+	ext := strings.ToLower(filepath.Ext(file.Filename))
+	allowedExts := map[string]bool{
+		".jpg": true, ".jpeg": true, ".png": true, ".gif": true,
+		".webp": true, ".svg": true, ".ico": true, ".bmp": true,
+		".pdf": true, ".doc": true, ".docx": true,
+		".mp3": true, ".mp4": true, ".webm": true, ".ogg": true,
+		".zip": true, ".tar": true, ".gz": true,
+		".txt": true, ".md": true, ".json": true, ".xml": true,
+		".css": true, ".js": true, ".wasm": true,
+	}
+	if !allowedExts[ext] {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "不支持的文件类型"})
+		return
+	}
+
 	filename := uuid.New().String() + ext
 	uploadDir := h.cfg.Dir
 	os.MkdirAll(uploadDir, 0755)
@@ -46,22 +62,35 @@ func (h *MediaHandler) Upload(c *gin.Context) {
 		return
 	}
 
-	userID, _ := uuid.Parse(c.GetString("user_id"))
-	media := &model.Media{
-		Filename:     filename,
-		OriginalName: file.Filename,
-		MimeType:     file.Header.Get("Content-Type"),
-		Size:         file.Size,
-		URL:          "/uploads/" + filename,
-		UploadedBy:   userID,
-	}
+	// Detect MIME type from file content
+	f, err := file.Open()
+	if err == nil {
+		buf := make([]byte, 512)
+		n, _ := f.Read(buf)
+		f.Close()
+		mimeType := http.DetectContentType(buf[:n])
+		if mimeType == "application/octet-stream" {
+			mimeType = file.Header.Get("Content-Type")
+		}
 
-	if err := h.repo.Create(media); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "保存记录失败"})
-		return
-	}
+		userID, _ := uuid.Parse(c.GetString("user_id"))
+		media := &model.Media{
+			Filename:     filename,
+			OriginalName: file.Filename,
+			MimeType:     mimeType,
+			Size:         file.Size,
+			URL:          "/uploads/" + filename,
+			UploadedBy:   userID,
+		}
 
-	c.JSON(http.StatusCreated, gin.H{"media": media})
+		if err := h.repo.Create(media); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "保存记录失败"})
+			return
+		}
+		c.JSON(http.StatusCreated, gin.H{"media": media})
+	} else {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "读取文件失败"})
+	}
 }
 
 func (h *MediaHandler) List(c *gin.Context) {
