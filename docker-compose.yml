@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: tano_blog_db
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: tano_blog
+      POSTGRES_USER: tano
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-tano_blog_pass}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tano -d tano_blog"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  pgdata:
