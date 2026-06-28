@@ -1,40 +1,73 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { api } from '@/lib/api';
+import { Loading } from '@/components/Loading';
 
 export default function CategoriesPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = React.use(params);
-  const [data, setData] = useState<any>(null);
+  const [category, setCategory] = useState<any>(null);
+  const [posts, setPosts] = useState<any[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.getCategory(slug).then(setData).finally(() => setLoading(false));
-  }, [slug]);
+    setLoading(true);
+    api.getCategory(slug, { page: String(page), page_size: '10' })
+      .then(res => {
+        setCategory(res.category);
+        setPosts(res.posts);
+        setTotal(res.total);
+      })
+      .finally(() => setLoading(false));
+  }, [slug, page]);
 
-  if (loading) return (
-    <div className="text-center py-20" style={{ color: 'var(--text-secondary)' }}>
-      <div className="animate-spin w-8 h-8 border-4 rounded-full mx-auto mb-4" style={{ borderColor: 'var(--primary)', borderTopColor: 'transparent' }} />
-      加载中...
-    </div>
-  );
-  if (!data) return <div className="text-center py-20" style={{ color: 'var(--text-secondary)' }}>分类不存在</div>;
+  const totalPages = Math.ceil(total / 10);
+
+  if (loading) return <Loading />;
+  if (!category) return <div className="text-center py-20" style={{ color: 'var(--text-secondary)' }}>分类不存在</div>;
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-8">
-      <h1 className="text-2xl font-bold mb-6" style={{ color: 'var(--text-primary)' }}>{data.category.name}</h1>
+      <h1 className="text-2xl font-bold mb-2" style={{ color: 'var(--text-primary)' }}>{category.name}</h1>
+      <p className="text-sm mb-6" style={{ color: 'var(--text-info)' }}>共 {total} 篇文章</p>
       <div className="space-y-4">
-        {data.posts.map((post: any) => (
+        {posts.map((post: any) => (
           <div key={post.id} className="card-base rounded-2xl p-6" style={{ background: 'var(--card-bg)' }}>
             <h2 className="text-xl font-bold">
-              <a href={`/posts/${post.slug}`} className="hover:opacity-80 transition-opacity" style={{ color: 'var(--text-primary)' }}>
+              <Link href={`/posts/${post.slug}`} className="hover:opacity-80 transition-opacity" style={{ color: 'var(--text-primary)' }}>
                 {post.title}
-              </a>
+              </Link>
             </h2>
             {post.excerpt && <p className="mt-2 text-sm" style={{ color: 'var(--text-secondary)' }}>{post.excerpt}</p>}
           </div>
         ))}
       </div>
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-1 mt-8">
+          <button onClick={() => setPage(Math.max(1, page - 1))} disabled={page === 1}
+            className="px-3 py-1.5 rounded-xl btn-glass disabled:opacity-40 text-sm"
+            style={{ color: 'var(--text-primary)' }}>上一页</button>
+          {Array.from({ length: Math.min(totalPages, 10) }, (_, i) => {
+            const start = Math.max(1, page - 5);
+            const p = start + i;
+            if (p > totalPages) return null;
+            return (
+              <button key={p} onClick={() => setPage(p)}
+                className="w-8 h-8 rounded-xl text-sm transition-all"
+                style={{
+                  background: p === page ? 'var(--primary)' : 'transparent',
+                  color: p === page ? '#fff' : 'var(--text-primary)',
+                }}>{p}</button>
+            );
+          })}
+          <button onClick={() => setPage(Math.min(totalPages, page + 1))} disabled={page === totalPages}
+            className="px-3 py-1.5 rounded-xl btn-glass disabled:opacity-40 text-sm"
+            style={{ color: 'var(--text-primary)' }}>下一页</button>
+        </div>
+      )}
     </div>
   );
 }

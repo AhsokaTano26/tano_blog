@@ -1,47 +1,160 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { api } from '@/lib/api';
-import { Image, Upload, Trash2, Copy, Check, Grid, List } from 'lucide-react';
+import { Image, Upload, Trash2, Copy, Check, Grid, List, Search, X, FileText, Video, Music, File, Tag, Plus, Settings } from 'lucide-react';
+import { Loading } from '@/components/Loading';
 
-export default function AdminMedia() {
-  const [items, setItems] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState(false);
-  const [copiedId, setCopiedId] = useState('');
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+const SITE_URL = typeof window !== 'undefined' ? window.location.origin : 'https://tano.asia';
 
-  async function load() {
-    setLoading(true);
-    try { const res = await api.admin.media.list({ page: '1', page_size: '50' }); setItems(res.items); }
-    catch (e) { console.error(e); }
-    setLoading(false);
+type MediaTag = { id: string; name: string };
+type MediaItem = {
+  id: string;
+  url: string;
+  original_name: string;
+  filename: string;
+  mime_type: string;
+  size: number;
+  created_at: string;
+  tags: MediaTag[];
+};
+
+function getMediaType(mime: string): 'image' | 'video' | 'audio' | 'document' {
+  if (mime?.startsWith('image/')) return 'image';
+  if (mime?.startsWith('video/')) return 'video';
+  if (mime?.startsWith('audio/')) return 'audio';
+  return 'document';
+}
+
+function getMediaIcon(mime: string) {
+  const type = getMediaType(mime);
+  switch (type) {
+    case 'image': return Image;
+    case 'video': return Video;
+    case 'audio': return Music;
+    default: return FileText;
+  }
+}
+
+function buildLinks(item: MediaItem) {
+  const url = item.url;
+  const fullUrl = `${SITE_URL}${url}`;
+  const name = item.original_name || item.filename;
+  const type = getMediaType(item.mime_type);
+
+  let htmlRel = '', htmlFull = '', mdRel = '', mdFull = '';
+  if (type === 'image') {
+    htmlRel = `<img src="${url}" alt="${name}" />`;
+    htmlFull = `<img src="${fullUrl}" alt="${name}" />`;
+    mdRel = `![${name}](${url})`;
+    mdFull = `![${name}](${fullUrl})`;
+  } else if (type === 'video') {
+    htmlRel = `<video src="${url}" controls></video>`;
+    htmlFull = `<video src="${fullUrl}" controls></video>`;
+    mdRel = `<video src="${url}" controls></video>`;
+    mdFull = `<video src="${fullUrl}" controls></video>`;
+  } else if (type === 'audio') {
+    htmlRel = `<audio src="${url}" controls></audio>`;
+    htmlFull = `<audio src="${fullUrl}" controls></audio>`;
+    mdRel = `<audio src="${url}" controls></audio>`;
+    mdFull = `<audio src="${fullUrl}" controls></audio>`;
+  } else {
+    htmlRel = `<a href="${url}">${name}</a>`;
+    htmlFull = `<a href="${fullUrl}">${name}</a>`;
+    mdRel = `[${name}](${url})`;
+    mdFull = `[${name}](${fullUrl})`;
   }
 
-  useEffect(() => { load(); }, []);
+  return [
+    { label: '相对路径', items: [
+      { fmt: 'URL', value: url },
+      { fmt: 'HTML', value: htmlRel },
+      { fmt: 'Markdown', value: mdRel },
+    ]},
+    { label: '完整路径', items: [
+      { fmt: 'URL', value: fullUrl },
+      { fmt: 'HTML', value: htmlFull },
+      { fmt: 'Markdown', value: mdFull },
+    ]},
+  ];
+}
+
+const typeTabs = [
+  { key: '', label: '全部', icon: File },
+  { key: 'image', label: '图片', icon: Image },
+  { key: 'video', label: '视频', icon: Video },
+  { key: 'audio', label: '音频', icon: Music },
+  { key: 'document', label: '文档', icon: FileText },
+];
+
+export default function AdminMedia() {
+  const [items, setItems] = useState<MediaItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [copiedKey, setCopiedKey] = useState('');
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [typeFilter, setTypeFilter] = useState('');
+  const [search, setSearch] = useState('');
+  const [openLinksId, setOpenLinksId] = useState<string | null>(null);
+  const [openLinksEl, setOpenLinksEl] = useState<HTMLElement | null>(null);
+  const [editingTagsId, setEditingTagsId] = useState<string | null>(null);
+  const [editingTagsEl, setEditingTagsEl] = useState<HTMLElement | null>(null);
+  const linksAnchorRef = useRef<HTMLElement | null>(openLinksEl);
+  const tagsAnchorRef = useRef<HTMLElement | null>(editingTagsEl);
+  linksAnchorRef.current = openLinksEl;
+  tagsAnchorRef.current = editingTagsEl;
+
+  // Tag state
+  const [mediaTags, setMediaTags] = useState<MediaTag[]>([]);
+  const [tagFilter, setTagFilter] = useState('');
+  const [showTagManager, setShowTagManager] = useState(false);
+  const [newTagName, setNewTagName] = useState('');
+  const [uploadTagIds, setUploadTagIds] = useState<string[]>([]);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params: Record<string, string> = { page: '1', page_size: '100' };
+      if (search) params.search = search;
+      if (tagFilter) params.tag = tagFilter;
+      const res = await api.admin.media.list(params);
+      setItems(res.items || []);
+    } catch { /* empty */ }
+    setLoading(false);
+  }, [search, tagFilter]);
+
+  const loadTags = useCallback(async () => {
+    try {
+      const res = await api.admin.media.tags.list();
+      setMediaTags(res.items || []);
+    } catch { /* empty */ }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => { loadTags(); }, [loadTags]);
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploading(true);
     try {
-      await api.admin.media.upload(file);
+      await api.admin.media.upload(file, uploadTagIds.length > 0 ? uploadTagIds : undefined);
       load();
-    } catch (err) { console.error(err); }
+    } catch { /* empty */ }
     setUploading(false);
     e.target.value = '';
   }
 
   async function handleDelete(id: string) {
     if (!confirm('确定删除此文件？')) return;
-    await api.admin.media.delete(id);
-    load();
+    try { await api.admin.media.delete(id); load(); } catch { /* empty */ }
   }
 
-  function copyUrl(url: string, id: string) {
-    navigator.clipboard.writeText(url);
-    setCopiedId(id);
-    setTimeout(() => setCopiedId(''), 2000);
+  function copyValue(value: string, key: string) {
+    navigator.clipboard.writeText(value);
+    setCopiedKey(key);
+    setTimeout(() => setCopiedKey(''), 2000);
   }
 
   function formatSize(bytes: number): string {
@@ -50,26 +163,178 @@ export default function AdminMedia() {
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   }
 
+  const filtered = typeFilter
+    ? items.filter(item => getMediaType(item.mime_type) === typeFilter)
+    : items;
+
+  function handleSearch() { load(); }
+
+  // Tag management
+  async function handleCreateTag() {
+    const name = newTagName.trim();
+    if (!name) return;
+    try {
+      await api.admin.media.tags.create(name);
+      setNewTagName('');
+      loadTags();
+    } catch { /* empty */ }
+  }
+
+  async function handleDeleteTag(id: string) {
+    if (!confirm('确定删除此标签？')) return;
+    try {
+      await api.admin.media.tags.delete(id);
+      if (tagFilter === id) setTagFilter('');
+      loadTags();
+    } catch { /* empty */ }
+  }
+
+  async function handleToggleMediaTag(mediaId: string, tagId: string) {
+    const item = items.find(i => i.id === mediaId);
+    if (!item) return;
+    const current = item.tags.map(t => t.id);
+    const next = current.includes(tagId) ? current.filter(id => id !== tagId) : [...current, tagId];
+    try {
+      const res = await api.admin.media.updateTags(mediaId, next) as { media: MediaItem };
+      setItems(prev => prev.map(i => i.id === mediaId ? { ...i, tags: res.media.tags || [] } : i));
+    } catch { /* empty */ }
+  }
+
+  function toggleUploadTag(tagId: string) {
+    setUploadTagIds(prev => prev.includes(tagId) ? prev.filter(id => id !== tagId) : [...prev, tagId]);
+  }
+
+  function FloatingPopover({ anchorRef, onClose, width, children }: {
+    anchorRef: React.RefObject<HTMLElement | null>;
+    onClose: () => void;
+    width: number;
+    children: React.ReactNode;
+  }) {
+    const popRef = useRef<HTMLDivElement>(null);
+    const [pos, setPos] = useState({ top: 0, left: 0 });
+
+    useLayoutEffect(() => {
+      const el = anchorRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      let left = rect.right - width;
+      if (left < 8) left = 8;
+      if (left + width > window.innerWidth - 8) left = window.innerWidth - width - 8;
+      let top = rect.bottom + 6;
+      if (top + 300 > window.innerHeight) {
+        top = rect.top - 6;
+        // Will be adjusted with translateY below
+      }
+      setPos({ top, left });
+    }, [anchorRef, width]);
+
+    useEffect(() => {
+      function handleClick(e: MouseEvent) {
+        if (popRef.current && !popRef.current.contains(e.target as Node) &&
+            anchorRef.current && !anchorRef.current.contains(e.target as Node)) {
+          onClose();
+        }
+      }
+      document.addEventListener('mousedown', handleClick);
+      return () => document.removeEventListener('mousedown', handleClick);
+    }, [onClose, anchorRef]);
+
+    return createPortal(
+      <div ref={popRef} className="fixed z-[100] rounded-xl shadow-2xl"
+        style={{
+          top: pos.top,
+          left: pos.left,
+          width,
+          background: 'var(--card-bg)',
+          border: '1px solid var(--glass-border)',
+          backdropFilter: 'blur(20px)',
+          WebkitBackdropFilter: 'blur(20px)',
+          maxHeight: '70vh',
+          overflowY: 'auto',
+        }}>
+        {children}
+      </div>,
+      document.body
+    );
+  }
+
+  function CopyPopoverContent({ item }: { item: MediaItem }) {
+    const groups = buildLinks(item);
+    return (
+      <div className="p-3 space-y-3">
+        {groups.map((group) => (
+          <div key={group.label}>
+            <div className="text-xs font-medium mb-1.5" style={{ color: 'var(--text-info)' }}>{group.label}</div>
+            <div className="space-y-1">
+              {group.items.map((link) => {
+                const copyKey = `${item.id}-${link.fmt}-${group.label}`;
+                return (
+                  <div key={link.fmt} className="flex items-center gap-2">
+                    <span className="w-16 text-xs flex-shrink-0" style={{ color: 'var(--text-secondary)' }}>{link.fmt}</span>
+                    <code className="flex-1 text-xs truncate px-2 py-1 rounded" style={{ background: 'var(--surface-bg)', color: 'var(--text-primary)' }}>
+                      {link.value}
+                    </code>
+                    <button onClick={() => copyValue(link.value, copyKey)}
+                      className="p-1 rounded transition-colors btn-glass flex-shrink-0"
+                      title={`复制${link.fmt}`}>
+                      {copiedKey === copyKey ? <Check className="w-3.5 h-3.5" style={{ color: 'var(--color-success)' }} /> : <Copy className="w-3.5 h-3.5" style={{ color: 'var(--text-info)' }} />}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  function TagEditorContent({ item }: { item: MediaItem }) {
+    return (
+      <div className="p-3">
+        <div className="text-xs font-medium mb-2" style={{ color: 'var(--text-info)' }}>编辑标签</div>
+        {mediaTags.length === 0 ? (
+          <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>暂无标签，请先创建</p>
+        ) : (
+          <div className="space-y-1.5">
+            {mediaTags.map(tag => {
+              const active = item.tags.some(t => t.id === tag.id);
+              return (
+                <button key={tag.id} onClick={() => handleToggleMediaTag(item.id, tag.id)}
+                  className="flex items-center gap-2 w-full px-2 py-1.5 rounded-lg text-xs transition-colors text-left"
+                  style={{
+                    background: active ? 'var(--primary-sub)' : 'transparent',
+                    color: active ? 'var(--primary)' : 'var(--text-secondary)',
+                  }}>
+                  <div className="w-3.5 h-3.5 rounded border flex items-center justify-center flex-shrink-0"
+                    style={{ borderColor: active ? 'var(--primary)' : 'var(--border-color)', background: active ? 'var(--primary)' : 'transparent' }}>
+                    {active && <Check className="w-2.5 h-2.5 text-white" />}
+                  </div>
+                  {tag.name}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div>
+      {/* Header */}
       <div className="flex items-center justify-between mb-5">
         <h1 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>附件</h1>
         <div className="flex items-center gap-2">
           <div className="flex rounded-lg p-0.5" style={{ background: 'var(--surface-bg)' }}>
-            <button onClick={() => setViewMode('grid')}
+            <button onClick={() => setViewMode('grid')} aria-label="网格视图"
               className="p-1.5 rounded transition-colors"
-              style={{
-                background: viewMode === 'grid' ? 'var(--card-bg)' : 'transparent',
-                color: viewMode === 'grid' ? 'var(--text-primary)' : 'var(--text-secondary)',
-              }}>
+              style={{ background: viewMode === 'grid' ? 'var(--card-bg)' : 'transparent', color: viewMode === 'grid' ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
               <Grid className="w-4 h-4" />
             </button>
-            <button onClick={() => setViewMode('list')}
+            <button onClick={() => setViewMode('list')} aria-label="列表视图"
               className="p-1.5 rounded transition-colors"
-              style={{
-                background: viewMode === 'list' ? 'var(--card-bg)' : 'transparent',
-                color: viewMode === 'list' ? 'var(--text-primary)' : 'var(--text-secondary)',
-              }}>
+              style={{ background: viewMode === 'list' ? 'var(--card-bg)' : 'transparent', color: viewMode === 'list' ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
               <List className="w-4 h-4" />
             </button>
           </div>
@@ -82,105 +347,302 @@ export default function AdminMedia() {
         </div>
       </div>
 
-      {loading ? (
-        <div className="text-center py-20" style={{ color: 'var(--text-secondary)' }}>
-          <div className="animate-spin w-8 h-8 border-4 rounded-full mx-auto mb-4" style={{ borderColor: 'var(--primary)', borderTopColor: 'transparent' }} />
-          加载中...
+      {/* Upload tag selector */}
+      {mediaTags.length > 0 && (
+        <div className="glass-card rounded-xl mb-4 p-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs" style={{ color: 'var(--text-info)' }}>上传时添加标签：</span>
+            {mediaTags.map(tag => (
+              <button key={tag.id} onClick={() => toggleUploadTag(tag.id)}
+                className="px-2 py-1 rounded-lg text-xs transition-colors"
+                style={{
+                  background: uploadTagIds.includes(tag.id) ? 'var(--primary-sub)' : 'var(--surface-bg)',
+                  color: uploadTagIds.includes(tag.id) ? 'var(--primary)' : 'var(--text-secondary)',
+                  border: `1px solid ${uploadTagIds.includes(tag.id) ? 'var(--primary)' : 'var(--glass-border)'}`,
+                }}>
+                {tag.name}
+              </button>
+            ))}
+            {uploadTagIds.length > 0 && (
+              <button onClick={() => setUploadTagIds([])} className="text-xs" style={{ color: 'var(--text-info)' }}>
+                清除
+              </button>
+            )}
+          </div>
         </div>
-      ) : items.length === 0 ? (
-        <div className="text-center py-20 glass-card rounded-xl" style={{ color: 'var(--text-secondary)' }}>
-          <Image className="w-12 h-12 mx-auto mb-3" style={{ color: 'var(--text-info)' }} />
-          <p>暂无文件</p>
-          <label className="mt-3 inline-flex items-center gap-1.5 hover:underline text-sm cursor-pointer" style={{ color: 'var(--primary)' }}>
-            <Upload className="w-4 h-4" />
-            上传第一个文件
-            <input type="file" className="hidden" onChange={handleUpload} />
-          </label>
+      )}
+
+      {/* Search + Type filter + Tag filter */}
+      <div className="glass-card rounded-xl mb-4">
+        <div className="flex items-center gap-3 p-4 flex-wrap" style={{ borderBottom: '1px solid var(--glass-border)' }}>
+          <div className="relative flex-1 max-w-xs">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: 'var(--text-info)' }} />
+            <input type="text" placeholder="搜索文件名..." value={search}
+              onChange={e => setSearch(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleSearch()}
+              className="w-full pl-9 pr-8 py-2 rounded-xl text-sm outline-none glass-card"
+              style={{ color: 'var(--text-primary)' }} />
+            {search && (
+              <button onClick={() => { setSearch(''); setTimeout(load, 0); }}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded transition-colors"
+                style={{ color: 'var(--text-info)' }}>
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+          <div className="flex gap-1">
+            {typeTabs.map(tab => {
+              const Icon = tab.icon;
+              return (
+                <button key={tab.key} onClick={() => setTypeFilter(tab.key)}
+                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+                  style={{
+                    background: typeFilter === tab.key ? 'var(--primary-sub)' : 'transparent',
+                    color: typeFilter === tab.key ? 'var(--primary)' : 'var(--text-secondary)',
+                  }}>
+                  <Icon className="w-3.5 h-3.5" />
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
+          <button onClick={() => setShowTagManager(!showTagManager)}
+            className="p-1.5 rounded-lg transition-colors btn-glass ml-auto"
+            title="管理标签">
+            <Settings className="w-4 h-4" style={{ color: 'var(--text-secondary)' }} />
+          </button>
         </div>
-      ) : viewMode === 'grid' ? (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-          {items.map((item) => (
-            <div key={item.id} className="glass-card rounded-xl overflow-hidden group">
-              <div className="relative aspect-square" style={{ background: 'var(--surface-bg)' }}>
-                {item.mime_type?.startsWith('image/') ? (
-                  <img src={item.url} alt={item.original_name || item.filename}
-                    className="w-full h-full object-cover" />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center" style={{ color: 'var(--text-info)' }}>
-                    <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                    </svg>
-                  </div>
-                )}
-                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100">
-                  <button onClick={() => copyUrl(item.url, item.id)}
-                    className="p-1.5 rounded-full transition-colors" style={{ background: 'var(--card-bg)', color: 'var(--text-primary)' }} title="复制 URL">
-                    {copiedId === item.id ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                  </button>
-                  <button onClick={() => handleDelete(item.id)}
-                    className="p-1.5 rounded-full transition-colors" style={{ background: 'var(--card-bg)', color: 'var(--text-primary)' }} title="删除">
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-              <div className="p-2.5">
-                <p className="text-xs truncate" style={{ color: 'var(--text-secondary)' }} title={item.original_name || item.filename}>
-                  {item.original_name || item.filename}
-                </p>
-                <p className="text-xs mt-0.5" style={{ color: 'var(--text-info)' }}>{item.size ? formatSize(item.size) : ''}</p>
-              </div>
+
+        {/* Tag filter row */}
+        {mediaTags.length > 0 && (
+          <div className="flex items-center gap-2 px-4 py-2.5 flex-wrap" style={{ borderBottom: '1px solid var(--glass-border)' }}>
+            <Tag className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'var(--text-info)' }} />
+            <button onClick={() => setTagFilter('')}
+              className="px-2.5 py-1 rounded-lg text-xs transition-colors"
+              style={{
+                background: !tagFilter ? 'var(--primary-sub)' : 'transparent',
+                color: !tagFilter ? 'var(--primary)' : 'var(--text-secondary)',
+              }}>
+              全部
+            </button>
+            {mediaTags.map(tag => (
+              <button key={tag.id} onClick={() => setTagFilter(tagFilter === tag.id ? '' : tag.id)}
+                className="px-2.5 py-1 rounded-lg text-xs transition-colors"
+                style={{
+                  background: tagFilter === tag.id ? 'var(--primary-sub)' : 'transparent',
+                  color: tagFilter === tag.id ? 'var(--primary)' : 'var(--text-secondary)',
+                }}>
+                {tag.name}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Tag Manager */}
+        {showTagManager && (
+          <div className="px-4 py-3" style={{ borderBottom: '1px solid var(--glass-border)' }}>
+            <div className="flex items-center gap-2 mb-2">
+              <input type="text" placeholder="新标签名称..." value={newTagName}
+                onChange={e => setNewTagName(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleCreateTag()}
+                className="flex-1 max-w-xs px-3 py-1.5 rounded-lg text-sm outline-none glass-card"
+                style={{ color: 'var(--text-primary)' }} />
+              <button onClick={handleCreateTag}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-white"
+                style={{ background: 'var(--primary)' }}>
+                <Plus className="w-3.5 h-3.5" />
+                创建
+              </button>
             </div>
-          ))}
-        </div>
-      ) : (
-        <div className="glass-card rounded-xl overflow-hidden">
-          <table className="w-full">
-            <thead>
-              <tr style={{ borderBottom: '1px solid var(--glass-border)' }}>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider w-12" style={{ color: 'var(--text-secondary)' }}></th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>文件名</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider w-32" style={{ color: 'var(--text-secondary)' }}>类型</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider w-24" style={{ color: 'var(--text-secondary)' }}>大小</th>
-                <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider w-32" style={{ color: 'var(--text-secondary)' }}>操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item) => (
-                <tr key={item.id} className="transition-colors" style={{ borderBottom: '1px solid var(--glass-border)' }}>
-                  <td className="px-4 py-3">
+            {mediaTags.length > 0 && (
+              <div className="flex gap-2 flex-wrap">
+                {mediaTags.map(tag => (
+                  <div key={tag.id} className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs"
+                    style={{ background: 'var(--surface-bg)', color: 'var(--text-secondary)' }}>
+                    {tag.name}
+                    <button onClick={() => handleDeleteTag(tag.id)} className="ml-1 hover:opacity-70">
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Content */}
+        {loading ? (
+          <Loading />
+        ) : filtered.length === 0 ? (
+          <div className="text-center py-20" style={{ color: 'var(--text-secondary)' }}>
+            <Image className="w-12 h-12 mx-auto mb-3" style={{ color: 'var(--text-info)' }} />
+            <p>{search || tagFilter ? '未找到匹配文件' : '暂无文件'}</p>
+          </div>
+        ) : viewMode === 'grid' ? (
+          <div className="p-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+            {filtered.map((item) => {
+              const Icon = getMediaIcon(item.mime_type);
+              return (
+                <div key={item.id} className="glass-card rounded-xl overflow-hidden group">
+                  <div className="relative aspect-square" style={{ background: 'var(--surface-bg)' }}>
                     {item.mime_type?.startsWith('image/') ? (
-                      <img src={item.url} alt="" className="w-8 h-8 rounded object-cover" />
+                      <img src={item.url} alt={item.original_name || item.filename} className="w-full h-full object-cover" />
+                    ) : item.mime_type?.startsWith('video/') ? (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <Video className="w-10 h-10" style={{ color: 'var(--text-info)' }} />
+                      </div>
+                    ) : item.mime_type?.startsWith('audio/') ? (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <Music className="w-10 h-10" style={{ color: 'var(--text-info)' }} />
+                      </div>
                     ) : (
-                      <div className="w-8 h-8 rounded flex items-center justify-center" style={{ background: 'var(--surface-bg)' }}>
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: 'var(--text-info)' }}>
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                        </svg>
+                      <div className="w-full h-full flex items-center justify-center">
+                        <FileText className="w-10 h-10" style={{ color: 'var(--text-info)' }} />
                       </div>
                     )}
-                  </td>
-                  <td className="px-4 py-3 text-sm truncate max-w-[200px]" style={{ color: 'var(--text-primary)' }} title={item.original_name || item.filename}>
-                    {item.original_name || item.filename}
-                  </td>
-                  <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>{item.mime_type || '-'}</td>
-                  <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>{item.size ? formatSize(item.size) : '-'}</td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      <button onClick={() => copyUrl(item.url, item.id)}
-                        className="btn-glass p-1.5 rounded transition-colors" title="复制 URL">
-                        {copiedId === item.id ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100">
+                      <button onClick={(e) => {
+                        if (openLinksId === item.id) { setOpenLinksId(null); setOpenLinksEl(null); }
+                        else { setOpenLinksId(item.id); setOpenLinksEl(e.currentTarget); setEditingTagsId(null); }
+                      }}
+                        className="p-1.5 rounded-full transition-colors" style={{ background: 'var(--card-bg)', color: 'var(--text-primary)' }} title="复制链接">
+                        <Copy className="w-4 h-4" />
+                      </button>
+                      <button onClick={(e) => {
+                        if (editingTagsId === item.id) { setEditingTagsId(null); setEditingTagsEl(null); }
+                        else { setEditingTagsId(item.id); setEditingTagsEl(e.currentTarget); setOpenLinksId(null); }
+                      }}
+                        className="p-1.5 rounded-full transition-colors" style={{ background: 'var(--card-bg)', color: 'var(--text-primary)' }} title="编辑标签">
+                        <Tag className="w-4 h-4" />
                       </button>
                       <button onClick={() => handleDelete(item.id)}
-                        className="btn-glass p-1.5 rounded transition-colors" title="删除">
+                        className="p-1.5 rounded-full transition-colors" style={{ background: 'var(--card-bg)', color: 'var(--color-error)' }} title="删除">
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
-                  </td>
+                  </div>
+                  <div className="p-2.5">
+                    <p className="text-xs truncate" style={{ color: 'var(--text-secondary)' }} title={item.original_name || item.filename}>
+                      {item.original_name || item.filename}
+                    </p>
+                    {item.tags && item.tags.length > 0 && (
+                      <div className="flex gap-1 mt-1 flex-wrap">
+                        {item.tags.map(tag => (
+                          <span key={tag.id} className="px-1.5 py-0.5 rounded text-[10px]"
+                            style={{ background: 'var(--primary-sub)', color: 'var(--primary)' }}>
+                            {tag.name}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <p className="text-xs mt-0.5" style={{ color: 'var(--text-info)' }}>{item.size ? formatSize(item.size) : ''}</p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div>
+            <table className="w-full">
+              <thead>
+                <tr style={{ borderBottom: '1px solid var(--glass-border)' }}>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider w-12" style={{ color: 'var(--text-secondary)' }}></th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>文件名</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider w-32" style={{ color: 'var(--text-secondary)' }}>类型</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider w-24" style={{ color: 'var(--text-secondary)' }}>大小</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>标签</th>
+                  <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider w-32" style={{ color: 'var(--text-secondary)' }}>操作</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+              </thead>
+              <tbody>
+                {filtered.map((item) => {
+                  const Icon = getMediaIcon(item.mime_type);
+                  return (
+                    <tr key={item.id} className="transition-colors" style={{ borderBottom: '1px solid var(--glass-border)' }}>
+                      <td className="px-4 py-3">
+                        {item.mime_type?.startsWith('image/') ? (
+                          <img src={item.url} alt={item.original_name || item.filename} className="w-8 h-8 rounded object-cover" />
+                        ) : (
+                          <div className="w-8 h-8 rounded flex items-center justify-center" style={{ background: 'var(--surface-bg)' }}>
+                            <Icon className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-sm truncate max-w-[200px]" style={{ color: 'var(--text-primary)' }} title={item.original_name || item.filename}>
+                        {item.original_name || item.filename}
+                      </td>
+                      <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>{item.mime_type || '-'}</td>
+                      <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>{item.size ? formatSize(item.size) : '-'}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex gap-1 flex-wrap">
+                          {item.tags && item.tags.length > 0 ? item.tags.map(tag => (
+                            <span key={tag.id} className="px-1.5 py-0.5 rounded text-[10px]"
+                              style={{ background: 'var(--primary-sub)', color: 'var(--primary)' }}>
+                              {tag.name}
+                            </span>
+                          )) : (
+                            <span className="text-xs" style={{ color: 'var(--text-info)' }}>-</span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <button onClick={(e) => {
+                            if (openLinksId === item.id) { setOpenLinksId(null); setOpenLinksEl(null); }
+                            else { setOpenLinksId(item.id); setOpenLinksEl(e.currentTarget); setEditingTagsId(null); }
+                          }}
+                            className="btn-glass p-1.5 rounded transition-colors" title="复制链接">
+                            <Copy className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
+                          </button>
+                          <button onClick={(e) => {
+                            if (editingTagsId === item.id) { setEditingTagsId(null); setEditingTagsEl(null); }
+                            else { setEditingTagsId(item.id); setEditingTagsEl(e.currentTarget); setOpenLinksId(null); }
+                          }}
+                            className="btn-glass p-1.5 rounded transition-colors" title="编辑标签">
+                            <Tag className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
+                          </button>
+                          <button onClick={() => handleDelete(item.id)}
+                            className="btn-glass p-1.5 rounded transition-colors" title="删除">
+                            <Trash2 className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Count */}
+      <div className="text-sm" style={{ color: 'var(--text-info)' }}>
+        共 {filtered.length} 个文件
+        {(typeFilter || tagFilter) && ` (筛选自 ${items.length} 个)`}
+      </div>
+
+      {/* Floating Popovers */}
+      {openLinksId && (() => {
+        const item = items.find(i => i.id === openLinksId);
+        if (!item) return null;
+        return (
+          <FloatingPopover anchorRef={linksAnchorRef} width={320}
+            onClose={() => { setOpenLinksId(null); setOpenLinksEl(null); }}>
+            <CopyPopoverContent item={item} />
+          </FloatingPopover>
+        );
+      })()}
+      {editingTagsId && (() => {
+        const item = items.find(i => i.id === editingTagsId);
+        if (!item) return null;
+        return (
+          <FloatingPopover anchorRef={tagsAnchorRef} width={240}
+            onClose={() => { setEditingTagsId(null); setEditingTagsEl(null); }}>
+            <TagEditorContent item={item} />
+          </FloatingPopover>
+        );
+      })()}
     </div>
   );
 }

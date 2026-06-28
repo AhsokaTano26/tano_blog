@@ -1,9 +1,11 @@
 'use client';
 
 import { useState, useEffect, Suspense } from 'react';
+import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
 import { Search, TrendingUp } from 'lucide-react';
+import { Loading } from '@/components/Loading';
 
 function SearchContent() {
   const searchParams = useSearchParams();
@@ -69,18 +71,15 @@ function SearchContent() {
             搜索 &ldquo;{q}&rdquo;，共 {total} 条结果
           </p>
           {loading ? (
-            <div className="text-center py-20" style={{ color: 'var(--text-secondary)' }}>
-              <div className="animate-spin w-8 h-8 border-4 rounded-full mx-auto mb-4" style={{ borderColor: 'var(--primary)', borderTopColor: 'transparent' }} />
-              加载中...
-            </div>
+            <Loading />
           ) : (
             <div className="space-y-4">
               {posts.map((post) => (
                 <div key={post.id} className="card-base rounded-2xl p-6" style={{ background: 'var(--card-bg)' }}>
                   <h2 className="text-xl font-bold">
-                    <a href={`/posts/${post.slug}`} className="hover:opacity-80 transition-opacity" style={{ color: 'var(--text-primary)' }}>
+                    <Link href={`/posts/${post.slug}`} className="hover:opacity-80 transition-opacity" style={{ color: 'var(--text-primary)' }}>
                       {post.title}
-                    </a>
+                    </Link>
                   </h2>
                   {post.excerpt && (
                     <p className="mt-2 text-sm" style={{ color: 'var(--text-secondary)' }}>{post.excerpt}</p>
@@ -104,14 +103,14 @@ function SearchContent() {
               </h2>
               <div className="flex flex-wrap gap-2">
                 {tags.map((tag: any) => (
-                  <a
+                  <Link
                     key={tag.id}
                     href={`/search?q=${encodeURIComponent(tag.name)}`}
                     className="px-4 py-2 rounded-xl text-sm transition-colors hover:opacity-80"
                     style={{ background: 'var(--btn-card-bg)', color: 'var(--text-secondary)' }}
                   >
                     #{tag.name}
-                  </a>
+                  </Link>
                 ))}
               </div>
             </div>
@@ -123,7 +122,7 @@ function SearchContent() {
               <h2 className="text-lg font-bold mb-4" style={{ color: 'var(--text-primary)' }}>最近文章</h2>
               <div className="space-y-3">
                 {recentPosts.map((post: any) => (
-                  <a
+                  <Link
                     key={post.id}
                     href={`/posts/${post.slug}`}
                     className="block card-base rounded-2xl p-4 transition-all hover:translate-y-[-2px]"
@@ -133,7 +132,7 @@ function SearchContent() {
                     {post.excerpt && (
                       <p className="mt-1 text-sm line-clamp-2" style={{ color: 'var(--text-secondary)' }}>{post.excerpt}</p>
                     )}
-                  </a>
+                  </Link>
                 ))}
               </div>
             </div>

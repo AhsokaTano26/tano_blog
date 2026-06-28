@@ -2,13 +2,26 @@
 
 import { useState, useEffect } from 'react';
 import { api } from '@/lib/api';
-import { Save, Globe, FileText, Palette, MessageSquare, Code } from 'lucide-react';
+import { Save, Globe, FileText, Palette, MessageSquare, Code, Mail, User, Plus, Trash2 } from 'lucide-react';
+import { Loading } from '@/components/Loading';
+
+const contactTypes = [
+  { value: 'email', label: '邮箱' },
+  { value: 'github', label: 'GitHub' },
+  { value: 'twitter', label: 'Twitter/X' },
+  { value: 'bilibili', label: 'B站' },
+  { value: 'telegram', label: 'Telegram' },
+  { value: 'qq', label: 'QQ' },
+  { value: 'link', label: '链接' },
+];
 
 const tabs = [
+  { key: 'profile', label: '个人资料', icon: User },
   { key: 'basic', label: '基本设置', icon: Globe },
   { key: 'article', label: '文章设置', icon: FileText },
   { key: 'appearance', label: '外观设置', icon: Palette },
   { key: 'comment', label: '评论设置', icon: MessageSquare },
+  { key: 'email', label: '邮件通知', icon: Mail },
   { key: 'injection', label: '代码注入', icon: Code },
 ];
 
@@ -18,6 +31,14 @@ export default function AdminSettings() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [activeTab, setActiveTab] = useState('basic');
+  const [testing, setTesting] = useState(false);
+
+  function getContacts(): { type: string; value: string }[] {
+    try { return JSON.parse(config.profile_contacts || '[]'); } catch { return []; }
+  }
+  function setContacts(contacts: { type: string; value: string }[]) {
+    setConfig({ ...config, profile_contacts: JSON.stringify(contacts) });
+  }
 
   useEffect(() => {
     api.admin.config.get().then(res => setConfig(res.config)).finally(() => setLoading(false));
@@ -34,15 +55,25 @@ export default function AdminSettings() {
     setSaving(false);
   }
 
+  async function handleTestEmail() {
+    if (!config.email_from) return;
+    setTesting(true);
+    setMessage('');
+    try {
+      const res = await api.admin.config.testEmail(config.email_from);
+      setMessage(res.message || '测试邮件已发送');
+      setTimeout(() => setMessage(''), 5000);
+    } catch (e: any) {
+      setMessage(e.message || '发送失败');
+      setTimeout(() => setMessage(''), 5000);
+    }
+    setTesting(false);
+  }
+
   const inputClass = "w-full px-3 py-2.5 rounded-lg text-sm outline-none";
   const inputStyle = { border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' };
 
-  if (loading) return (
-    <div className="text-center py-20" style={{ color: 'var(--text-secondary)' }}>
-      <div className="animate-spin w-8 h-8 border-4 rounded-full mx-auto mb-4" style={{ borderColor: 'var(--primary)', borderTopColor: 'transparent' }} />
-      加载中...
-    </div>
-  );
+  if (loading) return <Loading />;
 
   return (
     <div>
@@ -52,8 +83,8 @@ export default function AdminSettings() {
 
       {message && (
         <div className="mb-4 px-4 py-2.5 rounded-lg text-sm flex items-center gap-2 glass-card"
-          style={{ color: message === '保存失败' ? 'hsl(0, 60%, 55%)' : 'hsl(142, 60%, 50%)' }}>
-          {message === '保存失败' ? '保存失败，请重试' : '设置已保存'}
+          style={{ color: message.includes('失败') ? 'hsl(0, 60%, 55%)' : 'hsl(142, 60%, 50%)' }}>
+          {message}
         </div>
       )}
 
@@ -75,6 +106,78 @@ export default function AdminSettings() {
 
         {/* Tab content */}
         <div className="p-6">
+          {activeTab === 'profile' && (
+            <div className="space-y-5 max-w-2xl">
+              <div>
+                <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>头像</label>
+                <div className="flex items-center gap-4 mb-2">
+                  <img src={config.profile_avatar || '/aimi.png'} alt="头像"
+                    className="w-16 h-16 rounded-full object-cover"
+                    onError={(e: React.SyntheticEvent<HTMLImageElement>) => { e.currentTarget.src = '/aimi.png'; }} />
+                </div>
+                <input type="text" value={config.profile_avatar || ''} onChange={e => setConfig({ ...config, profile_avatar: e.target.value })}
+                  placeholder="/aimi.png" className={inputClass} style={inputStyle} />
+                <p className="text-xs mt-1" style={{ color: 'var(--text-info)' }}>图片路径或 URL</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>显示名称</label>
+                <input type="text" value={config.profile_name || ''} onChange={e => setConfig({ ...config, profile_name: e.target.value })}
+                  placeholder="Tano" className={inputClass} style={inputStyle} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>个人简介</label>
+                <textarea value={config.profile_bio || ''} onChange={e => setConfig({ ...config, profile_bio: e.target.value })}
+                  rows={2} placeholder="A BanG Dreamer!" className={`${inputClass} resize-none`} style={inputStyle} />
+              </div>
+
+              {/* Contacts */}
+              <div>
+                <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>联系方式</label>
+                <div className="space-y-2">
+                  {getContacts().map((c, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <select value={c.type}
+                        onChange={e => {
+                          const list = getContacts();
+                          list[i] = { ...list[i], type: e.target.value };
+                          setContacts(list);
+                        }}
+                        className="px-3 py-2.5 rounded-lg text-sm outline-none w-32"
+                        style={inputStyle}>
+                        {contactTypes.map(t => (
+                          <option key={t.value} value={t.value}>{t.label}</option>
+                        ))}
+                      </select>
+                      <input type="text" value={c.value}
+                        onChange={e => {
+                          const list = getContacts();
+                          list[i] = { ...list[i], value: e.target.value };
+                          setContacts(list);
+                        }}
+                        placeholder={contactTypes.find(t => t.value === c.type)?.label || ''}
+                        className={`flex-1 ${inputClass}`} style={inputStyle} />
+                      <button onClick={() => setContacts(getContacts().filter((_, j) => j !== i))}
+                        className="p-2 rounded-lg transition-colors hover:bg-red-500/10"
+                        style={{ color: 'hsl(0, 60%, 55%)' }}>
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <button onClick={() => {
+                  const used = getContacts().map(c => c.type);
+                  const next = contactTypes.find(t => !used.includes(t.value));
+                  if (next) setContacts([...getContacts(), { type: next.value, value: '' }]);
+                }}
+                  className="mt-2 flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm transition-colors"
+                  style={{ color: 'var(--primary)', background: 'var(--primary-sub)' }}>
+                  <Plus className="w-4 h-4" />
+                  添加联系方式
+                </button>
+              </div>
+            </div>
+          )}
+
           {activeTab === 'basic' && (
             <div className="space-y-5 max-w-2xl">
               <div>
@@ -190,6 +293,104 @@ export default function AdminSettings() {
                       border: config.comment_enabled === 'false' ? 'none' : '1px solid var(--glass-border)',
                     }}>关闭</button>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'email' && (
+            <div className="space-y-5 max-w-2xl">
+              {/* Enable toggle */}
+              <div>
+                <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>邮件通知</label>
+                <div className="flex gap-2">
+                  <button onClick={() => setConfig({ ...config, email_enabled: 'true' })}
+                    className="px-4 py-2 rounded-lg text-sm transition-colors"
+                    style={{
+                      background: config.email_enabled === 'true' ? 'hsl(142, 60%, 50%)' : 'var(--surface-bg)',
+                      color: config.email_enabled === 'true' ? '#fff' : 'var(--text-secondary)',
+                      border: config.email_enabled === 'true' ? 'none' : '1px solid var(--glass-border)',
+                    }}>开启</button>
+                  <button onClick={() => setConfig({ ...config, email_enabled: 'false' })}
+                    className="px-4 py-2 rounded-lg text-sm transition-colors"
+                    style={{
+                      background: config.email_enabled === 'false' ? 'hsl(0, 60%, 55%)' : 'var(--surface-bg)',
+                      color: config.email_enabled === 'false' ? '#fff' : 'var(--text-secondary)',
+                      border: config.email_enabled === 'false' ? 'none' : '1px solid var(--glass-border)',
+                    }}>关闭</button>
+                </div>
+                <p className="text-xs mt-1.5" style={{ color: 'var(--text-info)' }}>开启后，新评论和评论审核通过时会发送邮件通知</p>
+              </div>
+
+              {/* Provider selection */}
+              <div>
+                <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>邮件服务商</label>
+                <select value={config.email_provider || 'zeabur'} onChange={e => setConfig({ ...config, email_provider: e.target.value })}
+                  className={inputClass} style={inputStyle}>
+                  <option value="zeabur">Zeabur Email</option>
+                  <option value="smtp">SMTP（QQ邮箱、Gmail 等）</option>
+                </select>
+              </div>
+
+              {/* From address */}
+              <div>
+                <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>发件人地址</label>
+                <input type="email" value={config.email_from || ''} onChange={e => setConfig({ ...config, email_from: e.target.value })}
+                  placeholder="noreply@yourdomain.com" className={inputClass} style={inputStyle} />
+              </div>
+
+              {/* Zeabur fields */}
+              {(config.email_provider || 'zeabur') === 'zeabur' && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>API Key</label>
+                    <input type="password" value={config.email_zeabur_api_key || ''} onChange={e => setConfig({ ...config, email_zeabur_api_key: e.target.value })}
+                      placeholder="zs_your_api_key" className={inputClass} style={inputStyle} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>API URL</label>
+                    <input type="url" value={config.email_zeabur_api_url || 'https://api.zeabur.com/api/v1/zsend/emails'} onChange={e => setConfig({ ...config, email_zeabur_api_url: e.target.value })}
+                      className={`${inputClass} font-mono`} style={inputStyle} />
+                  </div>
+                </>
+              )}
+
+              {/* SMTP fields */}
+              {config.email_provider === 'smtp' && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>SMTP 主机</label>
+                    <input type="text" value={config.email_smtp_host || ''} onChange={e => setConfig({ ...config, email_smtp_host: e.target.value })}
+                      placeholder="smtp.qq.com" className={inputClass} style={inputStyle} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>SMTP 端口</label>
+                    <input type="text" value={config.email_smtp_port || '587'} onChange={e => setConfig({ ...config, email_smtp_port: e.target.value })}
+                      placeholder="587" className={`${inputClass} w-32`} style={inputStyle} />
+                    <p className="text-xs mt-1" style={{ color: 'var(--text-info)' }}>587 (STARTTLS) 或 465 (SSL/TLS)</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>用户名</label>
+                    <input type="text" value={config.email_smtp_username || ''} onChange={e => setConfig({ ...config, email_smtp_username: e.target.value })}
+                      placeholder="your@email.com" className={inputClass} style={inputStyle} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>密码 / 授权码</label>
+                    <input type="password" value={config.email_smtp_password || ''} onChange={e => setConfig({ ...config, email_smtp_password: e.target.value })}
+                      placeholder="SMTP 授权码" className={inputClass} style={inputStyle} />
+                    <p className="text-xs mt-1" style={{ color: 'var(--text-info)' }}>QQ邮箱请使用授权码，非登录密码</p>
+                  </div>
+                </>
+              )}
+
+              {/* Test email */}
+              <div className="pt-4" style={{ borderTop: '1px solid var(--glass-border)' }}>
+                <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>发送测试邮件</label>
+                <p className="text-xs mb-2" style={{ color: 'var(--text-info)' }}>将发送测试邮件到发件人地址（{config.email_from || '请先填写发件人地址'}）</p>
+                <button onClick={handleTestEmail} disabled={testing || !config.email_from}
+                  className="px-4 py-2.5 rounded-lg text-sm font-medium text-white disabled:opacity-50 transition-colors"
+                  style={{ background: 'var(--primary)' }}>
+                  {testing ? '发送中...' : '发送测试邮件'}
+                </button>
               </div>
             </div>
           )}

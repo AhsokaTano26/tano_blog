@@ -5,9 +5,10 @@ import { api } from '@/lib/api';
 import { useTheme } from '@/lib/theme';
 import {
   FileText, FolderTree, Tags, MessageSquare, Image, Settings, ScrollText,
-  LogOut, Home, Sun, Moon, Monitor
+  LogOut, Home, Sun, Moon, Monitor, UserCircle, Database, LayoutDashboard
 } from 'lucide-react';
 import { usePathname } from 'next/navigation';
+import { Loading } from '@/components/Loading';
 
 const navSections = [
   {
@@ -23,8 +24,10 @@ const navSections = [
   {
     title: '系统',
     items: [
+      { href: '/admin/profile', label: '个人信息', icon: UserCircle },
       { href: '/admin/settings', label: '设置', icon: Settings },
       { href: '/admin/access-logs', label: '日志', icon: ScrollText },
+      { href: '/admin/backup', label: '备份', icon: Database },
     ],
   },
 ];
@@ -47,7 +50,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--color-bg)' }}>
-        <div className="animate-spin w-8 h-8 border-4 rounded-full" style={{ borderColor: 'var(--primary)', borderTopColor: 'transparent' }} />
+        <Loading />
       </div>
     );
   }
@@ -59,7 +62,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--color-bg)' }}>
-        <div className="animate-spin w-8 h-8 border-4 rounded-full" style={{ borderColor: 'var(--primary)', borderTopColor: 'transparent' }} />
+        <Loading />
       </div>
     );
   }
@@ -92,6 +95,16 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             style={{ color: 'var(--text-secondary)' }}>
             <Home className="w-4 h-4 flex-shrink-0" />
             {!collapsed && <span>前台首页</span>}
+          </a>
+
+          <a href="/admin"
+            className="flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-all hover:bg-white/5 mt-1"
+            style={{
+              background: pathname === '/admin' ? 'var(--primary-sub)' : 'transparent',
+              color: pathname === '/admin' ? 'var(--primary)' : 'var(--text-secondary)',
+            }}>
+            <LayoutDashboard className="w-4 h-4 flex-shrink-0" />
+            {!collapsed && <span>概览</span>}
           </a>
 
           {navSections.map((section) => (
@@ -145,7 +158,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           </div>
 
           <div className="flex items-center gap-3">
-            <img src="/aimi.png" alt={user.display_name || user.username}
+            <img src={user.avatar_url || '/aimi.png'} alt={user.display_name || user.username}
               className="w-8 h-8 rounded-full object-cover flex-shrink-0" />
             {!collapsed && (
               <div className="flex-1 min-w-0">

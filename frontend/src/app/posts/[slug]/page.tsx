@@ -1,36 +1,27 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import Link from 'next/link';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
 import rehypeHighlight from 'rehype-highlight';
+import rehypeSlug from 'rehype-slug';
+import rehypeKatex from 'rehype-katex';
+import rehypeRaw from 'rehype-raw';
+import DOMPurify from 'dompurify';
+import 'katex/dist/katex.min.css';
 import { api } from '@/lib/api';
-import { Calendar, Eye, Copy, Check, BookOpen } from 'lucide-react';
-import { FaWeibo, FaQq } from 'react-icons/fa6';
+import { Calendar, Eye, Copy, Check, BookOpen, Shield, User, Edit3 } from 'lucide-react';
 import { ContentHeadInjection } from '@/components/HtmlInjection';
 import { ReadingProgress } from '@/components/ReadingProgress';
 import { ImageLightbox } from '@/components/ImageLightbox';
+import { Loading } from '@/components/Loading';
 
 interface TocItem {
   id: string;
   text: string;
   level: number;
-}
-
-function extractToc(content: string): TocItem[] {
-  const headingRegex = /^(#{2,3})\s+(.+)$/gm;
-  const items: TocItem[] = [];
-  let match: RegExpExecArray | null;
-  while ((match = headingRegex.exec(content)) !== null) {
-    const level = match[1].length;
-    const text = match[2].trim();
-    const id = text
-      .toLowerCase()
-      .replace(/[^\w\u4e00-\u9fff]+/g, '-')
-      .replace(/(^-|-$)/g, '');
-    items.push({ id, text, level });
-  }
-  return items;
 }
 
 interface ShareButton {
@@ -76,8 +67,16 @@ function SharePanel({ url, title }: { url: string; title: string }) {
 
   const shareIcon = (name: string) => {
     switch (name) {
-      case '微博': return <FaWeibo className="w-4 h-4" />;
-      case 'QQ空间': return <FaQq className="w-4 h-4" />;
+      case '微博': return (
+        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M10.098 20.323c-3.977.391-7.414-1.406-7.672-4.02-.259-2.609 2.759-5.047 6.74-5.441 3.979-.394 7.413 1.404 7.671 4.018.259 2.6-2.759 5.049-6.739 5.443zM16.965 11.68c-.246-.077-.414-.132-.285-.475.283-.744.313-1.386.006-1.844-.575-.854-2.15-.808-3.948-.026 0 0-.566.247-.422-.202.277-.882.236-1.623-.196-2.054-.981-.981-3.593.035-5.843 2.271-1.679 1.668-2.646 3.443-2.646 4.985 0 2.965 3.796 4.783 7.502 4.783 4.859 0 8.089-2.833 8.089-5.089.001-1.363-1.142-2.133-2.257-2.329zm2.212-5.111c-.963-1.076-2.38-1.486-3.766-1.248a.606.606 0 00-.492.693.611.611 0 00.698.489c.931-.16 1.876.118 2.534.844.659.727.864 1.7.578 2.594a.608.608 0 00.429.764.61.61 0 00.769-.427c.419-1.304.128-2.715-.75-3.715zm-1.389 2.046c-.455-.509-1.121-.713-1.788-.603a.436.436 0 00-.361.507.439.439 0 00.506.36c.315-.055.641.039.86.287.219.247.285.577.195.87a.436.436 0 00.304.543.437.437 0 00.543-.302c.151-.502.038-1.059-.259-1.662z"/>
+        </svg>
+      );
+      case 'QQ空间': return (
+        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M21.395 15.035a39.548 39.548 0 00-1.06-3.474c.043-.61.043-1.254 0-1.859a39.548 39.548 0 001.06-3.474c.165-.37-.053-.786-.443-.912a28.09 28.09 0 00-3.265-.995c-.273-.063-.556.051-.698.286a37.06 37.06 0 01-2.279 3.272 35.08 35.08 0 01-2.711-1.723 35.08 35.08 0 01-2.711 1.723A37.06 37.06 0 016.069 8.38c-.142-.235-.425-.349-.698-.286a28.09 28.09 0 00-3.265.995c-.39.126-.608.542-.443.912a39.548 39.548 0 001.06 3.474c-.043.605-.043 1.249 0 1.859a39.548 39.548 0 00-1.06 3.474c-.165.37.053.786.443.912a28.09 28.09 0 003.265.995c.273.063.556-.051.698-.286a37.06 37.06 0 012.279-3.272c.889.575 1.8 1.127 2.711 1.723.911-.596 1.822-1.148 2.711-1.723a37.06 37.06 0 012.279 3.272c.142.235.425.349.698.286a28.09 28.09 0 003.265-.995c.39-.126.608-.542.443-.912zM12 14.4c-1.325 0-2.4-1.075-2.4-2.4s1.075-2.4 2.4-2.4 2.4 1.075 2.4 2.4-1.075 2.4-2.4 2.4z"/>
+        </svg>
+      );
       case '豆瓣': return (
         <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
           <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4 14H8v-2h8v2zm0-4H8v-2h8v2zm0-4H8V6h8v2z" />
@@ -110,18 +109,78 @@ function SharePanel({ url, title }: { url: string; title: string }) {
   );
 }
 
+/* ── Mermaid Diagram Renderer ── */
+
+const mermaidCache = new Map<string, string>();
+
+function MermaidDiagram({ children }: { children: string }) {
+  const [svg, setSvg] = useState(() => mermaidCache.get(children) || '');
+  const [error, setError] = useState('');
+  const id = useRef(`mermaid-${Math.random().toString(36).slice(2)}`).current;
+
+  useEffect(() => {
+    if (svg) return;
+    let cancelled = false;
+    import('mermaid').then(({ default: mermaid }) => {
+      const isDark = document.documentElement.classList.contains('dark');
+      mermaid.initialize({ startOnLoad: false, theme: isDark ? 'dark' : 'default' });
+      mermaid.render(id, children).then(({ svg: rendered }) => {
+        if (!cancelled) {
+          const clean = DOMPurify.sanitize(rendered, { USE_PROFILES: { svg: true } });
+          mermaidCache.set(children, clean);
+          setSvg(clean);
+          setError('');
+        }
+      }).catch((e) => {
+        if (!cancelled) setError(e.message || 'Mermaid render error');
+      });
+    });
+    return () => { cancelled = true; };
+  }, [children, id, svg]);
+
+  if (error) return <pre className="mermaid-container" style={{ color: 'var(--color-error)' }}>{error}</pre>;
+  if (!svg) return <div className="mermaid-container" style={{ color: 'var(--text-info)' }}>渲染中...</div>;
+  return <div className="mermaid-container" dangerouslySetInnerHTML={{ __html: svg }} />;
+}
+
+/* ── Recursive Comment Item ── */
+function CommentItem({ comment, depth, onReply }: { comment: any; depth: number; onReply: (c: any) => void }) {
+  return (
+    <div className={depth > 0 ? 'ml-6 pl-4' : ''} style={depth > 0 ? { borderLeft: '2px solid var(--glass-border)' } : undefined}>
+      <div className="glass-card rounded-2xl p-4">
+        <div className="flex items-center gap-2 mb-2">
+          <span className="font-medium text-sm" style={{ color: 'var(--text-primary)' }}>{comment.nickname}</span>
+          <span className="text-xs" style={{ color: 'var(--text-info)' }}>{new Date(comment.created_at).toLocaleString('zh-CN')}</span>
+          <button onClick={() => onReply(comment)}
+            className="ml-auto text-xs px-2 py-0.5 rounded btn-glass"
+            style={{ color: 'var(--primary)' }}>回复</button>
+        </div>
+        <p className="whitespace-pre-wrap text-sm" style={{ color: 'var(--text-secondary)' }}>{comment.content}</p>
+      </div>
+      {comment.children?.map((child: any) => (
+        <div key={child.id} className="mt-2">
+          <CommentItem comment={child} depth={depth + 1} onReply={onReply} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function PostPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = React.use(params);
   const [post, setPost] = useState<any>(null);
   const [comments, setComments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeId, setActiveId] = useState<string>('');
-  const [commentForm, setCommentForm] = useState({ nickname: '', email: '', website: '', content: '' });
+  const [commentForm, setCommentForm] = useState({ nickname: '', email: '', website: '', content: '', parent_id: '', hp_field: '' });
   const [commentError, setCommentError] = useState('');
   const [commentSuccess, setCommentSuccess] = useState('');
+  const [replyTo, setReplyTo] = useState<any>(null);
   const [lightboxImages, setLightboxImages] = useState<string[]>([]);
   const [lightboxIndex, setLightboxIndex] = useState(0);
   const [relatedPosts, setRelatedPosts] = useState<any[]>([]);
+  const [tocItems, setTocItems] = useState<TocItem[]>([]);
+  const [isAdmin, setIsAdmin] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -145,6 +204,13 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
     load();
   }, [slug]);
 
+  // Check if current user is admin
+  useEffect(() => {
+    api.getMe().then(u => {
+      if (u.role === 'admin') setIsAdmin(true);
+    }).catch(() => {});
+  }, []);
+
   async function loadComments(postId: string) {
     try {
       const res = await api.getComments(postId);
@@ -159,14 +225,27 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
     try {
       await api.createComment(slug, commentForm);
       setCommentSuccess('评论已提交，等待审核');
-      setCommentForm({ nickname: '', email: '', website: '', content: '' });
+      setCommentForm({ nickname: '', email: '', website: '', content: '', parent_id: '', hp_field: '' });
+      setReplyTo(null);
       loadComments(slug);
     } catch (err: any) {
       setCommentError(err.message);
     }
   }
 
-  const tocItems = useMemo(() => post?.content ? extractToc(post.content) : [], [post?.content]);
+  // Extract TOC from rendered DOM (rehype-slug adds IDs to headings)
+  useEffect(() => {
+    if (!contentRef.current) return;
+    const headings = contentRef.current.querySelectorAll('h1, h2, h3');
+    const items: TocItem[] = Array.from(headings)
+      .filter((h) => !h.closest('[data-footnotes]'))
+      .map((h) => ({
+        id: h.id,
+        text: h.textContent || '',
+        level: parseInt(h.tagName.charAt(1)),
+      }));
+    setTocItems(items);
+  }, [post?.content]);
 
   const { wordCount, readTime } = useMemo(() => {
     if (!post?.content) return { wordCount: 0, readTime: 0 };
@@ -192,11 +271,11 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
       { rootMargin: '-80px 0px -60% 0px' }
     );
 
-    const headings = contentRef.current.querySelectorAll('h2, h3');
+    const headings = contentRef.current.querySelectorAll('h1, h2, h3');
     headings.forEach((h) => observer.observe(h));
 
     return () => observer.disconnect();
-  }, [tocItems, post?.content]);
+  }, [tocItems]);
 
   // SEO: inject OG and JSON-LD
   useEffect(() => {
@@ -266,33 +345,15 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
 
   const shareUrl = typeof window !== 'undefined' ? window.location.href : '';
 
-  // Add IDs to heading elements rendered by ReactMarkdown
-  const headingRenderer = (level: 2 | 3) => {
-    const Tag = level === 2 ? 'h2' : 'h3';
-    return ({ children, ...props }: any) => {
-      const text = typeof children === 'string' ? children : '';
-      const id = text
-        .toLowerCase()
-        .replace(/[^\w\u4e00-\u9fff]+/g, '-')
-        .replace(/(^-|-$)/g, '');
-      return <Tag id={id} {...props as any}>{children}</Tag>;
-    };
-  };
-
   if (loading) {
-    return (
-      <div className="text-center py-20" style={{ color: 'var(--text-secondary)' }}>
-        <div className="animate-spin w-8 h-8 border-4 rounded-full mx-auto mb-4" style={{ borderColor: 'var(--primary)', borderTopColor: 'transparent' }} />
-        加载中...
-      </div>
-    );
+    return <Loading />;
   }
 
   if (!post) {
     return (
       <div className="text-center py-20" style={{ color: 'var(--text-secondary)' }}>
         <p className="text-lg mb-2">文章不存在</p>
-        <a href="/" className="hover:underline text-sm" style={{ color: 'var(--primary)' }}>返回首页</a>
+        <Link href="/" className="hover:underline text-sm" style={{ color: 'var(--primary)' }}>返回首页</Link>
       </div>
     );
   }
@@ -316,6 +377,33 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
           {post.cover_image && (
             <img src={post.cover_image} alt={post.title} loading="lazy"
               className="w-full h-56 md:h-72 object-cover rounded-xl mb-6" />
+          )}
+
+          {/* Admin status bar */}
+          {isAdmin && (
+            <div className="flex flex-wrap items-center gap-3 px-4 py-2.5 rounded-xl mb-4 text-sm glass-card"
+              style={{ borderLeft: '3px solid var(--primary)' }}>
+              <span className="flex items-center gap-1.5 font-medium"
+                style={{ color: post.status === 'published' ? 'var(--color-success)' : 'var(--color-error)' }}>
+                <Shield className="w-4 h-4" />
+                {post.status === 'published' ? '已发布' : '草稿'}
+              </span>
+              {post.author_name && (
+                <span className="flex items-center gap-1" style={{ color: 'var(--text-secondary)' }}>
+                  <User className="w-3.5 h-3.5" />
+                  作者：{post.author_name}
+                </span>
+              )}
+              {post.editor && (
+                <span className="flex items-center gap-1" style={{ color: 'var(--text-info)' }}>
+                  <Edit3 className="w-3.5 h-3.5" />
+                  编辑：{post.editor.display_name || post.editor.username}
+                </span>
+              )}
+              <a href={`/admin/posts`} className="ml-auto text-xs hover:underline" style={{ color: 'var(--primary)' }}>
+                管理文章
+              </a>
+            </div>
           )}
 
           {/* Title */}
@@ -349,29 +437,38 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
           {/* Category & Tags */}
           <div className="flex flex-wrap items-center gap-2 mb-8">
             {post.category && (
-              <a href={`/categories/${post.category.slug}`}
+              <Link href={`/categories/${post.category.slug}`}
                 className="px-3 py-1 rounded-lg text-xs font-medium transition-all hover:opacity-80"
                 style={{ background: 'var(--primary-sub)', color: 'var(--primary)' }}>
                 {post.category.name}
-              </a>
+              </Link>
             )}
             {post.tags?.map((tag: any) => (
-              <a key={tag.id} href={`/tags/${tag.slug}`}
+              <Link key={tag.id} href={`/tags/${tag.slug}`}
                 className="px-3 py-1 rounded-lg text-xs btn-glass transition-all"
                 style={{ color: 'var(--text-secondary)' }}>
                 #{tag.name}
-              </a>
+              </Link>
             ))}
           </div>
 
           {/* Markdown Content */}
           <div ref={contentRef} className="prose dark:prose-invert prose-sm sm:prose-base max-w-none mb-10">
             <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              rehypePlugins={[rehypeHighlight]}
+              remarkPlugins={[remarkGfm, remarkMath]}
+              rehypePlugins={[rehypeHighlight, rehypeSlug, rehypeKatex, rehypeRaw]}
               components={{
-                h2: headingRenderer(2),
-                h3: headingRenderer(3),
+                code: ({ className, children, ...props }: any) => {
+                  const match = /language-(\w+)/.exec(className || '');
+                  if (match?.[1] === 'mermaid') {
+                    return <MermaidDiagram>{String(children).replace(/\n$/, '')}</MermaidDiagram>;
+                  }
+                  const isBlock = className && className.includes('hljs');
+                  if (isBlock) {
+                    return <code className={className} {...props}>{children}</code>;
+                  }
+                  return <code className={className} {...props}>{children}</code>;
+                },
               }}
             >
               {post.content}
@@ -387,13 +484,13 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
           <div className="relative mb-6 overflow-hidden rounded-xl px-8 py-6 transition"
             style={{ background: 'var(--card-bg)' }}>
             <div className="font-bold transition" style={{ color: 'var(--text-primary)' }}>{post.title}</div>
-            <a href={`/posts/${post.slug}`} className="transition" style={{ color: 'var(--primary)' }}>
+            <Link href={`/posts/${post.slug}`} className="transition" style={{ color: 'var(--primary)' }}>
               {typeof window !== 'undefined' ? window.location.href : `/posts/${post.slug}`}
-            </a>
+            </Link>
             <div className="mt-2 flex gap-6">
               <div>
                 <div className="text-sm transition" style={{ color: 'var(--text-info)' }}>作者</div>
-                <div className="line-clamp-2 transition" style={{ color: 'var(--text-primary)' }}>Tano</div>
+                <div className="line-clamp-2 transition" style={{ color: 'var(--text-primary)' }}>{post.author_name || '-'}</div>
               </div>
               <div>
                 <div className="text-sm transition" style={{ color: 'var(--text-info)' }}>发表于</div>
@@ -426,7 +523,7 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
             <h2 className="text-xl font-bold mb-4" style={{ color: 'var(--text-primary)' }}>相关文章</h2>
             <div className="space-y-3">
               {relatedPosts.map((rp: any) => (
-                <a
+                <Link
                   key={rp.id}
                   href={`/posts/${rp.slug}`}
                   className="block card-base rounded-2xl p-4 transition-all hover:translate-y-[-2px]"
@@ -436,7 +533,7 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
                   {rp.excerpt && (
                     <p className="mt-1 text-sm line-clamp-2" style={{ color: 'var(--text-secondary)' }}>{rp.excerpt}</p>
                   )}
-                </a>
+                </Link>
               ))}
             </div>
           </div>
@@ -452,13 +549,10 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
           {/* Comment list */}
           <div className="space-y-3 mb-8">
             {comments.map((comment: any) => (
-              <div key={comment.id} className="glass-card rounded-2xl p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="font-medium text-sm" style={{ color: 'var(--text-primary)' }}>{comment.nickname}</span>
-                  <span className="text-xs" style={{ color: 'var(--text-info)' }}>{new Date(comment.created_at).toLocaleString('zh-CN')}</span>
-                </div>
-                <p className="whitespace-pre-wrap text-sm" style={{ color: 'var(--text-secondary)' }}>{comment.content}</p>
-              </div>
+              <CommentItem key={comment.id} comment={comment} depth={0} onReply={(c: any) => {
+                setReplyTo(c);
+                setCommentForm(prev => ({ ...prev, parent_id: c.id }));
+              }} />
             ))}
             {comments.length === 0 && (
               <p className="text-sm" style={{ color: 'var(--text-info)' }}>暂无评论</p>
@@ -478,6 +572,19 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
             </div>
           )}
           <form onSubmit={handleComment} className="space-y-3 max-w-lg">
+            {/* Honeypot - hidden from humans */}
+            <input type="text" name="website_confirm" value={commentForm.hp_field}
+              onChange={e => setCommentForm(prev => ({ ...prev, hp_field: e.target.value }))}
+              tabIndex={-1} autoComplete="off"
+              className="absolute opacity-0 pointer-events-none" style={{ height: 0, width: 0, padding: 0, margin: 0 }} />
+            {replyTo && (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm glass-card"
+                style={{ color: 'var(--text-secondary)' }}>
+                回复 <span className="font-medium" style={{ color: 'var(--primary)' }}>{replyTo.nickname}</span>
+                <button type="button" onClick={() => { setReplyTo(null); setCommentForm(prev => ({ ...prev, parent_id: '' })); }}
+                  className="ml-auto text-xs hover:opacity-80" style={{ color: 'var(--text-info)' }}>取消</button>
+              </div>
+            )}
             <div className="flex gap-3">
               <input type="text" value={commentForm.nickname} onChange={e => setCommentForm({ ...commentForm, nickname: e.target.value })}
                 placeholder="昵称 *" required
@@ -520,7 +627,7 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
                     document.getElementById(item.id)?.scrollIntoView({ behavior: 'smooth' });
                   }}
                   className={`toc-link block py-1.5 pr-2 transition-colors ${
-                    item.level === 3 ? 'pl-4 text-xs' : 'pl-2 text-sm'
+                    item.level === 1 ? 'pl-2 text-sm font-medium' : item.level === 3 ? 'pl-6 text-xs' : 'pl-4 text-sm'
                   }`}
                   style={{ color: activeId === item.id ? 'var(--primary)' : 'var(--text-secondary)' }}
                 >

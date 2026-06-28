@@ -3,18 +3,18 @@
 import { useState, useEffect } from 'react';
 import { api } from '@/lib/api';
 import { Plus, Pencil, Trash2, Tags } from 'lucide-react';
+import { Loading } from '@/components/Loading';
 
 export default function AdminTags() {
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [name, setName] = useState('');
-  const [slug, setSlug] = useState('');
   const [editing, setEditing] = useState<any>(null);
 
   async function load() {
     setLoading(true);
     try { const res = await api.getTags(); setItems(res.items); }
-    catch (e) { console.error(e); }
+    catch (e) { /* empty */ }
     setLoading(false);
   }
 
@@ -22,11 +22,11 @@ export default function AdminTags() {
 
   async function handleSave() {
     try {
-      if (editing) await api.admin.tags.update(editing.id, { name, slug });
-      else await api.admin.tags.create({ name, slug });
-      setEditing(null); setName(''); setSlug('');
+      if (editing) await api.admin.tags.update(editing.id, { name });
+      else await api.admin.tags.create({ name });
+      setEditing(null); setName('');
       load();
-    } catch (e) { console.error(e); }
+    } catch (e) { /* empty */ }
   }
 
   async function handleDelete(id: string) {
@@ -34,7 +34,7 @@ export default function AdminTags() {
     try {
       await api.admin.tags.delete(id);
       load();
-    } catch (e) { console.error(e); }
+    } catch (e) { /* empty */ }
   }
 
   return (
@@ -49,15 +49,13 @@ export default function AdminTags() {
         <div className="flex gap-3 mb-3">
           <input type="text" placeholder="名称" value={name} onChange={e => setName(e.target.value)}
             className="flex-1 px-3 py-2.5 rounded-lg text-sm outline-none" style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
-          <input type="text" placeholder="Slug" value={slug} onChange={e => setSlug(e.target.value)}
-            className="flex-1 px-3 py-2.5 rounded-lg text-sm font-mono outline-none" style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
         </div>
         <div className="flex gap-2">
-          <button onClick={handleSave} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors" style={{ background: 'var(--primary)' }}>
+          <button onClick={handleSave} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors cursor-pointer" style={{ background: 'var(--primary)' }}>
             <Plus className="w-4 h-4" />
             {editing ? '更新' : '添加'}
           </button>
-          {editing && <button onClick={() => { setEditing(null); setName(''); setSlug(''); }}
+          {editing && <button onClick={() => { setEditing(null); setName(''); }}
             className="btn-glass px-4 py-2 rounded-lg text-sm" style={{ color: 'var(--text-secondary)' }}>取消</button>}
         </div>
       </div>
@@ -65,10 +63,7 @@ export default function AdminTags() {
       {/* Table */}
       <div className="glass-card rounded-xl overflow-hidden">
         {loading ? (
-          <div className="text-center py-12" style={{ color: 'var(--text-secondary)' }}>
-            <div className="animate-spin w-6 h-6 border-4 rounded-full mx-auto mb-3" style={{ borderColor: 'var(--primary)', borderTopColor: 'transparent' }} />
-            加载中...
-          </div>
+          <Loading />
         ) : items.length === 0 ? (
           <div className="text-center py-12" style={{ color: 'var(--text-secondary)' }}>
             <Tags className="w-10 h-10 mx-auto mb-2" style={{ color: 'var(--text-info)' }} />
@@ -90,7 +85,7 @@ export default function AdminTags() {
                   <td className="px-4 py-3 text-sm font-mono" style={{ color: 'var(--text-secondary)' }}>{item.slug}</td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1">
-                      <button onClick={() => { setEditing(item); setName(item.name); setSlug(item.slug); }}
+                      <button onClick={() => { setEditing(item); setName(item.name); }}
                         className="btn-glass p-1.5 rounded transition-colors" title="编辑">
                         <Pencil className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
                       </button>

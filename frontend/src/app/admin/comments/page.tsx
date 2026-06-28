@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { api } from '@/lib/api';
-import { MessageSquare, Check, X, Trash2, ExternalLink, User } from 'lucide-react';
+import { MessageSquare, Check, X, Trash2, ExternalLink, User, CheckSquare, Square } from 'lucide-react';
+import { Loading } from '@/components/Loading';
 
 export default function AdminComments() {
   const [items, setItems] = useState<any[]>([]);
@@ -10,6 +11,7 @@ export default function AdminComments() {
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('');
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   async function load() {
     setLoading(true);
@@ -19,7 +21,8 @@ export default function AdminComments() {
       const res = await api.admin.comments.list(params);
       setItems(res.items);
       setTotal(res.total);
-    } catch (e) { console.error(e); }
+      setSelected(new Set());
+    } catch (e) { /* empty */ }
     setLoading(false);
   }
 
@@ -29,7 +32,7 @@ export default function AdminComments() {
     try {
       await api.admin.comments.updateStatus(id, status);
       load();
-    } catch (e) { console.error(e); }
+    } catch (e) { /* empty */ }
   }
 
   async function handleDelete(id: string) {
@@ -37,7 +40,32 @@ export default function AdminComments() {
     try {
       await api.admin.comments.delete(id);
       load();
-    } catch (e) { console.error(e); }
+    } catch (e) { /* empty */ }
+  }
+
+  function toggleSelect(id: string) {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    if (selected.size === items.length) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(items.map(i => i.id)));
+    }
+  }
+
+  async function handleBatchStatus(status: string) {
+    if (selected.size === 0) return;
+    try {
+      await api.admin.comments.batchUpdateStatus(Array.from(selected), status);
+      load();
+    } catch (e) { /* empty */ }
   }
 
   const tabs = [
@@ -55,6 +83,23 @@ export default function AdminComments() {
         <h1 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>评论</h1>
         <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>共 {total} 条</span>
       </div>
+
+      {/* Batch actions */}
+      {selected.size > 0 && (
+        <div className="glass-card rounded-xl mb-4 px-4 py-3 flex items-center gap-3">
+          <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>已选 {selected.size} 条</span>
+          <button onClick={() => handleBatchStatus('approved')}
+            className="btn-glass px-3 py-1.5 rounded-lg text-xs font-medium"
+            style={{ color: 'hsl(142, 60%, 50%)' }}>
+            批量批准
+          </button>
+          <button onClick={() => handleBatchStatus('rejected')}
+            className="btn-glass px-3 py-1.5 rounded-lg text-xs font-medium"
+            style={{ color: 'hsl(0, 60%, 50%)' }}>
+            批量拒绝
+          </button>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="glass-card rounded-xl mb-4">
@@ -74,10 +119,7 @@ export default function AdminComments() {
         </div>
 
         {loading ? (
-          <div className="text-center py-20" style={{ color: 'var(--text-secondary)' }}>
-            <div className="animate-spin w-8 h-8 border-4 rounded-full mx-auto mb-4" style={{ borderColor: 'var(--primary)', borderTopColor: 'transparent' }} />
-            加载中...
-          </div>
+          <Loading />
         ) : items.length === 0 ? (
           <div className="text-center py-20" style={{ color: 'var(--text-secondary)' }}>
             <MessageSquare className="w-12 h-12 mx-auto mb-3" style={{ color: 'var(--text-info)' }} />
@@ -85,9 +127,20 @@ export default function AdminComments() {
           </div>
         ) : (
           <div>
+            {/* Select all header */}
+            <div className="px-5 py-2 flex items-center gap-2" style={{ borderBottom: '1px solid var(--glass-border)' }}>
+              <button onClick={toggleSelectAll} className="p-0.5" style={{ color: 'var(--text-info)' }}>
+                {selected.size === items.length && items.length > 0 ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
+              </button>
+              <span className="text-xs" style={{ color: 'var(--text-info)' }}>全选</span>
+            </div>
             {items.map((item) => (
               <div key={item.id} className="px-5 py-4 transition-colors" style={{ borderBottom: '1px solid var(--glass-border)' }}>
                 <div className="flex items-start gap-3">
+                  {/* Checkbox */}
+                  <button onClick={() => toggleSelect(item.id)} className="p-0.5 mt-1 flex-shrink-0" style={{ color: selected.has(item.id) ? 'var(--primary)' : 'var(--text-info)' }}>
+                    {selected.has(item.id) ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
+                  </button>
                   {/* Avatar */}
                   <div className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: 'var(--primary-sub)' }}>
                     <User className="w-4 h-4" style={{ color: 'var(--primary)' }} />
@@ -130,18 +183,18 @@ export default function AdminComments() {
                   <div className="flex items-center gap-1 flex-shrink-0">
                     {item.status !== 'approved' && (
                       <button onClick={() => handleStatus(item.id, 'approved')}
-                        className="btn-glass p-1.5 rounded transition-colors" title="批准">
+                        className="btn-glass p-1.5 rounded transition-colors" title="批准" aria-label="批准评论">
                         <Check className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
                       </button>
                     )}
                     {item.status !== 'rejected' && (
                       <button onClick={() => handleStatus(item.id, 'rejected')}
-                        className="btn-glass p-1.5 rounded transition-colors" title="拒绝">
+                        className="btn-glass p-1.5 rounded transition-colors" title="拒绝" aria-label="拒绝评论">
                         <X className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
                       </button>
                     )}
                     <button onClick={() => handleDelete(item.id)}
-                      className="btn-glass p-1.5 rounded transition-colors" title="删除">
+                      className="btn-glass p-1.5 rounded transition-colors" title="删除" aria-label="删除评论">
                       <Trash2 className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
                     </button>
                   </div>

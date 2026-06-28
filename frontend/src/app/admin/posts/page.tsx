@@ -4,11 +4,12 @@ import { useState, useEffect, useRef } from 'react';
 import { api } from '@/lib/api';
 import {
   Plus, Pencil, Trash2, ExternalLink, Eye, Search, X, Check, FileText,
-  ArrowLeft, Save, ChevronDown, ChevronRight,
+  ArrowLeft, Save, ChevronDown, ChevronRight, User,
   Bold, Italic, Underline, Strikethrough, Link, Code, Quote, List, ListOrdered,
   AlignLeft, AlignCenter, AlignRight, Image as ImageIcon, Heading1, Heading2, Heading3,
-  Undo, Redo, Minus
+  Undo, Redo, Minus, SquareCode, Superscript, GitBranch, Table, Video, Music, Palette
 } from 'lucide-react';
+import { Loading } from '@/components/Loading';
 
 export default function AdminPosts() {
   const [posts, setPosts] = useState<any[]>([]);
@@ -28,7 +29,7 @@ export default function AdminPosts() {
       const res = await api.admin.posts.list(params);
       setPosts(res.items);
       setTotal(res.total);
-    } catch (e) { console.error(e); }
+    } catch (e) { /* empty */ }
     setLoading(false);
   }
 
@@ -55,12 +56,19 @@ export default function AdminPosts() {
     <div>
       <div className="flex items-center justify-between mb-5">
         <h1 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>文章</h1>
-        <button onClick={() => setEditing(null)}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium text-white transition-all hover:opacity-90"
-          style={{ background: 'var(--primary)', boxShadow: '0 0 16px var(--primary-glow)' }}>
-          <Plus className="w-4 h-4" />
-          新建
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => api.admin.posts.export()}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm btn-glass"
+            style={{ color: 'var(--text-secondary)' }}>
+            导出
+          </button>
+          <button onClick={() => setEditing(null)}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium text-white transition-all hover:opacity-90"
+            style={{ background: 'var(--primary)', boxShadow: '0 0 16px var(--primary-glow)' }}>
+            <Plus className="w-4 h-4" />
+            新建
+          </button>
+        </div>
       </div>
 
       {/* Filters bar */}
@@ -84,10 +92,7 @@ export default function AdminPosts() {
         </div>
 
         {loading ? (
-          <div className="text-center py-20" style={{ color: 'var(--text-secondary)' }}>
-            <div className="animate-spin w-8 h-8 border-4 rounded-full mx-auto mb-4" style={{ borderColor: 'var(--primary)', borderTopColor: 'transparent' }} />
-            加载中...
-          </div>
+          <Loading />
         ) : posts.length === 0 ? (
           <div className="text-center py-20" style={{ color: 'var(--text-secondary)' }}>
             <FileText className="w-12 h-12 mx-auto mb-3 opacity-30" />
@@ -102,10 +107,13 @@ export default function AdminPosts() {
                 <tr style={{ borderBottom: '1px solid var(--glass-border)' }}>
                   <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider w-12" style={{ color: 'var(--text-info)' }}></th>
                   <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-info)' }}>标题</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider w-24" style={{ color: 'var(--text-info)' }}>状态</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-info)' }}>作者</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-info)' }}>编辑者</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider w-20" style={{ color: 'var(--text-info)' }}>状态</th>
                   <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider w-24" style={{ color: 'var(--text-info)' }}>分类</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider w-20" style={{ color: 'var(--text-info)' }}>浏览</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider w-32" style={{ color: 'var(--text-info)' }}>发布日期</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-info)' }}>标签</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider w-16" style={{ color: 'var(--text-info)' }}>浏览</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider w-28" style={{ color: 'var(--text-info)' }}>发布日期</th>
                   <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider w-32" style={{ color: 'var(--text-info)' }}>操作</th>
                 </tr>
               </thead>
@@ -114,7 +122,7 @@ export default function AdminPosts() {
                   <tr key={post.id || post.slug || index} className="transition-colors" style={{ borderBottom: '1px solid var(--glass-border)' }}>
                     <td className="px-4 py-3">
                       {post.cover_image ? (
-                        <img src={post.cover_image} alt="" className="w-10 h-10 rounded-lg object-cover" />
+                        <img src={post.cover_image} alt={post.title} className="w-10 h-10 rounded-lg object-cover" />
                       ) : (
                         <div className="w-10 h-10 rounded-lg flex items-center justify-center glass-card">
                           <FileText className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
@@ -131,6 +139,16 @@ export default function AdminPosts() {
                       </div>
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
+                      <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                        {post.author_name || '-'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <span className="text-sm" style={{ color: 'var(--text-info)' }}>
+                        {post.editor?.display_name || post.editor?.username || '-'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap">
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap"
                         style={{
                           background: post.status === 'published' ? 'var(--primary-sub)' : 'var(--btn-card-bg)',
@@ -140,6 +158,16 @@ export default function AdminPosts() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>{post.category?.name || '-'}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap gap-1">
+                        {post.tags?.length > 0 ? post.tags.map((tag: any) => (
+                          <span key={tag.id} className="px-1.5 py-0.5 text-xs rounded"
+                            style={{ background: 'var(--btn-card-bg)', color: 'var(--text-secondary)' }}>
+                            {tag.name}
+                          </span>
+                        )) : <span style={{ color: 'var(--text-info)' }}>-</span>}
+                      </div>
+                    </td>
                     <td className="px-4 py-3">
                       <span className="flex items-center gap-1 text-sm" style={{ color: 'var(--text-secondary)' }}>
                         <Eye className="w-3.5 h-3.5" />
@@ -222,16 +250,37 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
   const [tagIds, setTagIds] = useState<string[]>(post?.tags?.map((t: any) => t.id) || []);
   const [status, setStatus] = useState(post?.status || 'draft');
   const [isTop, setIsTop] = useState(post?.is_top || false);
+  const [allowComment, setAllowComment] = useState(post?.allow_comment !== false);
   const [categories, setCategories] = useState<any[]>([]);
   const [tags, setTags] = useState<any[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [rightTab, setRightTab] = useState<'outline' | 'detail'>('outline');
+  const [authorName, setAuthorName] = useState(post?.author_name || '');
+  const [excerptMode, setExcerptMode] = useState<'manual' | 'auto'>(post?.excerpt ? 'manual' : 'auto');
+  const [scheduledAt, setScheduledAt] = useState(post?.published_at && post?.status === 'draft' ? post.published_at.slice(0, 16) : '');
+  const [users, setUsers] = useState<any[]>([]);
+  const [rightTab, setRightTab] = useState<'outline' | 'detail' | 'history'>('outline');
+  const [revisions, setRevisions] = useState<any[]>([]);
   const [showRightPanel, setShowRightPanel] = useState(true);
+  const [showRestoreBanner, setShowRestoreBanner] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   function generateSlug() {
     return crypto.randomUUID().slice(0, 8);
+  }
+
+  function generateExcerpt(md: string): string {
+    const text = md
+      .replace(/```[\s\S]*?```/g, '')
+      .replace(/`[^`]*`/g, '')
+      .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+      .replace(/\[[^\]]*\]\([^)]*\)/g, '')
+      .replace(/#{1,6}\s+/g, '')
+      .replace(/[*_~>|-]/g, '')
+      .replace(/<[^>]*>/g, '')
+      .replace(/\n+/g, ' ')
+      .trim();
+    return text.length > 200 ? text.slice(0, 200) + '...' : text;
   }
 
   useEffect(() => {
@@ -251,7 +300,79 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
   useEffect(() => {
     api.getCategories().then(res => setCategories(res.items)).catch(() => {});
     api.getTags().then(res => setTags(res.items)).catch(() => {});
+    api.admin.users.list().then(res => setUsers(res.items)).catch(() => {});
   }, []);
+
+  // Auto-save key
+  const autosaveKey = post?.id ? `post_autosave_${post.id}` : 'post_autosave_new';
+
+  // Check for saved draft on mount
+  useEffect(() => {
+    if (post?.id) return; // Only for new posts
+    try {
+      const saved = localStorage.getItem(autosaveKey);
+      if (saved) {
+        const data = JSON.parse(saved);
+        if (data.content || data.title) {
+          setShowRestoreBanner(true);
+        }
+      }
+    } catch {}
+  }, []);
+
+  // Auto-save every 30 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (!title && !content) return;
+      try {
+        localStorage.setItem(autosaveKey, JSON.stringify({
+          title, slug, content, excerpt, coverImage, categoryId, tagIds, status, isTop, allowComment, authorName,
+          savedAt: Date.now(),
+        }));
+      } catch {}
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [title, slug, content, excerpt, coverImage, categoryId, tagIds, status, isTop, allowComment, authorName]);
+
+  function restoreDraft() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(autosaveKey) || '{}');
+      if (saved.title) setTitle(saved.title);
+      if (saved.slug) setSlug(saved.slug);
+      if (saved.content) setContent(saved.content);
+      if (saved.excerpt) setExcerpt(saved.excerpt);
+      if (saved.coverImage) setCoverImage(saved.coverImage);
+      if (saved.categoryId) setCategoryId(saved.categoryId);
+      if (saved.tagIds) setTagIds(saved.tagIds);
+      if (saved.status) setStatus(saved.status);
+      if (saved.isTop !== undefined) setIsTop(saved.isTop);
+      if (saved.authorName) setAuthorName(saved.authorName);
+    } catch {}
+    setShowRestoreBanner(false);
+  }
+
+  function dismissRestore() {
+    localStorage.removeItem(autosaveKey);
+    setShowRestoreBanner(false);
+  }
+
+  function loadRevisions() {
+    if (!post?.id) return;
+    api.admin.posts.revisions.list(post.id).then(res => setRevisions(res.items)).catch(() => {});
+  }
+
+  async function handleRestoreRevision(revId: string) {
+    if (!post?.id || !confirm('确定要恢复到此版本？当前内容将被保存为新版本。')) return;
+    try {
+      const res = await api.admin.posts.revisions.restore(post.id, revId);
+      setTitle(res.post.title);
+      setContent(res.post.content);
+      setExcerpt(res.post.excerpt || '');
+      loadRevisions();
+    } catch (err: any) {
+      setError(err.message || '恢复失败');
+    }
+  }
 
   async function handleSave(publishStatus?: string) {
     if (!title.trim()) {
@@ -265,20 +386,28 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
     setSaving(true);
     setError('');
     try {
+      const finalExcerpt = excerptMode === 'auto' ? generateExcerpt(content) : excerpt;
       const data: any = {
-        title, slug, content, excerpt,
+        title, slug, content, excerpt: finalExcerpt,
         cover_image: coverImage,
         status: publishStatus || status,
         is_top: isTop,
+        allow_comment: allowComment,
       };
+      data.author_name = authorName;
       if (categoryId) data.category_id = categoryId;
       if (tagIds.length > 0) data.tag_ids = tagIds;
+      // If saving as draft with a scheduled date
+      if (scheduledAt && (publishStatus || status) === 'draft') {
+        data.scheduled_at = scheduledAt;
+      }
 
       if (post?.id) {
         await api.admin.posts.update(post.id, data);
       } else {
         await api.admin.posts.create(data);
       }
+      localStorage.removeItem(autosaveKey);
       onClose();
     } catch (err: any) {
       setError(err.message || '保存失败');
@@ -310,24 +439,64 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
   });
 
   const toolbarButtons = [
-    { icon: Bold, action: () => insertMarkdown('**', '**'), title: '粗体' },
-    { icon: Italic, action: () => insertMarkdown('*', '*'), title: '斜体' },
+    { icon: Bold, action: () => insertMarkdown('**', '**'), title: '粗体 (Ctrl+B)' },
+    { icon: Italic, action: () => insertMarkdown('*', '*'), title: '斜体 (Ctrl+I)' },
     { icon: Underline, action: () => insertMarkdown('<u>', '</u>'), title: '下划线' },
-    { icon: Strikethrough, action: () => insertMarkdown('~~', '~~'), title: '删除线' },
+    { icon: Strikethrough, action: () => insertMarkdown('~~', '~~'), title: '删除线 (Ctrl+Shift+X)' },
     { type: 'divider' as const },
     { icon: Heading1, action: () => insertMarkdown('# '), title: '标题 1' },
     { icon: Heading2, action: () => insertMarkdown('## '), title: '标题 2' },
     { icon: Heading3, action: () => insertMarkdown('### '), title: '标题 3' },
     { type: 'divider' as const },
-    { icon: Link, action: () => insertMarkdown('[', '](url)'), title: '链接' },
+    { icon: Link, action: () => insertMarkdown('[', '](url)'), title: '链接 (Ctrl+K)' },
     { icon: ImageIcon, action: () => insertMarkdown('![alt](', ')'), title: '图片' },
     { icon: Code, action: () => insertMarkdown('`', '`'), title: '行内代码' },
+    { icon: SquareCode, action: () => insertMarkdown('```\n', '\n```'), title: '代码块' },
     { icon: Quote, action: () => insertMarkdown('> '), title: '引用' },
+    { type: 'divider' as const },
+    { icon: Superscript, action: () => insertMarkdown('$', '$'), title: '行内公式' },
+    { icon: Superscript, action: () => insertMarkdown('$$\n', '\n$$'), title: '公式块' },
+    { icon: GitBranch, action: () => insertMarkdown('```mermaid\n', '\n```'), title: 'Mermaid 图' },
     { type: 'divider' as const },
     { icon: List, action: () => insertMarkdown('- '), title: '无序列表' },
     { icon: ListOrdered, action: () => insertMarkdown('1. '), title: '有序列表' },
+    { icon: Table, action: () => insertMarkdown('\n| 列1 | 列2 | 列3 |\n| --- | --- | --- |\n| ', ' |  |  |\n'), title: '表格' },
     { icon: Minus, action: () => insertMarkdown('\n---\n'), title: '分割线' },
+    { type: 'divider' as const },
+    { icon: Palette, action: () => insertMarkdown('<span style="color: ', '">文字</span>'), title: '文字颜色' },
+    { icon: Video, action: () => insertMarkdown('<video src="', '" controls></video>'), title: '视频' },
+    { icon: Music, action: () => insertMarkdown('<audio src="', '" controls></audio>'), title: '音频' },
   ];
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    const mod = e.metaKey || e.ctrlKey;
+    if (!mod) return;
+
+    const shortcuts: Record<string, () => void> = {
+      'b': () => insertMarkdown('**', '**'),
+      'i': () => insertMarkdown('*', '*'),
+      'k': () => insertMarkdown('[', '](url)'),
+      's': () => { e.preventDefault(); handleSave(); },
+    };
+
+    const shifted = e.shiftKey;
+    if (shifted && e.key === 'X') {
+      e.preventDefault();
+      insertMarkdown('~~', '~~');
+      return;
+    }
+    if (shifted && e.key === 'K') {
+      e.preventDefault();
+      insertMarkdown('```\n', '\n```');
+      return;
+    }
+
+    const fn = shortcuts[e.key.toLowerCase()];
+    if (fn) {
+      e.preventDefault();
+      fn();
+    }
+  }
 
   const inputStyle = {
     background: 'var(--glass-bg)',
@@ -350,6 +519,21 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
           </span>
         </div>
         <div className="flex items-center gap-2">
+          {post?.id && status === 'draft' && (
+            <button onClick={async () => {
+              try {
+                const res = await api.admin.posts.generatePreviewToken(post.id);
+                const url = `${window.location.origin}/posts/preview?token=${res.token}`;
+                await navigator.clipboard.writeText(url);
+                alert('预览链接已复制到剪贴板');
+              } catch { alert('生成失败'); }
+            }}
+              className="p-2 rounded-xl transition-colors btn-glass"
+              style={{ color: 'var(--text-info)' }}
+              title="复制预览链接">
+              <ExternalLink className="w-4 h-4" />
+            </button>
+          )}
           <button onClick={() => setShowRightPanel(!showRightPanel)}
             className="p-2 rounded-xl transition-colors btn-glass"
             style={{ color: showRightPanel ? 'var(--primary)' : 'var(--text-info)' }}
@@ -380,11 +564,27 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
         </div>
       )}
 
+      {/* Auto-save restore banner */}
+      {showRestoreBanner && (
+        <div className="mx-4 mt-3 px-4 py-2.5 rounded-xl text-sm flex-shrink-0 flex items-center justify-between glass-card"
+          style={{ color: 'var(--text-primary)', borderLeft: '3px solid var(--primary)' }}>
+          <span>检测到未保存的草稿，是否恢复？</span>
+          <div className="flex gap-2">
+            <button onClick={restoreDraft}
+              className="px-3 py-1 rounded-lg text-xs font-medium text-white"
+              style={{ background: 'var(--primary)' }}>恢复</button>
+            <button onClick={dismissRestore}
+              className="px-3 py-1 rounded-lg text-xs btn-glass"
+              style={{ color: 'var(--text-secondary)' }}>丢弃</button>
+          </div>
+        </div>
+      )}
+
       {/* Main content area */}
       <div className="flex-1 flex overflow-hidden">
         {/* Editor */}
         <div className="flex-1 overflow-y-auto">
-          <div className="max-w-3xl mx-auto py-8 px-6">
+          <div className="max-w-5xl mx-auto py-8 px-6">
             <input
               type="text"
               placeholder="请输入标题"
@@ -423,7 +623,8 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
               placeholder="输入 Markdown 内容..."
               value={content}
               onChange={e => setContent(e.target.value)}
-              className="w-full min-h-[500px] outline-none border-0 bg-transparent resize-none leading-relaxed"
+              onKeyDown={handleKeyDown}
+              className="w-full min-h-[calc(100vh-8rem)] outline-none border-0 bg-transparent resize-none leading-relaxed"
               style={{ color: 'var(--text-primary)' }}
             />
           </div>
@@ -445,6 +646,14 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
                 详情
                 {rightTab === 'detail' && <div className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full" style={{ background: 'var(--primary)' }} />}
               </button>
+              {post?.id && (
+                <button onClick={() => { setRightTab('history'); loadRevisions(); }}
+                  className="flex-1 px-4 py-2.5 text-sm font-medium transition-colors relative"
+                  style={{ color: rightTab === 'history' ? 'var(--primary)' : 'var(--text-info)' }}>
+                  历史
+                  {rightTab === 'history' && <div className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full" style={{ background: 'var(--primary)' }} />}
+                </button>
+              )}
             </div>
 
             <div className="flex-1 overflow-y-auto p-4">
@@ -463,8 +672,17 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
                     </div>
                   )}
                 </div>
-              ) : (
+              ) : rightTab === 'detail' ? (
                 <div className="space-y-4">
+                  {/* Author */}
+                  <div>
+                    <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-info)' }}>作者（文章创作者）</label>
+                    <input type="text" value={authorName} onChange={e => setAuthorName(e.target.value)}
+                      placeholder="输入作者名称" className="w-full px-3 py-2 rounded-xl text-sm outline-none glass-card"
+                      style={{ color: 'var(--text-primary)' }} />
+                    <p className="mt-1 text-xs" style={{ color: 'var(--text-info)' }}>留空则不显示作者；编辑者自动记录为当前登录用户</p>
+                  </div>
+
                   {/* Status */}
                   <div>
                     <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-info)' }}>发布状态</label>
@@ -485,6 +703,22 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
                         }}>草稿</button>
                     </div>
                   </div>
+
+                  {/* Scheduled publish date */}
+                  {status === 'draft' && (
+                    <div>
+                      <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-info)' }}>定时发布</label>
+                      <input type="datetime-local" value={scheduledAt}
+                        onChange={e => setScheduledAt(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl text-sm outline-none glass-card"
+                        style={{ color: 'var(--text-primary)' }} />
+                      {scheduledAt && (
+                        <p className="mt-1 text-xs" style={{ color: 'var(--primary)' }}>
+                          将在 {new Date(scheduledAt).toLocaleString('zh-CN')} 自动发布
+                        </p>
+                      )}
+                    </div>
+                  )}
 
                   {/* Category */}
                   <div>
@@ -523,16 +757,38 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
                       className="w-full px-3 py-2 rounded-xl text-sm outline-none glass-card"
                       style={{ color: 'var(--text-primary)' }} />
                     {coverImage && (
-                      <img src={coverImage} alt="" className="mt-2 w-full h-20 object-cover rounded-xl" onError={(e: any) => e.target.style.display = 'none'} />
+                      <img src={coverImage} alt="封面预览" className="mt-2 w-full h-20 object-cover rounded-xl" onError={(e: React.SyntheticEvent<HTMLImageElement>) => { e.currentTarget.style.display = 'none'; }} />
                     )}
                   </div>
 
                   {/* Excerpt */}
                   <div>
-                    <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-info)' }}>摘要</label>
-                    <textarea placeholder="文章摘要" value={excerpt} onChange={e => setExcerpt(e.target.value)} rows={3}
-                      className="w-full px-3 py-2 rounded-xl text-sm outline-none resize-none glass-card"
-                      style={{ color: 'var(--text-primary)' }} />
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-xs font-medium" style={{ color: 'var(--text-info)' }}>摘要</label>
+                      <div className="flex gap-1">
+                        <button onClick={() => setExcerptMode('manual')}
+                          className="px-2 py-0.5 rounded text-xs transition-all"
+                          style={{
+                            background: excerptMode === 'manual' ? 'var(--primary-sub)' : 'transparent',
+                            color: excerptMode === 'manual' ? 'var(--primary)' : 'var(--text-info)',
+                          }}>手动</button>
+                        <button onClick={() => setExcerptMode('auto')}
+                          className="px-2 py-0.5 rounded text-xs transition-all"
+                          style={{
+                            background: excerptMode === 'auto' ? 'var(--primary-sub)' : 'transparent',
+                            color: excerptMode === 'auto' ? 'var(--primary)' : 'var(--text-info)',
+                          }}>自动</button>
+                      </div>
+                    </div>
+                    {excerptMode === 'manual' ? (
+                      <textarea placeholder="文章摘要" value={excerpt} onChange={e => setExcerpt(e.target.value)} rows={3}
+                        className="w-full px-3 py-2 rounded-xl text-sm outline-none resize-none glass-card"
+                        style={{ color: 'var(--text-primary)' }} />
+                    ) : (
+                      <div className="px-3 py-2 rounded-xl text-sm glass-card" style={{ color: 'var(--text-secondary)' }}>
+                        {content ? generateExcerpt(content) : '输入内容后自动生成摘要'}
+                      </div>
+                    )}
                   </div>
 
                   {/* Top */}
@@ -541,6 +797,36 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
                       className="w-4 h-4 rounded" />
                     <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>置顶文章</span>
                   </label>
+
+                  {/* Allow comment */}
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" checked={allowComment} onChange={e => setAllowComment(e.target.checked)}
+                      className="w-4 h-4 rounded" />
+                    <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>允许评论</span>
+                  </label>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {revisions.length === 0 ? (
+                    <p className="text-sm" style={{ color: 'var(--text-info)' }}>暂无修订历史</p>
+                  ) : (
+                    revisions.map((rev: any) => (
+                      <div key={rev.id} className="p-3 rounded-xl glass-card">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs" style={{ color: 'var(--text-info)' }}>
+                            {new Date(rev.created_at).toLocaleString('zh-CN')}
+                          </span>
+                          <button onClick={() => handleRestoreRevision(rev.id)}
+                            className="text-xs px-2 py-0.5 rounded btn-glass"
+                            style={{ color: 'var(--primary)' }}>恢复</button>
+                        </div>
+                        <p className="text-sm font-medium line-clamp-1" style={{ color: 'var(--text-primary)' }}>{rev.title}</p>
+                        <p className="text-xs mt-1 line-clamp-2" style={{ color: 'var(--text-secondary)' }}>
+                          {rev.content?.slice(0, 100)}...
+                        </p>
+                      </div>
+                    ))
+                  )}
                 </div>
               )}
             </div>
