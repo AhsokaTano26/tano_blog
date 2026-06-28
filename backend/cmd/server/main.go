@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/joho/godotenv"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -21,6 +22,7 @@ import (
 	"tano_blog/backend/internal/middleware"
 	"tano_blog/backend/internal/model"
 	"tano_blog/backend/internal/repository"
+	"tano_blog/backend/internal/service"
 	"tano_blog/backend/internal/utils"
 )
 
@@ -28,8 +30,12 @@ func main() {
 	cfg := config.Load()
 
 	// Connect to database
+	logLevel := logger.Warn
+	if gin.Mode() == gin.DebugMode {
+		logLevel = logger.Info
+	}
 	db, err := gorm.Open(postgres.Open(cfg.Database.DSN), &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Info),
+		Logger: logger.Default.LogMode(logLevel),
 	})
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
@@ -53,16 +59,19 @@ func main() {
 	commentRepo := repository.NewCommentRepo(db)
 	mediaRepo := repository.NewMediaRepo(db)
 
+	// Initialize services
+	emailService := service.NewEmailService(db)
 
 	// Initialize handlers
-	authHandler := handler.NewAuthHandler(db, &cfg.JWT)
+	authHandler := handler.NewAuthHandler(db, &cfg.JWT, emailService)
 	postHandler := handler.NewPostHandler(postRepo)
 	categoryHandler := handler.NewCategoryHandler(db)
 	tagHandler := handler.NewTagHandler(db)
-	commentHandler := handler.NewCommentHandler(commentRepo, db)
+	commentHandler := handler.NewCommentHandler(commentRepo, db, emailService)
 	mediaHandler := handler.NewMediaHandler(mediaRepo, &cfg.Upload)
-	siteConfigHandler := handler.NewSiteConfigHandler(db)
+	siteConfigHandler := handler.NewSiteConfigHandler(db, emailService)
 	accessLogHandler := handler.NewAccessLogHandler(db)
+	backupHandler := handler.NewBackupHandler(db, cfg.Upload.Dir, cfg.BackupDir)
 	feedHandler := handler.NewFeedHandler(db)
 
 	// Setup router
@@ -76,6 +85,7 @@ func main() {
 		allowedOrigins = []string{"http://localhost:3000"}
 	}
 	r.Use(middleware.CORS(allowedOrigins))
+	r.Use(middleware.SecurityHeaders())
 
 	// Serve uploaded files
 	r.Static("/uploads", cfg.Upload.Dir)
@@ -85,15 +95,24 @@ func main() {
 		// Public auth endpoints (with rate limiting)
 		auth := api.Group("/auth")
 		{
-			auth.POST("/login", middleware.RateLimit(10, 60), authHandler.Login)
-			auth.POST("/login/totp", middleware.RateLimit(10, 60), authHandler.LoginWithTOTP)
-			auth.POST("/passkey/login/options", authHandler.PasskeyLoginOptions)
-			auth.POST("/passkey/login/verify", authHandler.PasskeyLoginVerify)
+			auth.POST("/login", middleware.RateLimit(10, 60*time.Second), authHandler.Login)
+			auth.POST("/login/totp", middleware.RateLimit(10, 60*time.Second), authHandler.LoginWithTOTP)
+			auth.POST("/passkey/login/options", middleware.RateLimit(10, 60*time.Second), authHandler.PasskeyLoginOptions)
+			auth.POST("/passkey/login/verify", middleware.RateLimit(10, 60*time.Second), authHandler.PasskeyLoginVerify)
 		}
+
+		// Public config endpoint (for injection)
+		api.GET("/config/public", siteConfigHandler.GetPublic)
 
 		// Public content endpoints
 		api.GET("/posts", postHandler.ListPublic)
 		api.GET("/posts/top", postHandler.TopPosts)
+		api.GET("/posts/top-viewed", postHandler.TopViewed)
+		api.GET("/posts/preview", postHandler.GetByPreviewToken)
+
+		// Password reset (public)
+		api.POST("/auth/forgot-password", authHandler.ForgotPassword)
+		api.POST("/auth/reset-password", authHandler.ResetPassword)
 		api.GET("/posts/:slug", middleware.OptionalAuth(&cfg.JWT), postHandler.GetBySlug)
 		api.GET("/archive", postHandler.Archive)
 
@@ -104,15 +123,18 @@ func main() {
 		api.GET("/tags/:slug", tagHandler.GetBySlug)
 
 		api.GET("/posts/:slug/comments", commentHandler.ListByPost)
-		api.POST("/posts/:slug/comments", commentHandler.Create)
+		api.POST("/posts/:slug/comments", middleware.RateLimit(5, 60*time.Second), commentHandler.Create)
 
-		// Authenticated endpoints
+		// Authenticated endpoints (CSRF protected)
 		authRequired := api.Group("")
 		authRequired.Use(middleware.AuthRequired(&cfg.JWT))
+		authRequired.Use(middleware.CSRF())
 		{
 			// Auth management
 			authRequired.POST("/auth/logout", authHandler.Logout)
 			authRequired.GET("/auth/me", authHandler.Me)
+			authRequired.PUT("/auth/profile", authHandler.UpdateProfile)
+			authRequired.PUT("/auth/password", authHandler.ChangePassword)
 			authRequired.POST("/auth/totp/setup", authHandler.TOTPSetup)
 			authRequired.POST("/auth/totp/verify", authHandler.TOTPVerify)
 			authRequired.DELETE("/auth/totp", authHandler.TOTPDisable)
@@ -120,17 +142,23 @@ func main() {
 			authRequired.POST("/auth/passkey/register/verify", authHandler.PasskeyRegisterVerify)
 			authRequired.GET("/auth/passkeys", authHandler.ListPasskeys)
 			authRequired.DELETE("/auth/passkey/:id", authHandler.DeletePasskey)
+			authRequired.PUT("/auth/passkey/:id/rename", authHandler.RenamePasskey)
 
 			// Admin: posts
 			admin := authRequired.Group("/admin")
 			admin.Use(middleware.RoleRequired("admin"))
 			{
 				admin.GET("/posts", postHandler.AdminList)
+				admin.GET("/posts/:id", postHandler.AdminGet)
 				admin.POST("/posts", postHandler.Create)
 				admin.PUT("/posts/:id", postHandler.Update)
 				admin.DELETE("/posts/:id", postHandler.Delete)
 				admin.PATCH("/posts/:id/status", postHandler.UpdateStatus)
 				admin.PATCH("/posts/:id/top", postHandler.ToggleTop)
+				admin.GET("/posts/:id/revisions", postHandler.ListRevisions)
+				admin.POST("/posts/:id/revisions/:revId/restore", postHandler.RestoreRevision)
+				admin.POST("/posts/:id/preview-token", postHandler.GeneratePreviewToken)
+				admin.GET("/posts/export", postHandler.Export)
 
 				admin.POST("/categories", categoryHandler.Create)
 				admin.PUT("/categories/:id", categoryHandler.Update)
@@ -142,28 +170,63 @@ func main() {
 
 				admin.GET("/comments", commentHandler.AdminList)
 				admin.PATCH("/comments/:id/status", commentHandler.UpdateStatus)
+				admin.PATCH("/comments/batch-status", commentHandler.BatchUpdateStatus)
 				admin.DELETE("/comments/:id", commentHandler.Delete)
 
 				admin.POST("/upload", mediaHandler.Upload)
 				admin.GET("/media", mediaHandler.List)
 				admin.DELETE("/media/:id", mediaHandler.Delete)
+				admin.PUT("/media/:id/tags", mediaHandler.UpdateMediaTags)
+				admin.GET("/media/tags", mediaHandler.ListTags)
+				admin.POST("/media/tags", mediaHandler.CreateTag)
+				admin.DELETE("/media/tags/:id", mediaHandler.DeleteTag)
 
 				admin.GET("/config", siteConfigHandler.Get)
 				admin.PUT("/config", siteConfigHandler.Update)
+				admin.POST("/config/test-email", siteConfigHandler.TestEmail)
+
+				admin.GET("/users", authHandler.ListUsers)
 
 				admin.GET("/access-logs", accessLogHandler.List)
 				admin.GET("/access-logs/stats", accessLogHandler.Stats)
+				admin.GET("/access-logs/export", accessLogHandler.Export)
+				admin.DELETE("/access-logs/:id", accessLogHandler.Delete)
+				admin.POST("/access-logs/clear", accessLogHandler.Clear)
+
+				// Backup
+				admin.GET("/backups", backupHandler.ListBackups)
+				admin.POST("/backups", backupHandler.CreateBackup)
+				admin.GET("/backups/:filename/download", backupHandler.DownloadBackup)
+				admin.DELETE("/backups/:filename", backupHandler.DeleteBackup)
+
+				// Restore
+				admin.POST("/restore/upload", backupHandler.RestoreUpload)
+				admin.POST("/restore/url", backupHandler.RestoreURL)
+				admin.POST("/restore/local", backupHandler.RestoreLocal)
 			}
 		}
 	}
 
-	// RSS & Sitemap
+	// RSS & Sitemap & Robots
 	r.GET("/rss.xml", feedHandler.RSS)
 	r.GET("/sitemap.xml", feedHandler.Sitemap)
+	r.GET("/robots.txt", func(c *gin.Context) {
+		siteURL := os.Getenv("SITE_URL")
+		if siteURL == "" {
+			siteURL = "https://tano.asia"
+		}
+		c.Header("Content-Type", "text/plain")
+		c.String(http.StatusOK, "User-agent: *\nAllow: /\n\nSitemap: %s/sitemap.xml\n", siteURL)
+	})
 
-	// Health check
+	// Health check with DB ping
 	r.GET("/health", func(c *gin.Context) {
-		c.JSON(200, gin.H{"status": "ok"})
+		sqlDB, err := db.DB()
+		if err != nil || sqlDB.Ping() != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "error", "error": "database unreachable"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
 
 	port := cfg.Server.Port
@@ -174,7 +237,30 @@ func main() {
 		WriteTimeout: cfg.Server.WriteTimeout,
 	}
 
-	// Graceful shutdown
+	// Publish scheduled posts every minute
+	go func() {
+		ticker := time.NewTicker(1 * time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			now := time.Now()
+			result := db.Model(&model.Post{}).
+				Where("status = ? AND published_at IS NOT NULL AND published_at <= ?", "draft", now).
+				Updates(map[string]interface{}{"status": "published"})
+			if result.RowsAffected > 0 {
+				log.Printf("Published %d scheduled posts", result.RowsAffected)
+			}
+		}
+	}()
+
+	// Cleanup old backups every hour
+	go func() {
+		ticker := time.NewTicker(1 * time.Hour)
+		defer ticker.Stop()
+		for range ticker.C {
+			backupHandler.CleanupOldBackups()
+		}
+	}()
+
 	go func() {
 		log.Printf("Server starting on port %s", port)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -197,7 +283,7 @@ func main() {
 
 func seedAdmin(db *gorm.DB, password string) {
 	var count int64
-	db.Model(&model.User{}).Count(&count)
+	db.Model(&model.User{}).Where("role = ?", "admin").Count(&count)
 	if count > 0 {
 		return
 	}
@@ -232,6 +318,13 @@ func seedSiteConfigs(db *gorm.DB) {
 		"comment_enabled":  "true",
 		"default_theme":    "dark",
 		"accent_color":     "225",
+		"email_enabled":    "false",
+		"email_provider":   "zeabur",
+		"email_from":       "",
+		"profile_avatar":   "/aimi.png",
+		"profile_name":     "Tano",
+		"profile_bio":      "A BanG Dreamer!",
+		"profile_contacts": `[{"type":"email","value":"public@tano.asia"},{"type":"github","value":"AhsokaTano26"}]`,
 	}
 
 	for key, value := range defaults {
@@ -244,7 +337,8 @@ func seedSiteConfigs(db *gorm.DB) {
 }
 
 func init() {
-	// Set Gin mode
+	_ = godotenv.Load()
+
 	mode := os.Getenv("GIN_MODE")
 	if mode == "" {
 		mode = gin.ReleaseMode

@@ -1,6 +1,10 @@
 package repository
 
 import (
+	"fmt"
+	"strings"
+	"time"
+
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 	"tano_blog/backend/internal/model"
@@ -20,13 +24,15 @@ func (r *AccessLogRepo) List(page, pageSize int, filters map[string]string) ([]m
 	query := r.db.Model(&model.AccessLog{})
 
 	if path, ok := filters["path"]; ok && path != "" {
-		query = query.Where("path LIKE ?", "%"+path+"%")
+		escaped := strings.ReplaceAll(strings.ReplaceAll(path, "%", "\\%"), "_", "\\_")
+		query = query.Where("path LIKE ?", "%"+escaped+"%")
 	}
 	if method, ok := filters["method"]; ok && method != "" {
 		query = query.Where("method = ?", method)
 	}
 	if ip, ok := filters["ip"]; ok && ip != "" {
-		query = query.Where("ip_address LIKE ?", "%"+ip+"%")
+		escaped := strings.ReplaceAll(strings.ReplaceAll(ip, "%", "\\%"), "_", "\\_")
+		query = query.Where("ip_address LIKE ?", "%"+escaped+"%")
 	}
 	if status, ok := filters["status_code"]; ok && status != "" {
 		query = query.Where("status_code = ?", status)
@@ -41,6 +47,14 @@ func (r *AccessLogRepo) List(page, pageSize int, filters map[string]string) ([]m
 	query.Count(&total)
 	err := query.Order("created_at DESC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&logs).Error
 	return logs, total, err
+}
+
+func (r *AccessLogRepo) Delete(id uuid.UUID) error {
+	return r.db.Delete(&model.AccessLog{}, id).Error
+}
+
+func (r *AccessLogRepo) Clear() error {
+	return r.db.Where("1 = 1").Delete(&model.AccessLog{}).Error
 }
 
 func (r *AccessLogRepo) Stats() (map[string]interface{}, error) {
@@ -100,7 +114,8 @@ func (r *PostRepo) ListPublic(page, pageSize int, category, tag, search string) 
 			Where("tags.slug = ?", tag)
 	}
 	if search != "" {
-		query = query.Where("title ILIKE ? OR content ILIKE ?", "%"+search+"%", "%"+search+"%")
+		escaped := strings.ReplaceAll(strings.ReplaceAll(search, "%", "\\%"), "_", "\\_")
+		query = query.Where("title ILIKE ? OR content ILIKE ?", "%"+escaped+"%", "%"+escaped+"%")
 	}
 
 	query.Count(&total)
@@ -123,33 +138,48 @@ func (r *PostRepo) IncrementView(id uuid.UUID) error {
 }
 
 func (r *PostRepo) Archive() ([]map[string]interface{}, error) {
-	type ArchiveItem struct {
-		Year  int
-		Month int
-		Count int
+	type ArchivePost struct {
+		ID          uuid.UUID `json:"id"`
+		Title       string    `json:"title"`
+		Slug        string    `json:"slug"`
+		PublishedAt *time.Time `json:"published_at"`
+		Excerpt     string    `json:"excerpt"`
+		Year        int       `json:"-"`
+		Month       int       `json:"-"`
 	}
-	var items []ArchiveItem
-	r.db.Model(&model.Post{}).
-		Select("EXTRACT(YEAR FROM published_at)::int as year, EXTRACT(MONTH FROM published_at)::int as month, COUNT(*) as count").
+
+	var posts []ArchivePost
+	err := r.db.Model(&model.Post{}).
+		Select("id, title, slug, published_at, excerpt, EXTRACT(YEAR FROM published_at)::int as year, EXTRACT(MONTH FROM published_at)::int as month").
 		Where("status = ? AND published_at IS NOT NULL", "published").
-		Group("year, month").
-		Order("year DESC, month DESC").
-		Scan(&items)
+		Order("published_at DESC").
+		Find(&posts).Error
+	if err != nil {
+		return nil, err
+	}
+
+	// Group by year/month
+	groups := make(map[string]*map[string]interface{})
+	var keys []string
+	for _, p := range posts {
+		key := fmt.Sprintf("%d-%02d", p.Year, p.Month)
+		if _, exists := groups[key]; !exists {
+			keys = append(keys, key)
+			groups[key] = &map[string]interface{}{
+				"year":  p.Year,
+				"month": p.Month,
+				"count": 0,
+				"posts": []ArchivePost{},
+			}
+		}
+		group := *groups[key]
+		group["count"] = group["count"].(int) + 1
+		group["posts"] = append(group["posts"].([]ArchivePost), p)
+	}
 
 	var result []map[string]interface{}
-	for _, item := range items {
-		var posts []model.Post
-		r.db.Where("status = ? AND EXTRACT(YEAR FROM published_at) = ? AND EXTRACT(MONTH FROM published_at) = ?",
-			"published", item.Year, item.Month).
-			Select("id, title, slug, published_at, excerpt").
-			Order("published_at DESC").
-			Find(&posts)
-		result = append(result, map[string]interface{}{
-			"year":  item.Year,
-			"month": item.Month,
-			"count": item.Count,
-			"posts": posts,
-		})
+	for _, key := range keys {
+		result = append(result, *groups[key])
 	}
 	return result, nil
 }
@@ -162,10 +192,17 @@ func (r *PostRepo) TopPosts() ([]model.Post, error) {
 	return posts, err
 }
 
+func (r *PostRepo) TopViewed(limit int) ([]model.Post, error) {
+	var posts []model.Post
+	err := r.db.Where("status = ?", "published").
+		Order("view_count DESC").Limit(limit).Find(&posts).Error
+	return posts, err
+}
+
 func (r *PostRepo) AdminList(page, pageSize int, status string) ([]model.Post, int64, error) {
 	var posts []model.Post
 	var total int64
-	query := r.db.Model(&model.Post{}).Preload("Category").Preload("Tags").Preload("Author")
+	query := r.db.Model(&model.Post{}).Preload("Category").Preload("Tags").Preload("Author").Preload("Editor")
 
 	if status != "" {
 		query = query.Where("status = ?", status)
@@ -185,12 +222,23 @@ func (r *PostRepo) Update(id uuid.UUID, updates map[string]interface{}) error {
 }
 
 func (r *PostRepo) Delete(id uuid.UUID) error {
-	return r.db.Delete(&model.Post{}, id).Error
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		// Delete associated comments
+		if err := tx.Where("post_id = ?", id).Delete(&model.Comment{}).Error; err != nil {
+			return err
+		}
+		// Delete post-tag associations
+		if err := tx.Table("post_tags").Where("post_id = ?", id).Delete(nil).Error; err != nil {
+			return err
+		}
+		// Delete the post
+		return tx.Delete(&model.Post{}, id).Error
+	})
 }
 
 func (r *PostRepo) GetByID(id uuid.UUID) (*model.Post, error) {
 	var post model.Post
-	err := r.db.Preload("Category").Preload("Tags").Preload("Author").First(&post, id).Error
+	err := r.db.Preload("Category").Preload("Tags").Preload("Author").Preload("Editor").First(&post, id).Error
 	return &post, err
 }
 
@@ -204,6 +252,38 @@ func (r *PostRepo) SetTags(postID uuid.UUID, tagIDs []uuid.UUID) error {
 		r.db.Where("id IN ?", tagIDs).Find(&tags)
 	}
 	return r.db.Model(post).Association("Tags").Replace(tags)
+}
+
+func (r *PostRepo) SaveRevision(revision *model.PostRevision) error {
+	return r.db.Create(revision).Error
+}
+
+func (r *PostRepo) ListRevisions(postID uuid.UUID) ([]model.PostRevision, error) {
+	var revisions []model.PostRevision
+	err := r.db.Where("post_id = ?", postID).Preload("Editor").
+		Order("created_at DESC").Limit(50).Find(&revisions).Error
+	return revisions, err
+}
+
+func (r *PostRepo) GetRevision(id uuid.UUID) (*model.PostRevision, error) {
+	var rev model.PostRevision
+	err := r.db.First(&rev, id).Error
+	return &rev, err
+}
+
+func (r *PostRepo) GetByPreviewToken(token string) (*model.Post, error) {
+	var post model.Post
+	err := r.db.Where("preview_token = ?", token).Preload("Category").Preload("Tags").Preload("Author").First(&post).Error
+	if err != nil {
+		return nil, err
+	}
+	return &post, nil
+}
+
+func (r *PostRepo) ExportAll() ([]model.Post, error) {
+	var posts []model.Post
+	err := r.db.Preload("Category").Preload("Tags").Preload("Author").Order("created_at DESC").Find(&posts).Error
+	return posts, err
 }
 
 type CategoryRepo struct {
@@ -320,11 +400,28 @@ func NewMediaRepo(db *gorm.DB) *MediaRepo {
 	return &MediaRepo{db: db}
 }
 
-func (r *MediaRepo) List(page, pageSize int) ([]model.Media, int64, error) {
+func (r *MediaRepo) List(page, pageSize int, tagID string, search string) ([]model.Media, int64, error) {
 	var media []model.Media
 	var total int64
-	r.db.Model(&model.Media{}).Count(&total)
-	err := r.db.Order("created_at DESC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&media).Error
+
+	// Build filter conditions
+	query := r.db.Model(&model.Media{})
+	if tagID != "" {
+		query = query.Joins("JOIN media_tag_links ON media_tag_links.media_id = media.id").
+			Where("media_tag_links.media_tag_id = ?", tagID)
+	}
+	if search != "" {
+		pattern := "%" + strings.NewReplacer("%", "\\%", "_", "\\_").Replace(search) + "%"
+		query = query.Where("original_name ILIKE ? OR filename ILIKE ?", pattern, pattern)
+	}
+
+	query.Count(&total)
+
+	err := query.Preload("Tags").
+		Order("created_at DESC").
+		Offset((page - 1) * pageSize).
+		Limit(pageSize).
+		Find(&media).Error
 	return media, total, err
 }
 
@@ -338,8 +435,43 @@ func (r *MediaRepo) Delete(id uuid.UUID) error {
 
 func (r *MediaRepo) GetByID(id uuid.UUID) (*model.Media, error) {
 	var m model.Media
-	err := r.db.First(&m, id).Error
+	err := r.db.Preload("Tags").First(&m, id).Error
 	return &m, err
+}
+
+func (r *MediaRepo) UpdateTags(mediaID uuid.UUID, tagIDs []uuid.UUID) error {
+	var m model.Media
+	m.ID = mediaID
+	var tags []model.MediaTag
+	if len(tagIDs) > 0 {
+		if err := r.db.Find(&tags, tagIDs).Error; err != nil {
+			return err
+		}
+	}
+	return r.db.Model(&m).Association("Tags").Replace(tags)
+}
+
+func (r *MediaRepo) ListTags() ([]model.MediaTag, error) {
+	var tags []model.MediaTag
+	err := r.db.Order("name").Find(&tags).Error
+	return tags, err
+}
+
+func (r *MediaRepo) CreateTag(name string) (*model.MediaTag, error) {
+	tag := &model.MediaTag{Name: name}
+	err := r.db.Create(tag).Error
+	return tag, err
+}
+
+func (r *MediaRepo) DeleteTag(id uuid.UUID) error {
+	r.db.Table("media_tag_links").Where("media_tag_id = ?", id).Delete(nil)
+	return r.db.Delete(&model.MediaTag{}, id).Error
+}
+
+func (r *MediaRepo) GetTagByID(id uuid.UUID) (*model.MediaTag, error) {
+	var tag model.MediaTag
+	err := r.db.First(&tag, id).Error
+	return &tag, err
 }
 
 type SiteConfigRepo struct {
@@ -353,6 +485,12 @@ func NewSiteConfigRepo(db *gorm.DB) *SiteConfigRepo {
 func (r *SiteConfigRepo) GetAll() ([]model.SiteConfig, error) {
 	var configs []model.SiteConfig
 	err := r.db.Find(&configs).Error
+	return configs, err
+}
+
+func (r *SiteConfigRepo) GetByKeys(keys []string) ([]model.SiteConfig, error) {
+	var configs []model.SiteConfig
+	err := r.db.Where("key IN ?", keys).Find(&configs).Error
 	return configs, err
 }
 

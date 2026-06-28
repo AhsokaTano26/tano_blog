@@ -3,7 +3,6 @@ package handler
 import (
 	"fmt"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
@@ -20,6 +19,32 @@ func NewFeedHandler(db *gorm.DB) *FeedHandler {
 	return &FeedHandler{db: db}
 }
 
+func (h *FeedHandler) getSiteConfig() (title, desc, siteURL string) {
+	title = "朝花夕拾录"
+	desc = "A BanG Dreamer!"
+	siteURL = "https://tano.asia"
+
+	var configs []model.SiteConfig
+	h.db.Where("key IN ?", []string{"site_title", "site_description", "site_url"}).Find(&configs)
+	for _, c := range configs {
+		switch c.Key {
+		case "site_title":
+			if c.Value != "" {
+				title = c.Value
+			}
+		case "site_description":
+			if c.Value != "" {
+				desc = c.Value
+			}
+		case "site_url":
+			if c.Value != "" {
+				siteURL = c.Value
+			}
+		}
+	}
+	return
+}
+
 func (h *FeedHandler) RSS(c *gin.Context) {
 	var posts []model.Post
 	h.db.Where("status = ?", "published").
@@ -28,16 +53,16 @@ func (h *FeedHandler) RSS(c *gin.Context) {
 		Limit(50).
 		Find(&posts)
 
-	siteURL := "https://tano.asia"
+	title, desc, siteURL := h.getSiteConfig()
 	now := time.Now().Format(http.TimeFormat)
 
 	var sb strings.Builder
 	sb.WriteString(`<?xml version="1.0" encoding="UTF-8"?>`)
 	sb.WriteString(`<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:atom="http://www.w3.org/2005/Atom">`)
 	sb.WriteString("<channel>")
-	sb.WriteString("<title>朝花夕拾录</title>")
+	sb.WriteString("<title>" + escapeXML(title) + "</title>")
 	sb.WriteString("<link>" + siteURL + "</link>")
-	sb.WriteString("<description>A BanG Dreamer!</description>")
+	sb.WriteString("<description>" + escapeXML(desc) + "</description>")
 	sb.WriteString("<language>zh-CN</language>")
 	sb.WriteString("<lastBuildDate>" + now + "</lastBuildDate>")
 	sb.WriteString(fmt.Sprintf(`<atom:link href="%s/rss.xml" rel="self" type="application/rss+xml"/>`, siteURL))
@@ -51,7 +76,7 @@ func (h *FeedHandler) RSS(c *gin.Context) {
 
 		var tags []string
 		for _, t := range post.Tags {
-			tags = append(tags, t.Name)
+			tags = append(tags, escapeXML(t.Name))
 		}
 
 		sb.WriteString("<item>")
@@ -65,17 +90,17 @@ func (h *FeedHandler) RSS(c *gin.Context) {
 			sb.WriteString("<description><![CDATA[" + post.Excerpt + "]]></description>")
 		}
 
-		// Full content
 		sb.WriteString("<content:encoded><![CDATA[")
 		content := post.Content
 		if post.CoverImage != "" {
-			content = fmt.Sprintf(`<img src="%s" alt="%s"/><br/>`, post.CoverImage, url.QueryEscape(post.Title)) + content
+			content = fmt.Sprintf(`<img src="%s" alt="%s"/><br/>`, post.CoverImage, escapeXML(post.Title)) + content
 		}
+		content = strings.ReplaceAll(content, "]]>", "]]]]><![CDATA[>")
 		sb.WriteString(content)
 		sb.WriteString("]]></content:encoded>")
 
 		for _, tag := range tags {
-			sb.WriteString("<category>" + tag + "</category>")
+			sb.WriteString("<category>" + escapeXML(tag) + "</category>")
 		}
 
 		sb.WriteString("</item>")
@@ -85,7 +110,17 @@ func (h *FeedHandler) RSS(c *gin.Context) {
 	sb.WriteString("</rss>")
 
 	c.Header("Content-Type", "application/rss+xml; charset=utf-8")
+	c.Header("Cache-Control", "public, max-age=3600")
 	c.String(http.StatusOK, sb.String())
+}
+
+func escapeXML(s string) string {
+	s = strings.ReplaceAll(s, "&", "&amp;")
+	s = strings.ReplaceAll(s, "<", "&lt;")
+	s = strings.ReplaceAll(s, ">", "&gt;")
+	s = strings.ReplaceAll(s, "\"", "&quot;")
+	s = strings.ReplaceAll(s, "'", "&apos;")
+	return s
 }
 
 func (h *FeedHandler) Sitemap(c *gin.Context) {
@@ -101,16 +136,15 @@ func (h *FeedHandler) Sitemap(c *gin.Context) {
 	var tags []model.Tag
 	h.db.Select("slug, created_at").Find(&tags)
 
-	siteURL := "https://tano.asia"
+	_, _, siteURL := h.getSiteConfig()
 
 	var sb strings.Builder
 	sb.WriteString(`<?xml version="1.0" encoding="UTF-8"?>`)
 	sb.WriteString(`<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">`)
 
-	// Static pages
 	staticPages := []struct {
-		path      string
-		priority  string
+		path       string
+		priority   string
 		changefreq string
 	}{
 		{"/", "1.0", "daily"},
@@ -126,7 +160,6 @@ func (h *FeedHandler) Sitemap(c *gin.Context) {
 		sb.WriteString("</url>")
 	}
 
-	// Post pages
 	for _, post := range posts {
 		lastMod := post.UpdatedAt.Format("2006-01-02")
 		sb.WriteString("<url>")
@@ -137,7 +170,6 @@ func (h *FeedHandler) Sitemap(c *gin.Context) {
 		sb.WriteString("</url>")
 	}
 
-	// Category pages
 	for _, cat := range categories {
 		lastMod := cat.UpdatedAt.Format("2006-01-02")
 		sb.WriteString("<url>")
@@ -147,7 +179,6 @@ func (h *FeedHandler) Sitemap(c *gin.Context) {
 		sb.WriteString("</url>")
 	}
 
-	// Tag pages
 	for _, tag := range tags {
 		lastMod := tag.CreatedAt.Format("2006-01-02")
 		sb.WriteString("<url>")
@@ -160,5 +191,6 @@ func (h *FeedHandler) Sitemap(c *gin.Context) {
 	sb.WriteString("</urlset>")
 
 	c.Header("Content-Type", "application/xml; charset=utf-8")
+	c.Header("Cache-Control", "public, max-age=3600")
 	c.String(http.StatusOK, sb.String())
 }

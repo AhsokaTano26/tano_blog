@@ -17,7 +17,7 @@ type User struct {
 	Bio          string    `gorm:"type:text" json:"bio"`
 	TOTPSecret   string    `gorm:"size:100" json:"-"`
 	TOTPEnabled  bool      `gorm:"default:false" json:"totp_enabled"`
-	Role         string    `gorm:"size:20;default:admin" json:"role"`
+	Role         string    `gorm:"size:20;default:user" json:"role"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
 }
@@ -65,12 +65,16 @@ type Post struct {
 	AllowComment bool       `gorm:"default:true" json:"allow_comment"`
 	ViewCount    int64      `gorm:"default:0" json:"view_count"`
 	CategoryID   *uuid.UUID `gorm:"type:uuid;index" json:"category_id"`
-	AuthorID     uuid.UUID  `gorm:"type:uuid;index;not null" json:"author_id"`
+	AuthorID     *uuid.UUID `gorm:"type:uuid;index" json:"author_id"`
+	AuthorName   string     `gorm:"size:100" json:"author_name"`
+	EditorID     *uuid.UUID `gorm:"type:uuid;index" json:"editor_id"`
+	PreviewToken string     `gorm:"size:64;index" json:"-"`
 	PublishedAt  *time.Time `json:"published_at"`
 	CreatedAt    time.Time  `json:"created_at"`
 	UpdatedAt    time.Time  `json:"updated_at"`
 	Category     *Category  `gorm:"foreignKey:CategoryID" json:"category"`
-	Author       User       `gorm:"foreignKey:AuthorID" json:"author"`
+	Author       *User      `gorm:"foreignKey:AuthorID" json:"author,omitempty"`
+	Editor       *User      `gorm:"foreignKey:EditorID" json:"editor,omitempty"`
 	Tags         []Tag      `gorm:"many2many:post_tags;" json:"tags"`
 	Comments     []Comment  `gorm:"foreignKey:PostID" json:"-"`
 }
@@ -104,17 +108,24 @@ type Comment struct {
 	Children    []Comment  `gorm:"foreignKey:ParentID" json:"children,omitempty"`
 }
 
+type MediaTag struct {
+	ID        uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	Name      string    `gorm:"uniqueIndex;size:100;not null" json:"name"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 type Media struct {
-	ID           uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
-	Filename     string    `gorm:"size:500;not null" json:"filename"`
-	OriginalName string    `gorm:"size:500" json:"original_name"`
-	MimeType     string    `gorm:"size:100" json:"mime_type"`
-	Size         int64     `json:"size"`
-	URL          string    `gorm:"size:1000;not null" json:"url"`
-	AltText      string    `gorm:"size:500" json:"alt_text"`
-	UploadedBy   uuid.UUID `gorm:"type:uuid;index" json:"uploaded_by"`
-	CreatedAt    time.Time `json:"created_at"`
-	Uploader     User      `gorm:"foreignKey:UploadedBy" json:"-"`
+	ID           uuid.UUID  `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	Filename     string     `gorm:"size:500;not null" json:"filename"`
+	OriginalName string     `gorm:"size:500" json:"original_name"`
+	MimeType     string     `gorm:"size:100" json:"mime_type"`
+	Size         int64      `json:"size"`
+	URL          string     `gorm:"size:1000;not null" json:"url"`
+	AltText      string     `gorm:"size:500" json:"alt_text"`
+	UploadedBy   uuid.UUID  `gorm:"type:uuid;index" json:"uploaded_by"`
+	CreatedAt    time.Time  `json:"created_at"`
+	Uploader     User       `gorm:"foreignKey:UploadedBy" json:"-"`
+	Tags         []MediaTag `gorm:"many2many:media_tag_links;" json:"tags"`
 }
 
 type SiteConfig struct {
@@ -145,6 +156,17 @@ type AccessLog struct {
 	User         User       `gorm:"foreignKey:UserID" json:"-"`
 }
 
+type PostRevision struct {
+	ID        uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	PostID    uuid.UUID `gorm:"type:uuid;index;not null" json:"post_id"`
+	Title     string    `gorm:"size:500;not null" json:"title"`
+	Content   string    `gorm:"type:text;not null" json:"content"`
+	Excerpt   string    `gorm:"size:1000" json:"excerpt"`
+	EditorID  *uuid.UUID `gorm:"type:uuid" json:"editor_id"`
+	CreatedAt time.Time  `json:"created_at"`
+	Editor    *User      `gorm:"foreignKey:EditorID" json:"editor,omitempty"`
+}
+
 func AutoMigrate(db *gorm.DB) error {
 	return db.AutoMigrate(
 		&User{},
@@ -155,7 +177,9 @@ func AutoMigrate(db *gorm.DB) error {
 		&PostTag{},
 		&Comment{},
 		&Media{},
+		&MediaTag{},
 		&SiteConfig{},
 		&AccessLog{},
+		&PostRevision{},
 	)
 }

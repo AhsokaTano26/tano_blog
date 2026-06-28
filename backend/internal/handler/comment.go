@@ -1,7 +1,9 @@
 package handler
 
 import (
+	"log"
 	"net/http"
+	"net/mail"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -9,47 +11,94 @@ import (
 	"gorm.io/gorm"
 	"tano_blog/backend/internal/model"
 	"tano_blog/backend/internal/repository"
+	"tano_blog/backend/internal/service"
 )
 
 type CommentHandler struct {
-	repo *repository.CommentRepo
-	db   *gorm.DB
+	repo         *repository.CommentRepo
+	db           *gorm.DB
+	emailService *service.EmailService
 }
 
-func NewCommentHandler(repo *repository.CommentRepo, db *gorm.DB) *CommentHandler {
-	return &CommentHandler{repo: repo, db: db}
+func NewCommentHandler(repo *repository.CommentRepo, db *gorm.DB, emailService *service.EmailService) *CommentHandler {
+	return &CommentHandler{repo: repo, db: db, emailService: emailService}
 }
 
-// lookupPostBySlug finds a post by slug and returns its ID
-func (h *CommentHandler) lookupPostBySlug(slug string) (*uuid.UUID, error) {
+func (h *CommentHandler) lookupPostBySlug(slug string) (*model.Post, error) {
 	var post model.Post
-	if err := h.db.Where("slug = ?", slug).Select("id").First(&post).Error; err != nil {
+	if err := h.db.Where("slug = ?", slug).Select("id", "allow_comment").First(&post).Error; err != nil {
 		return nil, err
 	}
-	return &post.ID, nil
+	return &post, nil
 }
 
 func (h *CommentHandler) ListByPost(c *gin.Context) {
 	slug := c.Param("slug")
-	postID, err := h.lookupPostBySlug(slug)
+	post, err := h.lookupPostBySlug(slug)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "文章不存在"})
 		return
 	}
 
-	comments, err := h.repo.ListByPost(*postID)
+	comments, err := h.repo.ListByPost(post.ID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取评论失败"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"items": comments})
+
+	// Strip email from public response
+	type publicComment struct {
+		ID        uuid.UUID      `json:"id"`
+		PostID    uuid.UUID      `json:"post_id"`
+		ParentID  *uuid.UUID     `json:"parent_id"`
+		Nickname  string         `json:"nickname"`
+		Website   string         `json:"website"`
+		Content   string         `json:"content"`
+		Status    string         `json:"status"`
+		Country   string         `json:"country"`
+		City      string         `json:"city"`
+		CreatedAt string         `json:"created_at"`
+		Children  []publicComment `json:"children,omitempty"`
+	}
+
+	var convert func(c model.Comment) publicComment
+	convert = func(c model.Comment) publicComment {
+		pc := publicComment{
+			ID:        c.ID,
+			PostID:    c.PostID,
+			ParentID:  c.ParentID,
+			Nickname:  c.Nickname,
+			Website:   c.Website,
+			Content:   c.Content,
+			Status:    c.Status,
+			Country:   c.Country,
+			City:      c.City,
+			CreatedAt: c.CreatedAt.Format("2006-01-02T15:04:05Z"),
+		}
+		for _, child := range c.Children {
+			pc.Children = append(pc.Children, convert(child))
+		}
+		return pc
+	}
+
+	result := make([]publicComment, len(comments))
+	for i, c := range comments {
+		result[i] = convert(c)
+	}
+
+	c.JSON(http.StatusOK, gin.H{"items": result})
 }
 
 func (h *CommentHandler) Create(c *gin.Context) {
 	slug := c.Param("slug")
-	postID, err := h.lookupPostBySlug(slug)
+	post, err := h.lookupPostBySlug(slug)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "文章不存在"})
+		return
+	}
+
+	if !post.AllowComment {
+		c.JSON(http.StatusForbidden, gin.H{"error": "此文章已关闭评论"})
 		return
 	}
 
@@ -59,15 +108,53 @@ func (h *CommentHandler) Create(c *gin.Context) {
 		Email    string `json:"email"`
 		Website  string `json:"website"`
 		Content  string `json:"content" binding:"required"`
+		HpField  string `json:"hp_field"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "请输入评论内容"})
 		return
 	}
 
+	// Honeypot check - bots fill hidden fields
+	if input.HpField != "" {
+		c.JSON(http.StatusCreated, gin.H{"comment": "ok"})
+		return
+	}
+
+	if len(input.Nickname) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "昵称不能为空"})
+		return
+	}
+	if len(input.Nickname) > 100 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "昵称不能超过100个字符"})
+		return
+	}
+	if len(input.Content) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "评论内容不能为空"})
+		return
+	}
+	if len(input.Content) > 5000 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "评论内容不能超过5000个字符"})
+		return
+	}
+	if len(input.Email) > 255 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "邮箱不能超过255个字符"})
+		return
+	}
+	if input.Email != "" {
+		if _, err := mail.ParseAddress(input.Email); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "邮箱格式不正确"})
+			return
+		}
+	}
+	if len(input.Website) > 500 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "网站地址不能超过500个字符"})
+		return
+	}
+
 	comment := &model.Comment{
 		ID:        uuid.New(),
-		PostID:    *postID,
+		PostID:    post.ID,
 		Nickname:  input.Nickname,
 		Email:     input.Email,
 		Website:   input.Website,
@@ -77,15 +164,49 @@ func (h *CommentHandler) Create(c *gin.Context) {
 		UserAgent: c.GetHeader("User-Agent"),
 	}
 
+	var parent model.Comment
 	if input.ParentID != "" {
-		if pid, err := uuid.Parse(input.ParentID); err == nil {
-			comment.ParentID = &pid
+		pid, err := uuid.Parse(input.ParentID)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "无效的父评论ID"})
+			return
 		}
+		// Verify parent comment belongs to the same post
+		var parent model.Comment
+		if err := h.db.Where("id = ? AND post_id = ?", pid, post.ID).First(&parent).Error; err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "父评论不存在"})
+			return
+		}
+		comment.ParentID = &pid
 	}
 
 	if err := h.repo.Create(comment); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "提交评论失败"})
 		return
+	}
+
+	// Notify admin of new comment (fire-and-forget)
+	if h.emailService != nil {
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("[Email] panic in new comment notify: %v", r)
+				}
+			}()
+			h.emailService.SendNewCommentNotify(comment.Nickname, comment.Content, post.Title, post.Slug)
+		}()
+	}
+
+	// Notify parent commenter of reply (fire-and-forget)
+	if h.emailService != nil && comment.ParentID != nil && parent.Email != "" {
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("[Email] panic in reply notify: %v", r)
+				}
+			}()
+			h.emailService.SendReplyNotify(parent.Email, parent.Nickname, comment.Nickname, comment.Content, post.Title, post.Slug)
+		}()
 	}
 
 	c.JSON(http.StatusCreated, gin.H{"comment": comment})
@@ -138,12 +259,57 @@ func (h *CommentHandler) UpdateStatus(c *gin.Context) {
 		return
 	}
 
+	// Fetch comment before update for notification
+	var comment model.Comment
+	var post model.Post
+	if input.Status == "approved" && h.emailService != nil {
+		h.db.First(&comment, id)
+		h.db.Select("title, slug").First(&post, comment.PostID)
+	}
+
 	if err := h.repo.UpdateStatus(id, input.Status); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "更新状态失败"})
 		return
 	}
 
+	// Notify commenter when approved (fire-and-forget)
+	if input.Status == "approved" && h.emailService != nil && comment.Email != "" {
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("[Email] panic in comment approved notify: %v", r)
+				}
+			}()
+			h.emailService.SendCommentApprovedNotify(comment.Email, comment.Nickname, post.Title, post.Slug)
+		}()
+	}
+
 	c.JSON(http.StatusOK, gin.H{"message": "状态已更新"})
+}
+
+func (h *CommentHandler) BatchUpdateStatus(c *gin.Context) {
+	var input struct {
+		IDs    []string `json:"ids" binding:"required"`
+		Status string   `json:"status" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
+		return
+	}
+
+	validStatuses := map[string]bool{"approved": true, "rejected": true, "spam": true, "pending": true}
+	if !validStatuses[input.Status] {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的状态"})
+		return
+	}
+
+	for _, idStr := range input.IDs {
+		if id, err := uuid.Parse(idStr); err == nil {
+			h.repo.UpdateStatus(id, input.Status)
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "批量更新成功"})
 }
 
 func (h *CommentHandler) Delete(c *gin.Context) {

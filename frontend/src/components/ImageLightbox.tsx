@@ -57,7 +57,7 @@ export function ImageLightbox({ images, startIndex = 0, onClose }: ImageLightbox
       {/* Image */}
       <img
         src={images[index]}
-        alt=""
+        alt="查看大图"
         onClick={(e) => e.stopPropagation()}
         className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg"
       />

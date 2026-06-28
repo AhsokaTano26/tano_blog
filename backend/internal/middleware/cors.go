@@ -1,8 +1,11 @@
 package middleware
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -30,32 +33,60 @@ func CORS(allowedOrigins []string) gin.HandlerFunc {
 	}
 }
 
+// CSRF implements double-submit cookie pattern.
+// Safe methods (GET/HEAD/OPTIONS) are exempt.
+// On first request, a csrf_token cookie is set.
+// All mutating requests must include X-CSRF-Token header matching the cookie.
 func CSRF() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// Set CSRF cookie if not present
+		cookie, err := c.Cookie("csrf_token")
+		if err != nil || cookie == "" {
+			b := make([]byte, 32)
+			rand.Read(b)
+			cookie = base64.RawURLEncoding.EncodeToString(b)
+			secure := c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https"
+			c.SetCookie("csrf_token", cookie, int((24 * time.Hour).Seconds()), "/", "", secure, false)
+		}
+
+		// Skip validation for safe methods
 		if c.Request.Method == "GET" || c.Request.Method == "HEAD" || c.Request.Method == "OPTIONS" {
 			c.Next()
 			return
 		}
+
+		// Validate CSRF token
 		token := c.GetHeader("X-CSRF-Token")
-		cookie, err := c.Cookie("csrf_token")
-		if err != nil || token == "" || token != cookie {
-			// Only enforce for non-public routes in production
-			// For now, just pass through since we use JWT in cookies
-			c.Next()
+		if token == "" {
+			// Also check form value for non-JSON requests
+			token = c.PostForm("csrf_token")
+		}
+		if token == "" || token != cookie {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "CSRF 令牌无效"})
 			return
 		}
+
+		c.Next()
+	}
+}
+
+// SecurityHeaders adds common security headers to responses
+func SecurityHeaders() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Header("X-Content-Type-Options", "nosniff")
+		c.Header("X-Frame-Options", "DENY")
+		c.Header("Referrer-Policy", "strict-origin-when-cross-origin")
+		c.Header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
 		c.Next()
 	}
 }
 
 // GetToken extracts JWT from Cookie or Authorization header
 func GetToken(c *gin.Context) string {
-	// Try cookie first
 	token, err := c.Cookie("jwt")
 	if err == nil && token != "" {
 		return token
 	}
-	// Fallback to Authorization header
 	auth := c.GetHeader("Authorization")
 	if strings.HasPrefix(auth, "Bearer ") {
 		return strings.TrimPrefix(auth, "Bearer ")

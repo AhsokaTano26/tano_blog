@@ -12,6 +12,7 @@ type Config struct {
 	Database      DatabaseConfig
 	JWT           JWTConfig
 	Upload        UploadConfig
+	BackupDir     string
 	AdminPassword string
 }
 
@@ -38,18 +39,15 @@ type UploadConfig struct {
 func Load() *Config {
 	jwtSecret := os.Getenv("JWT_SECRET")
 	if jwtSecret == "" {
-		log.Println("WARNING: JWT_SECRET not set, using insecure default. Set JWT_SECRET in production!")
-		jwtSecret = "change-me-in-production"
+		log.Fatal("FATAL: JWT_SECRET environment variable is required")
 	}
 	dbDSN := os.Getenv("DB_DSN")
 	if dbDSN == "" {
-		log.Println("WARNING: DB_DSN not set, using default localhost connection.")
-		dbDSN = "host=localhost user=tano password=tano_blog_pass dbname=tano_blog port=5432 sslmode=disable"
+		log.Fatal("FATAL: DB_DSN environment variable is required")
 	}
 	adminPassword := os.Getenv("ADMIN_PASSWORD")
 	if adminPassword == "" {
-		log.Println("WARNING: ADMIN_PASSWORD not set, using default 'admin123'. Change this immediately!")
-		adminPassword = "admin123"
+		log.Fatal("FATAL: ADMIN_PASSWORD environment variable is required")
 	}
 
 	return &Config{
@@ -69,6 +67,7 @@ func Load() *Config {
 			Dir:   getEnv("UPLOAD_DIR", "./uploads"),
 			MaxMB: getEnvInt64("UPLOAD_MAX_MB", 10),
 		},
+		BackupDir:     getEnv("BACKUP_DIR", "./backups"),
 		AdminPassword: adminPassword,
 	}
 }

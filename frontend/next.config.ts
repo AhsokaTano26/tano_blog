@@ -28,7 +28,7 @@ const nextConfig: NextConfig = {
   },
   async rewrites() {
     return [
-      { source: '/upload/:path*', destination: `${API_URL}/upload/:path*` },
+      { source: '/uploads/:path*', destination: `${API_URL}/uploads/:path*` },
       { source: '/rss.xml', destination: `${API_URL}/rss.xml` },
       { source: '/sitemap.xml', destination: `${API_URL}/sitemap.xml` },
     ];

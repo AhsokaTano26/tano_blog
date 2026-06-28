@@ -1,12 +1,15 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
+import Link from 'next/link';
 import { useTheme } from '@/lib/theme';
-import { Menu, X, Sun, Moon } from 'lucide-react';
+import { Menu, X, Sun, Moon, Palette } from 'lucide-react';
 
 export function Header() {
   const { theme, hue, setTheme, setHue } = useTheme();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [hueOpen, setHueOpen] = useState(false);
+  const hueRef = useRef<HTMLDivElement>(null);
 
   const navLinks = [
     { href: '/', label: '首页' },
@@ -15,17 +18,20 @@ export function Header() {
     { href: '/admin', label: '管理' },
   ];
 
-  const huePresets = [
-    { value: 0, label: '红' },
-    { value: 200, label: '蓝绿' },
-    { value: 225, label: '蓝' },
-    { value: 250, label: '青' },
-    { value: 280, label: '紫' },
-    { value: 345, label: '粉' },
-  ];
+  // Close hue panel on outside click
+  useEffect(() => {
+    if (!hueOpen) return;
+    function handleClick(e: MouseEvent) {
+      if (hueRef.current && !hueRef.current.contains(e.target as Node)) {
+        setHueOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [hueOpen]);
 
   return (
-    <nav className="fixed top-3 left-1/2 -translate-x-1/2 z-50 flex items-center gap-1 px-3 py-1.5 rounded-2xl max-w-[92vw]"
+    <div className="fixed top-3 left-1/2 -translate-x-1/2 z-50 flex items-center gap-1 px-3 py-1.5 rounded-2xl max-w-[92vw]"
       style={{
         background: 'var(--glass-bg)',
         border: '1px solid var(--glass-border)',
@@ -34,43 +40,69 @@ export function Header() {
         boxShadow: '0 4px 24px -4px rgba(0, 0, 0, 0.2), inset 0 1px 0 hsla(0, 0%, 100%, 0.05)',
       }}>
       {/* Logo */}
-      <a href="/" className="flex items-center gap-2 mr-2 group">
-        <img src="/aimi.png" alt="" className="w-7 h-7 rounded-lg object-cover transition-transform group-hover:scale-110" />
+      <Link href="/" className="flex items-center gap-2 mr-2 group">
+        <img src="/aimi.png" alt="Tano" className="w-7 h-7 rounded-lg object-cover transition-transform group-hover:scale-110" />
         <span className="font-bold text-sm hidden sm:inline" style={{ color: 'var(--primary)' }}>
           朝花夕拾录
         </span>
-      </a>
+      </Link>
 
       {/* Nav links */}
       <nav className="hidden md:flex items-center gap-0.5">
         {navLinks.map((link) => (
-          <a key={link.href} href={link.href}
+          <Link key={link.href} href={link.href}
             className="px-3 py-1.5 rounded-xl text-sm transition-all hover:bg-white/5 dark:hover:bg-white/5"
             style={{ color: 'var(--text-secondary)' }}>
             {link.label}
-          </a>
+          </Link>
         ))}
       </nav>
 
       {/* Divider */}
       <div className="hidden md:block w-px h-5 mx-1" style={{ background: 'var(--glass-border)' }} />
 
-      {/* Hue picker */}
-      <div className="hidden md:flex items-center gap-1">
-        {huePresets.map((preset) => (
-          <button
-            key={preset.value}
-            onClick={() => setHue(preset.value)}
-            className="w-5 h-5 rounded-full transition-all hover:scale-125"
+      {/* Hue picker button + slider */}
+      <div className="hidden md:block relative" ref={hueRef}>
+        <button
+          onClick={() => setHueOpen(!hueOpen)}
+          className="w-7 h-7 rounded-full transition-all hover:scale-110 flex items-center justify-center"
+          style={{
+            background: `hsl(${hue}, 60%, 55%)`,
+            boxShadow: `0 0 8px hsla(${hue}, 60%, 55%, 0.4)`,
+          }}
+          title="主题色"
+          aria-label="主题色"
+        >
+          <Palette className="w-3.5 h-3.5 text-white" />
+        </button>
+
+        {hueOpen && (
+          <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3 rounded-xl p-3 w-48"
             style={{
-              background: `hsl(${preset.value}, 60%, 55%)`,
-              boxShadow: hue === preset.value ? `0 0 8px hsl(${preset.value}, 60%, 55%)` : 'none',
-              outline: hue === preset.value ? '2px solid hsla(0, 0%, 100%, 0.3)' : 'none',
-              outlineOffset: '2px',
-            }}
-            title={preset.label}
-          />
-        ))}
+              background: 'var(--glass-bg)',
+              border: '1px solid var(--glass-border)',
+              backdropFilter: 'blur(var(--glass-blur))',
+              WebkitBackdropFilter: 'blur(var(--glass-blur))',
+              boxShadow: '0 8px 32px -4px rgba(0, 0, 0, 0.3)',
+            }}>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs" style={{ color: 'var(--text-info)' }}>主题色</span>
+              <span className="text-xs font-mono" style={{ color: 'var(--text-secondary)' }}>{hue}°</span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={360}
+              value={hue}
+              onChange={(e) => setHue(parseInt(e.target.value))}
+              className="w-full h-2 rounded-full appearance-none cursor-pointer"
+              style={{
+                background: `linear-gradient(to right, hsl(0,60%,55%), hsl(60,60%,55%), hsl(120,60%,55%), hsl(180,60%,55%), hsl(240,60%,55%), hsl(300,60%,55%), hsl(360,60%,55%))`,
+                accentColor: `hsl(${hue}, 60%, 55%)`,
+              }}
+            />
+          </div>
+        )}
       </div>
 
       {/* Divider */}
@@ -108,30 +140,35 @@ export function Header() {
           }}>
           <div className="space-y-1">
             {navLinks.map((link) => (
-              <a key={link.href} href={link.href} onClick={() => setMenuOpen(false)}
+              <Link key={link.href} href={link.href} onClick={() => setMenuOpen(false)}
                 className="block px-3 py-2 rounded-xl text-sm transition-all hover:bg-white/5"
                 style={{ color: 'var(--text-secondary)' }}>
                 {link.label}
-              </a>
+              </Link>
             ))}
-            <div className="border-t my-2 pt-2" style={{ borderColor: 'var(--glass-border)' }}>
-              <div className="flex gap-2 px-3 flex-wrap">
-                {huePresets.map((preset) => (
-                  <button
-                    key={preset.value}
-                    onClick={() => setHue(preset.value)}
-                    className="w-6 h-6 rounded-full transition-all hover:scale-125"
-                    style={{
-                      background: `hsl(${preset.value}, 60%, 55%)`,
-                      boxShadow: hue === preset.value ? `0 0 6px hsl(${preset.value}, 60%, 55%)` : 'none',
-                    }}
-                  />
-                ))}
+            <div className="border-t my-2 pt-3" style={{ borderColor: 'var(--glass-border)' }}>
+              <div className="px-3">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs" style={{ color: 'var(--text-info)' }}>主题色</span>
+                  <span className="text-xs font-mono" style={{ color: 'var(--text-secondary)' }}>{hue}°</span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={360}
+                  value={hue}
+                  onChange={(e) => setHue(parseInt(e.target.value))}
+                  className="w-full h-2 rounded-full appearance-none cursor-pointer"
+                  style={{
+                    background: `linear-gradient(to right, hsl(0,60%,55%), hsl(60,60%,55%), hsl(120,60%,55%), hsl(180,60%,55%), hsl(240,60%,55%), hsl(300,60%,55%), hsl(360,60%,55%))`,
+                    accentColor: `hsl(${hue}, 60%, 55%)`,
+                  }}
+                />
               </div>
             </div>
           </div>
         </div>
       )}
-    </nav>
+    </div>
   );
 }

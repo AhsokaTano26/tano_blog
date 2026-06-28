@@ -1,6 +1,8 @@
 package middleware
 
 import (
+	"fmt"
+	"os"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -25,7 +27,7 @@ func AccessLogger(db *gorm.DB) gin.HandlerFunc {
 
 		elapsed := time.Since(start)
 		ua := c.GetHeader("User-Agent")
-		browser, os, device := utils.ParseUserAgent(ua)
+		browser, osName, device := utils.ParseUserAgent(ua)
 
 		var userID *uuid.UUID
 		if uid, exists := c.Get("user_id"); exists {
@@ -50,11 +52,13 @@ func AccessLogger(db *gorm.DB) gin.HandlerFunc {
 			Referer:      c.GetHeader("Referer"),
 			DeviceType:   device,
 			Browser:      browser,
-			OS:           os,
+			OS:           osName,
 			UserID:       userID,
 			SessionID:    sid,
 		}
 
-		db.Create(&log)
+		if err := db.Create(&log).Error; err != nil {
+			fmt.Fprintf(os.Stderr, "access log write error: %v\n", err)
+		}
 	}
 }

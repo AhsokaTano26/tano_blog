@@ -25,7 +25,6 @@ export default function LoginPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(true);
   const [totpCode, setTotpCode] = useState('');
   const [totpRequired, setTotpRequired] = useState(false);
   const [userId, setUserId] = useState('');
@@ -149,15 +148,6 @@ export default function LoginPage() {
                   </div>
                 </div>
 
-                <div className="mb-6">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" checked={rememberMe}
-                      onChange={e => setRememberMe(e.target.checked)}
-                      className="w-4 h-4 rounded" />
-                    <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>保持登录会话</span>
-                  </label>
-                </div>
-
                 <button type="submit" disabled={loading}
                   className="w-full py-2.5 rounded-xl text-sm font-medium text-white transition-all hover:opacity-90 disabled:opacity-50"
                   style={{ background: 'var(--primary)', boxShadow: '0 0 16px var(--primary-glow)' }}>
@@ -177,6 +167,12 @@ export default function LoginPage() {
                 <KeyRound className="w-4 h-4" />
                 通行密钥
               </button>
+
+              <div className="mt-4 text-center">
+                <a href="/admin/forgot-password" className="text-xs hover:underline" style={{ color: 'var(--text-info)' }}>
+                  忘记密码？
+                </a>
+              </div>
             </>
           ) : (
             <div>

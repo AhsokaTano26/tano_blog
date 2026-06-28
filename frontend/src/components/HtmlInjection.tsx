@@ -19,15 +19,20 @@ function useInjectionConfig() {
       setConfig(cachedConfig);
       return;
     }
-    api.admin.config.get().then(res => {
-      const c = res.config || {};
-      cachedConfig = {
-        head_injection: c.head_injection || '',
-        content_head_injection: c.content_head_injection || '',
-        footer_injection: c.footer_injection || '',
-      };
-      setConfig(cachedConfig);
-    }).catch(() => {});
+    (async () => {
+      try {
+        const res = await api.getPublicConfig();
+        const c = res.config || {};
+        cachedConfig = {
+          head_injection: c.head_injection || '',
+          content_head_injection: c.content_head_injection || '',
+          footer_injection: c.footer_injection || '',
+        };
+        setConfig(cachedConfig);
+      } catch {
+        // Config unavailable (backend offline or endpoint missing) — silently ignore
+      }
+    })();
   }, []);
 
   return config;

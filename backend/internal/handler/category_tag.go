@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -33,18 +34,32 @@ func (h *CategoryHandler) GetBySlug(c *gin.Context) {
 		return
 	}
 
-	var posts []model.Post
-	h.db.Where("category_id = ? AND status = ?", cat.ID, "published").
-		Select("id, title, slug, excerpt, cover_image, published_at, view_count").
-		Order("published_at DESC").Find(&posts)
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
+	if page < 1 { page = 1 }
+	if pageSize < 1 || pageSize > 50 { pageSize = 10 }
 
-	c.JSON(http.StatusOK, gin.H{"category": cat, "posts": posts})
+	var total int64
+	query := h.db.Model(&model.Post{}).Where("category_id = ? AND status = ?", cat.ID, "published")
+	query.Count(&total)
+
+	var posts []model.Post
+	query.Select("id, title, slug, excerpt, cover_image, published_at, view_count").
+		Order("published_at DESC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&posts)
+
+	c.JSON(http.StatusOK, gin.H{
+		"category": cat,
+		"posts":    posts,
+		"total":    total,
+		"page":     page,
+		"size":     pageSize,
+	})
 }
 
 func (h *CategoryHandler) Create(c *gin.Context) {
 	var input struct {
 		Name        string `json:"name" binding:"required"`
-		Slug        string `json:"slug" binding:"required"`
+		Slug        string `json:"slug"`
 		Description string `json:"description"`
 		SortOrder   int    `json:"sort_order"`
 	}
@@ -53,10 +68,15 @@ func (h *CategoryHandler) Create(c *gin.Context) {
 		return
 	}
 
+	slug := input.Slug
+	if slug == "" {
+		slug = uuid.New().String()[:8]
+	}
+
 	cat := &model.Category{
 		ID:          uuid.New(),
 		Name:        input.Name,
-		Slug:        input.Slug,
+		Slug:        slug,
 		Description: input.Description,
 		SortOrder:   input.SortOrder,
 	}
@@ -120,7 +140,10 @@ func (h *CategoryHandler) Delete(c *gin.Context) {
 		return
 	}
 
-	h.db.Delete(&model.Category{}, id)
+	if err := h.db.Delete(&model.Category{}, id).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "删除失败"})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"message": "已删除"})
 }
 
@@ -146,26 +169,46 @@ func (h *TagHandler) GetBySlug(c *gin.Context) {
 		return
 	}
 
-	var posts []model.Post
-	h.db.Joins("JOIN post_tags ON post_tags.post_id = posts.id").
-		Where("post_tags.tag_id = ? AND posts.status = ?", tag.ID, "published").
-		Select("posts.id, posts.title, posts.slug, posts.excerpt, posts.cover_image, posts.published_at, posts.view_count").
-		Order("posts.published_at DESC").Find(&posts)
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
+	if page < 1 { page = 1 }
+	if pageSize < 1 || pageSize > 50 { pageSize = 10 }
 
-	c.JSON(http.StatusOK, gin.H{"tag": tag, "posts": posts})
+	var total int64
+	query := h.db.Model(&model.Post{}).
+		Joins("JOIN post_tags ON post_tags.post_id = posts.id").
+		Where("post_tags.tag_id = ? AND posts.status = ?", tag.ID, "published")
+	query.Count(&total)
+
+	var posts []model.Post
+	query.Select("posts.id, posts.title, posts.slug, posts.excerpt, posts.cover_image, posts.published_at, posts.view_count").
+		Order("posts.published_at DESC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&posts)
+
+	c.JSON(http.StatusOK, gin.H{
+		"tag":   tag,
+		"posts": posts,
+		"total": total,
+		"page":  page,
+		"size":  pageSize,
+	})
 }
 
 func (h *TagHandler) Create(c *gin.Context) {
 	var input struct {
 		Name string `json:"name" binding:"required"`
-		Slug string `json:"slug" binding:"required"`
+		Slug string `json:"slug"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
 		return
 	}
 
-	tag := &model.Tag{ID: uuid.New(), Name: input.Name, Slug: input.Slug}
+	slug := input.Slug
+	if slug == "" {
+		slug = uuid.New().String()[:8]
+	}
+
+	tag := &model.Tag{ID: uuid.New(), Name: input.Name, Slug: slug}
 	if err := h.db.Create(tag).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建标签失败"})
 		return
@@ -215,6 +258,9 @@ func (h *TagHandler) Delete(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
 		return
 	}
-	h.db.Delete(&model.Tag{}, id)
+	if err := h.db.Delete(&model.Tag{}, id).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "删除失败"})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"message": "已删除"})
 }

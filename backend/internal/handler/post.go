@@ -49,6 +49,8 @@ func (h *PostHandler) ListPublic(c *gin.Context) {
 		CoverImage  string                 `json:"cover_image"`
 		ViewCount   int64                  `json:"view_count"`
 		PublishedAt *string                `json:"published_at"`
+		AuthorName  string                 `json:"author_name"`
+		Author      map[string]interface{} `json:"author,omitempty"`
 		Category    map[string]interface{} `json:"category,omitempty"`
 		Tags        []map[string]interface{} `json:"tags,omitempty"`
 	}
@@ -62,6 +64,7 @@ func (h *PostHandler) ListPublic(c *gin.Context) {
 			Excerpt:    p.Excerpt,
 			CoverImage: p.CoverImage,
 			ViewCount:  p.ViewCount,
+			AuthorName: p.AuthorName,
 		}
 		if p.PublishedAt != nil {
 			s := p.PublishedAt.Format("2006-01-02T15:04:05Z")
@@ -72,6 +75,13 @@ func (h *PostHandler) ListPublic(c *gin.Context) {
 				"id":   p.Category.ID,
 				"name": p.Category.Name,
 				"slug": p.Category.Slug,
+			}
+		}
+		if p.Author.ID != uuid.Nil {
+			item.Author = map[string]interface{}{
+				"username":     p.Author.Username,
+				"display_name": p.Author.DisplayName,
+				"avatar_url":   p.Author.AvatarURL,
 			}
 		}
 		for _, t := range p.Tags {
@@ -115,11 +125,56 @@ func (h *PostHandler) GetBySlug(c *gin.Context) {
 	})
 }
 
+// GetByPreviewToken returns a draft post by preview token
+func (h *PostHandler) GetByPreviewToken(c *gin.Context) {
+	token := c.Query("token")
+	if token == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "缺少预览令牌"})
+		return
+	}
+
+	post, err := h.repo.GetByPreviewToken(token)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "预览链接无效或已过期"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"post": post})
+}
+
+// GeneratePreviewToken generates a preview token for a draft post
+func (h *PostHandler) GeneratePreviewToken(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
+		return
+	}
+
+	token := uuid.New().String()[:16]
+	if err := h.repo.Update(id, map[string]interface{}{"preview_token": token}); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "生成预览链接失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"token": token})
+}
+
 // TopPosts returns top/pinned posts
 func (h *PostHandler) TopPosts(c *gin.Context) {
 	posts, err := h.repo.TopPosts()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取置顶文章失败"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": posts})
+}
+
+// TopViewed returns most viewed posts
+func (h *PostHandler) TopViewed(c *gin.Context) {
+	limit := 10
+	posts, err := h.repo.TopViewed(limit)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取热门文章失败"})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"items": posts})
@@ -133,6 +188,23 @@ func (h *PostHandler) Archive(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"items": items})
+}
+
+// AdminGet returns a single post by ID for admin
+func (h *PostHandler) AdminGet(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
+		return
+	}
+
+	post, err := h.repo.GetByID(id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "文章不存在"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"post": post})
 }
 
 // AdminList returns all posts (including drafts) for admin
@@ -173,15 +245,17 @@ func (h *PostHandler) Create(c *gin.Context) {
 		Status       string   `json:"status"`
 		IsTop        bool     `json:"is_top"`
 		AllowComment bool     `json:"allow_comment"`
+		AuthorName   string   `json:"author_name"`
 		CategoryID   string   `json:"category_id"`
 		TagIDs       []string `json:"tag_ids"`
+		ScheduledAt  string   `json:"scheduled_at"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
 		return
 	}
 
-	authorID, _ := uuid.Parse(c.GetString("user_id"))
+	editorID, _ := uuid.Parse(c.GetString("user_id"))
 	post := &model.Post{}
 	// Map input to post model
 	post.Title = input.Title
@@ -195,12 +269,21 @@ func (h *PostHandler) Create(c *gin.Context) {
 		now := time.Now()
 		post.PublishedAt = &now
 	}
+	// Handle scheduled publish
+	if input.ScheduledAt != "" && post.Status == "draft" {
+		if t, err := time.Parse("2006-01-02T15:04", input.ScheduledAt); err == nil {
+			post.PublishedAt = &t
+		}
+	}
 	post.IsTop = input.IsTop
 	post.AllowComment = true
 	if !input.AllowComment {
 		post.AllowComment = false
 	}
-	post.AuthorID = authorID
+	// Author is a free-text field
+	post.AuthorName = input.AuthorName
+	// Editor is always the current user
+	post.EditorID = &editorID
 	if input.CategoryID != "" {
 		if cid, err := uuid.Parse(input.CategoryID); err == nil {
 			post.CategoryID = &cid
@@ -246,12 +329,31 @@ func (h *PostHandler) Update(c *gin.Context) {
 		Status       string   `json:"status"`
 		IsTop        *bool    `json:"is_top"`
 		AllowComment *bool    `json:"allow_comment"`
+		AuthorName   *string  `json:"author_name"`
 		CategoryID   *string  `json:"category_id"`
 		TagIDs       []string `json:"tag_ids"`
+		ScheduledAt  *string  `json:"scheduled_at"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
 		return
+	}
+
+	// Save revision before updating
+	if input.Title != "" || input.Content != "" || input.Excerpt != "" {
+		currentPost, err := h.repo.GetByID(id)
+		if err == nil {
+			editorID, _ := uuid.Parse(c.GetString("user_id"))
+			revision := &model.PostRevision{
+				ID:       uuid.New(),
+				PostID:   id,
+				Title:    currentPost.Title,
+				Content:  currentPost.Content,
+				Excerpt:  currentPost.Excerpt,
+				EditorID: &editorID,
+			}
+			h.repo.SaveRevision(revision)
+		}
 	}
 
 	updates := map[string]interface{}{}
@@ -261,14 +363,27 @@ func (h *PostHandler) Update(c *gin.Context) {
 	if input.Slug != "" {
 		updates["slug"] = input.Slug
 	}
-	updates["content"] = input.Content
-	updates["excerpt"] = input.Excerpt
-	updates["cover_image"] = input.CoverImage
+	if input.Content != "" {
+		updates["content"] = input.Content
+	}
+	if input.Excerpt != "" {
+		updates["excerpt"] = input.Excerpt
+	}
+	if input.CoverImage != "" {
+		updates["cover_image"] = input.CoverImage
+	}
 	if input.Status != "" {
 		updates["status"] = input.Status
 		if input.Status == "published" {
 			now := time.Now()
 			updates["published_at"] = now
+		}
+	}
+	if input.ScheduledAt != nil {
+		if *input.ScheduledAt == "" {
+			updates["published_at"] = nil
+		} else if t, err := time.Parse("2006-01-02T15:04", *input.ScheduledAt); err == nil {
+			updates["published_at"] = t
 		}
 	}
 	if input.IsTop != nil {
@@ -277,12 +392,21 @@ func (h *PostHandler) Update(c *gin.Context) {
 	if input.AllowComment != nil {
 		updates["allow_comment"] = *input.AllowComment
 	}
+	if input.AuthorName != nil {
+		updates["author_name"] = *input.AuthorName
+	}
 	if input.CategoryID != nil {
 		if *input.CategoryID == "" {
 			updates["category_id"] = nil
 		} else if cid, err := uuid.Parse(*input.CategoryID); err == nil {
 			updates["category_id"] = cid
 		}
+	}
+
+	// Set editor to current user
+	editorID, _ := uuid.Parse(c.GetString("user_id"))
+	if editorID != uuid.Nil {
+		updates["editor_id"] = editorID
 	}
 
 	// Handle tags separately
@@ -380,4 +504,83 @@ func (h *PostHandler) ToggleTop(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "已更新"})
+}
+
+// ListRevisions returns revision history for a post
+func (h *PostHandler) ListRevisions(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
+		return
+	}
+
+	revisions, err := h.repo.ListRevisions(id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取修订历史失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"items": revisions})
+}
+
+// RestoreRevision restores a post to a specific revision
+func (h *PostHandler) RestoreRevision(c *gin.Context) {
+	revID, err := uuid.Parse(c.Param("revId"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
+		return
+	}
+
+	rev, err := h.repo.GetRevision(revID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "修订版本不存在"})
+		return
+	}
+
+	editorID, _ := uuid.Parse(c.GetString("user_id"))
+
+	// Save current state as a new revision before restoring
+	currentPost, err := h.repo.GetByID(rev.PostID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "文章不存在"})
+		return
+	}
+
+	revision := &model.PostRevision{
+		ID:       uuid.New(),
+		PostID:   currentPost.ID,
+		Title:    currentPost.Title,
+		Content:  currentPost.Content,
+		Excerpt:  currentPost.Excerpt,
+		EditorID: &editorID,
+	}
+	h.repo.SaveRevision(revision)
+
+	// Restore
+	updates := map[string]interface{}{
+		"title":     rev.Title,
+		"content":   rev.Content,
+		"excerpt":   rev.Excerpt,
+		"editor_id": editorID,
+	}
+	if err := h.repo.Update(rev.PostID, updates); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "恢复失败"})
+		return
+	}
+
+	post, _ := h.repo.GetByID(rev.PostID)
+	c.JSON(http.StatusOK, gin.H{"post": post})
+}
+
+// Export exports all posts as JSON for backup
+func (h *PostHandler) Export(c *gin.Context) {
+	posts, err := h.repo.ExportAll()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "导出失败"})
+		return
+	}
+
+	c.Header("Content-Type", "application/json")
+	c.Header("Content-Disposition", "attachment; filename=posts_backup.json")
+	c.JSON(http.StatusOK, gin.H{"posts": posts, "exported_at": time.Now().Format(time.RFC3339)})
 }

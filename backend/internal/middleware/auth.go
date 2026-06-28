@@ -52,6 +52,9 @@ func OptionalAuth(cfg *config.JWTConfig) gin.HandlerFunc {
 		}
 		claims := &jwtClaims{}
 		token, err := jwt.ParseWithClaims(tokenStr, claims, func(t *jwt.Token) (interface{}, error) {
+			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
+			}
 			return []byte(cfg.Secret), nil
 		})
 		if err == nil && token.Valid {
