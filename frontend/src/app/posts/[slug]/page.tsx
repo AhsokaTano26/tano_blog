@@ -12,7 +12,7 @@ import rehypeRaw from 'rehype-raw';
 import DOMPurify from 'dompurify';
 import 'katex/dist/katex.min.css';
 import { api } from '@/lib/api';
-import { Calendar, Eye, Copy, Check, BookOpen, Shield, User, Edit3 } from 'lucide-react';
+import { Calendar, Eye, Copy, Check, BookOpen, Shield, User, Edit3, Bookmark } from 'lucide-react';
 import { ContentHeadInjection } from '@/components/HtmlInjection';
 import { ReadingProgress } from '@/components/ReadingProgress';
 import { ImageLightbox } from '@/components/ImageLightbox';
@@ -109,6 +109,8 @@ function SharePanel({ url, title }: { url: string; title: string }) {
   );
 }
 
+const EMOJI_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
+
 /* ── Mermaid Diagram Renderer ── */
 
 const mermaidCache = new Map<string, string>();
@@ -144,7 +146,13 @@ function MermaidDiagram({ children }: { children: string }) {
 }
 
 /* ── Recursive Comment Item ── */
-function CommentItem({ comment, depth, onReply }: { comment: any; depth: number; onReply: (c: any) => void }) {
+function CommentItem({ comment, depth, onReply, reactions, onReaction }: {
+  comment: any;
+  depth: number;
+  onReply: (c: any) => void;
+  reactions: Record<string, {counts: Record<string, number>, user: string[]}>;
+  onReaction: (commentId: string, emoji: string) => void;
+}) {
   return (
     <div className={depth > 0 ? 'ml-6 pl-4' : ''} style={depth > 0 ? { borderLeft: '2px solid var(--glass-border)' } : undefined}>
       <div className="glass-card rounded-2xl p-4">
@@ -156,10 +164,34 @@ function CommentItem({ comment, depth, onReply }: { comment: any; depth: number;
             style={{ color: 'var(--primary)' }}>回复</button>
         </div>
         <p className="whitespace-pre-wrap text-sm" style={{ color: 'var(--text-secondary)' }}>{comment.content}</p>
+        {/* Reaction buttons */}
+        <div className="flex items-center gap-1 mt-2">
+          {EMOJI_REACTIONS.map(emoji => {
+            const commentReactions = reactions?.[comment.id];
+            const count = commentReactions?.counts?.[emoji] || 0;
+            const isActive = commentReactions?.user?.includes(emoji);
+            return (
+              <button
+                key={emoji}
+                onClick={() => onReaction(comment.id, emoji)}
+                className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-lg text-sm transition-all ${
+                  isActive ? 'bg-opacity-20' : 'opacity-60 hover:opacity-100'
+                }`}
+                style={{
+                  background: isActive ? 'var(--primary-sub)' : 'var(--btn-card-bg)',
+                  color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
+                }}
+              >
+                <span>{emoji}</span>
+                {count > 0 && <span className="text-xs font-medium">{count}</span>}
+              </button>
+            );
+          })}
+        </div>
       </div>
       {comment.children?.map((child: any) => (
         <div key={child.id} className="mt-2">
-          <CommentItem comment={child} depth={depth + 1} onReply={onReply} />
+          <CommentItem comment={child} depth={depth + 1} onReply={onReply} reactions={reactions} onReaction={onReaction} />
         </div>
       ))}
     </div>
@@ -181,6 +213,9 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
   const [relatedPosts, setRelatedPosts] = useState<any[]>([]);
   const [tocItems, setTocItems] = useState<TocItem[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [reactions, setReactions] = useState<Record<string, {counts: Record<string, number>, user: string[]}>>({});
+  const [showPreview, setShowPreview] = useState(false);
+  const [adjacentPosts, setAdjacentPosts] = useState<{ prev: any; next: any } | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -189,13 +224,13 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
         const res = await api.getPost(slug);
         setPost(res.post);
         loadComments(slug);
-        // Load related posts
-        if (res.post?.category?.slug) {
-          api.getCategory(res.post.category.slug).then(catRes => {
-            const related = (catRes.posts || []).filter((p: any) => p.slug !== slug).slice(0, 3);
-            setRelatedPosts(related);
-          }).catch(() => {});
-        }
+        // Load adjacent and related posts in parallel
+        api.getAdjacentPosts(slug).then(adj => {
+          setAdjacentPosts(adj);
+        }).catch(() => {});
+        api.getRelatedPosts(slug).then(rel => {
+          setRelatedPosts(rel.items || []);
+        }).catch(() => {});
       } catch (e) {
         console.error(e);
       }
@@ -215,6 +250,16 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
     try {
       const res = await api.getComments(postId);
       setComments(res.items);
+      // Initialize reactions state
+      const reactionsMap: Record<string, {counts: Record<string, number>, user: string[]}> = {};
+      function extractReactions(items: any[]) {
+        for (const c of items) {
+          reactionsMap[c.id] = { counts: c.reactions || {}, user: c.user_emojis || [] };
+          if (c.children) extractReactions(c.children);
+        }
+      }
+      extractReactions(res.items);
+      setReactions(reactionsMap);
     } catch (e) { /* comments may be disabled */ }
   }
 
@@ -230,6 +275,35 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
       loadComments(slug);
     } catch (err: any) {
       setCommentError(err.message);
+    }
+  }
+
+  async function handleToggleReaction(commentId: string, emoji: string) {
+    try {
+      const res = await api.toggleReaction(slug, commentId, emoji);
+      setReactions(prev => {
+        const next = { ...prev };
+        const current = next[commentId] || { counts: {}, user: [] };
+        const newCounts = { ...current.counts };
+        const newUser = [...current.user];
+
+        if (res.active) {
+          // Add reaction
+          newCounts[emoji] = (newCounts[emoji] || 0) + 1;
+          if (!newUser.includes(emoji)) newUser.push(emoji);
+        } else {
+          // Remove reaction
+          newCounts[emoji] = Math.max(0, (newCounts[emoji] || 0) - 1);
+          const idx = newUser.indexOf(emoji);
+          if (idx >= 0) newUser.splice(idx, 1);
+          if (newCounts[emoji] === 0) delete newCounts[emoji];
+        }
+
+        next[commentId] = { counts: newCounts, user: newUser };
+        return next;
+      });
+    } catch (e) {
+      // Ignore reaction errors
     }
   }
 
@@ -435,7 +509,7 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
           </div>
 
           {/* Category & Tags */}
-          <div className="flex flex-wrap items-center gap-2 mb-8">
+          <div className="flex flex-wrap items-center gap-2 mb-4">
             {post.category && (
               <Link href={`/categories/${post.category.slug}`}
                 className="px-3 py-1 rounded-lg text-xs font-medium transition-all hover:opacity-80"
@@ -451,6 +525,16 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
               </Link>
             ))}
           </div>
+
+          {/* Series badge */}
+          {post.series?.length > 0 && (
+            <Link href={`/series/${post.series[0].slug}`}
+              className="flex items-center gap-1 text-sm mb-6"
+              style={{ color: 'var(--primary)' }}>
+              <Bookmark className="w-3.5 h-3.5" />
+              {post.series[0].name}
+            </Link>
+          )}
 
           {/* Markdown Content */}
           <div ref={contentRef} className="prose dark:prose-invert prose-sm sm:prose-base max-w-none mb-10">
@@ -517,22 +601,61 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
           </div>
         </article>
 
-        {/* Related Posts */}
+        {/* Adjacent Posts Navigation */}
+        {(adjacentPosts?.prev || adjacentPosts?.next) && (
+          <div className="flex items-center justify-between gap-4 mb-6">
+            <div className="flex-1">
+              {adjacentPosts?.prev ? (
+                <Link href={`/posts/${adjacentPosts.prev.slug}`}
+                  className="block glass-card rounded-2xl p-4 transition-all hover:translate-y-[-2px]">
+                  <div className="text-xs mb-1" style={{ color: 'var(--text-info)' }}>← 上一篇</div>
+                  <div className="text-sm font-medium line-clamp-1" style={{ color: 'var(--text-primary)' }}>
+                    {adjacentPosts.prev.title}
+                  </div>
+                </Link>
+              ) : <div />}
+            </div>
+            <div className="flex-1 text-right">
+              {adjacentPosts?.next ? (
+                <Link href={`/posts/${adjacentPosts.next.slug}`}
+                  className="block glass-card rounded-2xl p-4 transition-all hover:translate-y-[-2px]">
+                  <div className="text-xs mb-1" style={{ color: 'var(--text-info)' }}>下一篇 →</div>
+                  <div className="text-sm font-medium line-clamp-1" style={{ color: 'var(--text-primary)' }}>
+                    {adjacentPosts.next.title}
+                  </div>
+                </Link>
+              ) : <div />}
+            </div>
+          </div>
+        )}
+
+        {/* Related Posts (tag-based) */}
         {relatedPosts.length > 0 && (
           <div className="mt-10">
-            <h2 className="text-xl font-bold mb-4" style={{ color: 'var(--text-primary)' }}>相关文章</h2>
-            <div className="space-y-3">
-              {relatedPosts.map((rp: any) => (
+            <h2 className="text-xl font-bold mb-4" style={{ color: 'var(--text-primary)' }}>猜你喜欢</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {relatedPosts.slice(0, 6).map((rp: any) => (
                 <Link
                   key={rp.id}
                   href={`/posts/${rp.slug}`}
-                  className="block card-base rounded-2xl p-4 transition-all hover:translate-y-[-2px]"
-                  style={{ background: 'var(--card-bg)' }}
+                  className="glass-card rounded-2xl overflow-hidden transition-all hover:translate-y-[-2px]"
                 >
-                  <h3 className="font-bold" style={{ color: 'var(--text-primary)' }}>{rp.title}</h3>
-                  {rp.excerpt && (
-                    <p className="mt-1 text-sm line-clamp-2" style={{ color: 'var(--text-secondary)' }}>{rp.excerpt}</p>
+                  {rp.cover_image && (
+                    <img src={rp.cover_image} alt={rp.title} className="w-full h-32 object-cover" />
                   )}
+                  <div className="p-3">
+                    <h3 className="text-sm font-bold line-clamp-2" style={{ color: 'var(--text-primary)' }}>
+                      {rp.title}
+                    </h3>
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      {rp.tags?.slice(0, 3).map((tag: any) => (
+                        <span key={tag.id} className="px-1.5 py-0.5 text-xs rounded"
+                          style={{ background: 'var(--btn-card-bg)', color: 'var(--text-secondary)' }}>
+                          #{tag.name}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
                 </Link>
               ))}
             </div>
@@ -552,7 +675,7 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
               <CommentItem key={comment.id} comment={comment} depth={0} onReply={(c: any) => {
                 setReplyTo(c);
                 setCommentForm(prev => ({ ...prev, parent_id: c.id }));
-              }} />
+              }} reactions={reactions} onReaction={handleToggleReaction} />
             ))}
             {comments.length === 0 && (
               <p className="text-sm" style={{ color: 'var(--text-info)' }}>暂无评论</p>
@@ -603,6 +726,27 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
               placeholder="评论内容 *" required rows={4}
               className="w-full px-3 py-2.5 rounded-xl text-sm outline-none glass-card resize-none"
               style={{ color: 'var(--text-primary)' }} />
+            {/* Comment preview toggle */}
+            {commentForm.content && (
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setShowPreview(!showPreview)}
+                  className="text-xs px-3 py-1 rounded-lg btn-glass transition-all mb-2"
+                  style={{ color: showPreview ? 'var(--primary)' : 'var(--text-secondary)' }}
+                >
+                  {showPreview ? '关闭预览' : '预览评论'}
+                </button>
+                {showPreview && (
+                  <div className="prose dark:prose-invert prose-sm max-w-none rounded-xl p-4 overflow-y-auto"
+                    style={{ maxHeight: '200px', background: 'var(--card-bg)', border: '1px solid var(--glass-border)' }}>
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {commentForm.content}
+                    </ReactMarkdown>
+                  </div>
+                )}
+              </div>
+            )}
             <button type="submit"
               className="px-6 py-2.5 rounded-xl text-sm font-medium text-white transition-all hover:opacity-90"
               style={{ background: 'var(--primary)', boxShadow: '0 0 16px var(--primary-glow)' }}>

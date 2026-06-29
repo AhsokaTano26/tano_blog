@@ -88,6 +88,27 @@ export const api = {
       body: JSON.stringify(data),
     }),
 
+  // Comments reactions
+  toggleReaction: (slug: string, commentId: string, emoji: string) =>
+    request<{ active: boolean; emoji: string }>(`/api/v1/posts/${slug}/comments/${commentId}/reactions`, {
+      method: 'POST',
+      body: JSON.stringify({ emoji }),
+    }),
+
+  // Series
+  getSeries: () =>
+    request<{ items: any[] }>('/api/v1/series'),
+  getSeriesBySlug: (slug: string) =>
+    request<{ series: any }>(`/api/v1/series/${slug}`),
+
+  // Adjacent posts
+  getAdjacentPosts: (slug: string) =>
+    request<{ prev: { slug: string; title: string } | null; next: { slug: string; title: string } | null }>(`/api/v1/posts/${slug}/adjacent`),
+
+  // Related posts
+  getRelatedPosts: (slug: string) =>
+    request<{ items: any[] }>(`/api/v1/posts/${slug}/related`),
+
   // Auth
   login: (data: { username: string; password: string; remember_me?: boolean }) =>
     request<{ token: string; user: any; totp_required?: boolean; user_id?: string }>('/api/v1/auth/login', {
@@ -218,6 +239,14 @@ export const api = {
         request('/api/v1/admin/config', { method: 'PUT', body: JSON.stringify(data) }),
       testEmail: (to: string) =>
         request<{ message: string }>('/api/v1/admin/config/test-email', { method: 'POST', body: JSON.stringify({ to }) }),
+    },
+    series: {
+      list: () => request<{ items: any[] }>('/api/v1/admin/series'),
+      create: (data: any) => request('/api/v1/admin/series', { method: 'POST', body: JSON.stringify(data) }),
+      update: (id: string, data: any) => request(`/api/v1/admin/series/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+      delete: (id: string) => request(`/api/v1/admin/series/${id}`, { method: 'DELETE' }),
+      listPosts: (id: string) => request<{ items: any[] }>(`/api/v1/admin/series/${id}/posts`),
+      setPosts: (id: string, postIds: string[]) => request(`/api/v1/admin/series/${id}/posts`, { method: 'PUT', body: JSON.stringify({ post_ids: postIds }) }),
     },
     accessLogs: {
       list: (params?: Record<string, string>) =>

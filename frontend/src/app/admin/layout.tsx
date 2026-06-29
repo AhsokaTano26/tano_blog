@@ -5,7 +5,8 @@ import { api } from '@/lib/api';
 import { useTheme } from '@/lib/theme';
 import {
   FileText, FolderTree, Tags, MessageSquare, Image, Settings, ScrollText,
-  LogOut, Home, Sun, Moon, Monitor, UserCircle, Database, LayoutDashboard
+  LogOut, Home, Sun, Moon, Monitor, UserCircle, Database, LayoutDashboard,
+  Bookmark
 } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import { Loading } from '@/components/Loading';
@@ -19,6 +20,7 @@ const navSections = [
       { href: '/admin/tags', label: '标签', icon: Tags },
       { href: '/admin/comments', label: '评论', icon: MessageSquare },
       { href: '/admin/media', label: '附件', icon: Image },
+      { href: '/admin/series', label: '系列', icon: Bookmark },
     ],
   },
   {

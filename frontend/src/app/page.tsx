@@ -6,6 +6,7 @@ import { api } from '@/lib/api';
 import { Eye, Mail, ChevronRight, Calendar, BookOpen, Tag, MessageSquare, Globe, Send, MessageCircle, User } from 'lucide-react';
 import { FooterInjection } from '@/components/HtmlInjection';
 import { Loading } from '@/components/Loading';
+import { TagCloud } from '@/components/TagCloud';
 
 export default function Home() {
   const [posts, setPosts] = useState<any[]>([]);
@@ -199,6 +200,8 @@ export default function Home() {
                     </div>
                   </div>
                 )}
+
+                <TagCloud />
               </div>
             </aside>
 

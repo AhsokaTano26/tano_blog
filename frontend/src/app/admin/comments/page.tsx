@@ -175,6 +175,7 @@ export default function AdminComments() {
     { key: 'pending', label: '待审核' },
     { key: 'approved', label: '已批准' },
     { key: 'rejected', label: '已拒绝' },
+    { key: 'spam', label: '垃圾' },
   ];
 
   const totalPages = Math.ceil(total / 20);
@@ -254,14 +255,16 @@ export default function AdminComments() {
                       <span className="font-medium text-sm" style={{ color: 'var(--text-primary)' }}>{item.nickname}</span>
                       <span className="px-1.5 py-0.5 rounded text-xs font-medium"
                         style={{
-                          background: item.status === 'approved' ? 'hsla(142, 60%, 50%, 0.1)' :
+                          background: item.status === 'spam' ? 'hsla(280, 60%, 50%, 0.1)' :
+                            item.status === 'approved' ? 'hsla(142, 60%, 50%, 0.1)' :
                             item.status === 'rejected' ? 'hsla(0, 60%, 50%, 0.1)' :
                             'hsla(45, 60%, 50%, 0.1)',
-                          color: item.status === 'approved' ? 'hsl(142, 60%, 50%)' :
+                          color: item.status === 'spam' ? 'hsl(280, 60%, 50%)' :
+                            item.status === 'approved' ? 'hsl(142, 60%, 50%)' :
                             item.status === 'rejected' ? 'hsl(0, 60%, 50%)' :
                             'hsl(45, 60%, 50%)',
                         }}>
-                        {item.status === 'approved' ? '已批准' : item.status === 'rejected' ? '已拒绝' : '待审核'}
+                        {item.status === 'spam' ? '垃圾' : item.status === 'approved' ? '已批准' : item.status === 'rejected' ? '已拒绝' : '待审核'}
                       </span>
                       <span className="text-xs" style={{ color: 'var(--text-info)' }}>{new Date(item.created_at).toLocaleString('zh-CN')}</span>
                     </div>

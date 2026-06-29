@@ -251,6 +251,8 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
   const [status, setStatus] = useState(post?.status || 'draft');
   const [isTop, setIsTop] = useState(post?.is_top || false);
   const [allowComment, setAllowComment] = useState(post?.allow_comment !== false);
+  const [seriesList, setSeriesList] = useState<any[]>([]);
+  const [selectedSeriesId, setSelectedSeriesId] = useState(post?.series?.[0]?.id || '');
   const [categories, setCategories] = useState<any[]>([]);
   const [tags, setTags] = useState<any[]>([]);
   const [saving, setSaving] = useState(false);
@@ -301,6 +303,7 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
     api.getCategories().then(res => setCategories(res.items)).catch(() => {});
     api.getTags().then(res => setTags(res.items)).catch(() => {});
     api.admin.users.list().then(res => setUsers(res.items)).catch(() => {});
+    api.admin.series.list().then(res => setSeriesList(res.items || [])).catch(() => {});
   }, []);
 
   // Auto-save key
@@ -397,6 +400,7 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
       data.author_name = authorName;
       if (categoryId) data.category_id = categoryId;
       if (tagIds.length > 0) data.tag_ids = tagIds;
+      if (selectedSeriesId) data.series_id = selectedSeriesId;
       // If saving as draft with a scheduled date
       if (scheduledAt && (publishStatus || status) === 'draft') {
         data.scheduled_at = scheduledAt;
@@ -729,6 +733,19 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
                       <option value="">无分类</option>
                       {categories.map(cat => (
                         <option key={cat.id} value={cat.id}>{cat.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Series */}
+                  <div>
+                    <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-info)' }}>系列</label>
+                    <select value={selectedSeriesId} onChange={e => setSelectedSeriesId(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl text-sm outline-none glass-card"
+                      style={{ color: 'var(--text-primary)' }}>
+                      <option value="">无系列</option>
+                      {seriesList.map((s: any) => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
                       ))}
                     </select>
                   </div>
