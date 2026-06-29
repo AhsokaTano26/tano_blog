@@ -17,21 +17,24 @@ type User struct {
 	Bio          string    `gorm:"type:text" json:"bio"`
 	TOTPSecret   string    `gorm:"size:100" json:"-"`
 	TOTPEnabled  bool      `gorm:"default:false" json:"totp_enabled"`
+	ResetToken   string    `gorm:"size:500" json:"-"`
+	TokenVersion int       `gorm:"default:0" json:"-"`
 	Role         string    `gorm:"size:20;default:user" json:"role"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 type Passkey struct {
-	ID           uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
-	UserID       uuid.UUID `gorm:"type:uuid;index;not null" json:"user_id"`
-	CredentialID string    `gorm:"uniqueIndex;size:500;not null" json:"credential_id"`
-	PublicKey    []byte    `gorm:"type:bytea;not null" json:"-"`
-	SignCount    int64     `gorm:"default:0" json:"sign_count"`
-	AAGUID       string    `gorm:"size:100" json:"aaguid"`
-	Nickname     string    `gorm:"size:100" json:"nickname"`
-	CreatedAt    time.Time `json:"created_at"`
-	User         User      `gorm:"foreignKey:UserID" json:"-"`
+	ID             uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	UserID         uuid.UUID `gorm:"type:uuid;index;not null" json:"user_id"`
+	CredentialID   string    `gorm:"uniqueIndex;size:500;not null" json:"credential_id"`
+	PublicKey      []byte    `gorm:"type:bytea;not null" json:"-"`
+	CredentialData string    `gorm:"type:text" json:"-"`
+	SignCount      int64     `gorm:"default:0" json:"sign_count"`
+	AAGUID         string    `gorm:"size:100" json:"aaguid"`
+	Nickname       string    `gorm:"size:100" json:"nickname"`
+	CreatedAt      time.Time `json:"created_at"`
+	User           User      `gorm:"foreignKey:UserID" json:"-"`
 }
 
 type Category struct {
@@ -76,6 +79,7 @@ type Post struct {
 	Author       *User      `gorm:"foreignKey:AuthorID" json:"author,omitempty"`
 	Editor       *User      `gorm:"foreignKey:EditorID" json:"editor,omitempty"`
 	Tags         []Tag      `gorm:"many2many:post_tags;" json:"tags"`
+	Series       []Series   `gorm:"many2many:post_series;" json:"series,omitempty"`
 	Comments     []Comment  `gorm:"foreignKey:PostID" json:"-"`
 }
 
@@ -97,8 +101,8 @@ type Comment struct {
 	Website     string     `gorm:"size:500" json:"website"`
 	Content     string     `gorm:"type:text;not null" json:"content"`
 	Status      string     `gorm:"size:20;default:pending;index" json:"status"`
-	IPAddress   string     `gorm:"size:45" json:"-"`
-	UserAgent   string     `gorm:"size:1000" json:"-"`
+	IPAddress   string     `gorm:"size:45" json:"ip_address,omitempty"`
+	UserAgent   string     `gorm:"size:1000" json:"user_agent,omitempty"`
 	Fingerprint string     `gorm:"size:255" json:"-"`
 	Country     string     `gorm:"size:100" json:"country"`
 	City        string     `gorm:"size:100" json:"city"`
@@ -167,6 +171,36 @@ type PostRevision struct {
 	Editor    *User      `gorm:"foreignKey:EditorID" json:"editor,omitempty"`
 }
 
+type Series struct {
+	ID          uuid.UUID  `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	Name        string     `gorm:"size:200;not null" json:"name"`
+	Slug        string     `gorm:"uniqueIndex;size:200;not null" json:"slug"`
+	Description string     `gorm:"type:text" json:"description"`
+	CoverImage  string     `gorm:"size:500" json:"cover_image"`
+	SortOrder   int        `gorm:"default:0" json:"sort_order"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+	Posts       []Post     `gorm:"many2many:post_series;" json:"-"`
+}
+
+type PostSeries struct {
+	SeriesID  uuid.UUID `gorm:"type:uuid;primaryKey" json:"series_id"`
+	PostID    uuid.UUID `gorm:"type:uuid;primaryKey" json:"post_id"`
+	SortOrder int       `gorm:"default:0" json:"sort_order"`
+}
+
+func (PostSeries) TableName() string {
+	return "post_series"
+}
+
+type CommentReaction struct {
+	ID        uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	CommentID uuid.UUID `gorm:"type:uuid;index:idx_comment_reaction,unique;not null" json:"comment_id"`
+	Emoji     string    `gorm:"size:10;index:idx_comment_reaction,unique;not null" json:"emoji"`
+	IPAddress string    `gorm:"size:45;index:idx_comment_reaction,unique;not null" json:"ip_address"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 func AutoMigrate(db *gorm.DB) error {
 	return db.AutoMigrate(
 		&User{},
@@ -181,5 +215,8 @@ func AutoMigrate(db *gorm.DB) error {
 		&SiteConfig{},
 		&AccessLog{},
 		&PostRevision{},
+		&Series{},
+		&PostSeries{},
+		&CommentReaction{},
 	)
 }

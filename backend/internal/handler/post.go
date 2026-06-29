@@ -180,6 +180,42 @@ func (h *PostHandler) TopViewed(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"items": posts})
 }
 
+func (h *PostHandler) AdjacentPosts(c *gin.Context) {
+	slug := c.Param("slug")
+	prev, next := h.repo.AdjacentPosts(slug)
+
+	type adjacentItem struct {
+		Slug  string `json:"slug"`
+		Title string `json:"title"`
+	}
+
+	var prevResp, nextResp *adjacentItem
+	if prev != nil {
+		prevResp = &adjacentItem{Slug: prev.Slug, Title: prev.Title}
+	}
+	if next != nil {
+		nextResp = &adjacentItem{Slug: next.Slug, Title: next.Title}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"prev": prevResp,
+		"next": nextResp,
+	})
+}
+
+func (h *PostHandler) RelatedPosts(c *gin.Context) {
+	slug := c.Param("slug")
+	posts, err := h.repo.RelatedPosts(slug, 6)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取相关文章失败"})
+		return
+	}
+	if posts == nil {
+		posts = []model.Post{}
+	}
+	c.JSON(http.StatusOK, gin.H{"items": posts})
+}
+
 // Archive returns posts grouped by year/month
 func (h *PostHandler) Archive(c *gin.Context) {
 	items, err := h.repo.Archive()

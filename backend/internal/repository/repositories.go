@@ -199,6 +199,55 @@ func (r *PostRepo) TopViewed(limit int) ([]model.Post, error) {
 	return posts, err
 }
 
+func (r *PostRepo) AdjacentPosts(slug string) (prev, next *model.Post) {
+	var current model.Post
+	if err := r.db.Where("slug = ? AND status = ?", slug, "published").First(&current).Error; err != nil {
+		return nil, nil
+	}
+
+	var prevPost model.Post
+	if err := r.db.Where("published_at < ? AND status = ?", current.PublishedAt, "published").
+		Order("published_at DESC").Limit(1).First(&prevPost).Error; err == nil {
+		prev = &prevPost
+	}
+
+	var nextPost model.Post
+	if err := r.db.Where("published_at > ? AND status = ?", current.PublishedAt, "published").
+		Order("published_at ASC").Limit(1).First(&nextPost).Error; err == nil {
+		next = &nextPost
+	}
+
+	return
+}
+
+func (r *PostRepo) RelatedPosts(slug string, limit int) ([]model.Post, error) {
+	var current model.Post
+	if err := r.db.Where("slug = ? AND status = ?", slug, "published").First(&current).Error; err != nil {
+		return nil, err
+	}
+
+	// Get tag IDs of current post
+	var tagIDs []uuid.UUID
+	r.db.Table("post_tags").Where("post_id = ?", current.ID).Pluck("tag_id", &tagIDs)
+
+	if len(tagIDs) == 0 {
+		return nil, nil
+	}
+
+	// Find posts sharing tags, ordered by match count
+	var posts []model.Post
+	err := r.db.Where("posts.id != ? AND posts.status = ?", current.ID, "published").
+		Joins("JOIN post_tags ON post_tags.post_id = posts.id").
+		Where("post_tags.tag_id IN ?", tagIDs).
+		Group("posts.id").
+		Order("COUNT(post_tags.tag_id) DESC, posts.published_at DESC").
+		Limit(limit).
+		Preload("Category").Preload("Tags").
+		Find(&posts).Error
+
+	return posts, err
+}
+
 func (r *PostRepo) AdminList(page, pageSize int, status string) ([]model.Post, int64, error) {
 	var posts []model.Post
 	var total int64
@@ -390,6 +439,73 @@ func (r *CommentRepo) UpdateStatus(id uuid.UUID, status string) error {
 
 func (r *CommentRepo) Delete(id uuid.UUID) error {
 	return r.db.Delete(&model.Comment{}, id).Error
+}
+
+func (r *CommentRepo) ToggleReaction(commentID uuid.UUID, emoji, ipAddress string) (bool, error) {
+	var existing model.CommentReaction
+	result := r.db.Where("comment_id = ? AND emoji = ? AND ip_address = ?", commentID, emoji, ipAddress).First(&existing)
+	if result.Error == nil {
+		// Already exists — remove (toggle off)
+		if err := r.db.Delete(&existing).Error; err != nil {
+			return false, err
+		}
+		return false, nil
+	}
+
+	// Not exists — create (toggle on)
+	reaction := &model.CommentReaction{
+		ID:        uuid.New(),
+		CommentID: commentID,
+		Emoji:     emoji,
+		IPAddress: ipAddress,
+	}
+	if err := r.db.Create(reaction).Error; err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func (r *CommentRepo) GetReactions(commentIDs []uuid.UUID) (map[string]map[string]int, error) {
+	type ReactionCount struct {
+		CommentID uuid.UUID
+		Emoji     string
+		Count     int
+	}
+	var rows []ReactionCount
+	r.db.Model(&model.CommentReaction{}).
+		Select("comment_id, emoji, COUNT(*) as count").
+		Where("comment_id IN ?", commentIDs).
+		Group("comment_id, emoji").
+		Scan(&rows)
+
+	result := make(map[string]map[string]int)
+	for _, row := range rows {
+		cid := row.CommentID.String()
+		if result[cid] == nil {
+			result[cid] = make(map[string]int)
+		}
+		result[cid][row.Emoji] = row.Count
+	}
+	return result, nil
+}
+
+func (r *CommentRepo) GetUserReactions(commentIDs []uuid.UUID, ipAddress string) (map[string][]string, error) {
+	type UserReaction struct {
+		CommentID uuid.UUID
+		Emoji     string
+	}
+	var rows []UserReaction
+	r.db.Model(&model.CommentReaction{}).
+		Select("comment_id, emoji").
+		Where("comment_id IN ? AND ip_address = ?", commentIDs, ipAddress).
+		Find(&rows)
+
+	result := make(map[string][]string)
+	for _, row := range rows {
+		cid := row.CommentID.String()
+		result[cid] = append(result[cid], row.Emoji)
+	}
+	return result, nil
 }
 
 type MediaRepo struct {

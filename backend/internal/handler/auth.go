@@ -27,8 +27,9 @@ func NewAuthHandler(db *gorm.DB, cfg *config.JWTConfig, emailService *service.Em
 }
 
 type LoginRequest struct {
-	Username string `json:"username" binding:"required"`
-	Password string `json:"password" binding:"required"`
+	Username   string `json:"username" binding:"required"`
+	Password   string `json:"password" binding:"required"`
+	RememberMe bool   `json:"remember_me"`
 }
 
 type TOTPVerifyRequest struct {
@@ -62,13 +63,18 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	token, err := utils.GenerateJWT(user.ID, user.Username, user.Role, h.cfg.Secret, h.cfg.Expiration)
+	expiration := h.cfg.Expiration
+	if req.RememberMe {
+		expiration = h.cfg.RememberMeExpiration
+	}
+
+	token, err := utils.GenerateJWTWithVersion(user.ID, user.Username, user.Role, h.cfg.Secret, expiration, user.TokenVersion)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "生成令牌失败"})
 		return
 	}
 
-	setJWTCookie(c, token, h.cfg.Expiration)
+	setJWTCookie(c, token, expiration)
 
 	// Notify user of new login (fire-and-forget)
 	h.sendLoginNotify(c, user)
@@ -87,8 +93,9 @@ func (h *AuthHandler) Login(c *gin.Context) {
 
 func (h *AuthHandler) LoginWithTOTP(c *gin.Context) {
 	var req struct {
-		UserID string `json:"user_id" binding:"required"`
-		Code   string `json:"code" binding:"required"`
+		UserID     string `json:"user_id" binding:"required"`
+		Code       string `json:"code" binding:"required"`
+		RememberMe bool   `json:"remember_me"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
@@ -117,13 +124,18 @@ func (h *AuthHandler) LoginWithTOTP(c *gin.Context) {
 		return
 	}
 
-	token, err := utils.GenerateJWT(user.ID, user.Username, user.Role, h.cfg.Secret, h.cfg.Expiration)
+	expiration := h.cfg.Expiration
+	if req.RememberMe {
+		expiration = h.cfg.RememberMeExpiration
+	}
+
+	token, err := utils.GenerateJWTWithVersion(user.ID, user.Username, user.Role, h.cfg.Secret, expiration, user.TokenVersion)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "生成令牌失败"})
 		return
 	}
 
-	setJWTCookie(c, token, h.cfg.Expiration)
+	setJWTCookie(c, token, expiration)
 
 	// Notify user of new login (fire-and-forget)
 	h.sendLoginNotify(c, user)
@@ -141,6 +153,13 @@ func (h *AuthHandler) LoginWithTOTP(c *gin.Context) {
 }
 
 func (h *AuthHandler) Logout(c *gin.Context) {
+	// Increment token_version to invalidate all existing JWTs
+	userID := c.GetString("user_id")
+	if uid, err := uuid.Parse(userID); err == nil {
+		h.db.Model(&model.User{}).Where("id = ?", uid).
+			Update("token_version", gorm.Expr("token_version + 1"))
+	}
+
 	secure := c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https"
 	c.SetSameSite(http.SameSiteLaxMode)
 	c.SetCookie("jwt", "", -1, "/", "", secure, true)
@@ -264,8 +283,8 @@ func (h *AuthHandler) ChangePassword(c *gin.Context) {
 		return
 	}
 
-	if len(input.NewPassword) < 6 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "新密码不能少于6个字符"})
+	if len(input.NewPassword) < 8 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "新密码不能少于8个字符"})
 		return
 	}
 
@@ -363,6 +382,37 @@ func (h *AuthHandler) TOTPDisable(c *gin.Context) {
 		return
 	}
 
+	var input struct {
+		Password string `json:"password"`
+		TOTPCode string `json:"totp_code"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
+		return
+	}
+
+	var user model.User
+	if err := h.db.First(&user, uid).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "用户不存在"})
+		return
+	}
+
+	// Require password OR valid TOTP code to disable
+	if input.Password != "" {
+		if !utils.CheckPassword(input.Password, user.PasswordHash) {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "密码错误"})
+			return
+		}
+	} else if input.TOTPCode != "" {
+		if !utils.VerifyTOTP(user.TOTPSecret, input.TOTPCode) {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "验证码错误"})
+			return
+		}
+	} else {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请输入密码或验证码"})
+		return
+	}
+
 	h.db.Model(&model.User{}).Where("id = ?", uid).
 		Updates(map[string]interface{}{"totp_secret": "", "totp_enabled": false})
 
@@ -394,13 +444,13 @@ func (h *AuthHandler) PasskeyRegisterVerify(c *gin.Context) {
 		return
 	}
 
-	var credential map[string]interface{}
-	if err := c.ShouldBindJSON(&credential); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
+	rawBody, err := c.GetRawData()
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "读取请求数据失败"})
 		return
 	}
 
-	if err := utils.VerifyPasskeyRegistration(h.db, uid, credential); err != nil {
+	if err := utils.VerifyPasskeyRegistration(h.db, uid, rawBody); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -409,7 +459,7 @@ func (h *AuthHandler) PasskeyRegisterVerify(c *gin.Context) {
 }
 
 func (h *AuthHandler) PasskeyLoginOptions(c *gin.Context) {
-	options, err := utils.BeginPasskeyLogin()
+	options, err := utils.BeginPasskeyLogin(h.db)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建登录选项失败"})
 		return
@@ -418,13 +468,13 @@ func (h *AuthHandler) PasskeyLoginOptions(c *gin.Context) {
 }
 
 func (h *AuthHandler) PasskeyLoginVerify(c *gin.Context) {
-	var credential map[string]interface{}
-	if err := c.ShouldBindJSON(&credential); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
+	rawBody, err := c.GetRawData()
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "读取请求数据失败"})
 		return
 	}
 
-	userID, err := utils.VerifyPasskeyLogin(h.db, credential)
+	userID, err := utils.VerifyPasskeyLogin(h.db, rawBody)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Passkey 验证失败"})
 		return
@@ -436,7 +486,7 @@ func (h *AuthHandler) PasskeyLoginVerify(c *gin.Context) {
 		return
 	}
 
-	token, err := utils.GenerateJWT(user.ID, user.Username, user.Role, h.cfg.Secret, h.cfg.Expiration)
+	token, err := utils.GenerateJWTWithVersion(user.ID, user.Username, user.Role, h.cfg.Secret, h.cfg.Expiration, user.TokenVersion)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "生成令牌失败"})
 		return
@@ -551,8 +601,8 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 		return
 	}
 
-	// Store reset token
-	h.db.Model(&user).Update("totp_secret", "reset:"+token)
+	// Store reset token in dedicated column (separate from TOTP secret)
+	h.db.Model(&user).Update("reset_token", token)
 
 	// Try to send email with reset link
 	if h.emailService != nil && user.Email != "" {
@@ -576,8 +626,8 @@ func (h *AuthHandler) ResetPassword(c *gin.Context) {
 		return
 	}
 
-	if len(input.NewPassword) < 6 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "新密码不能少于6个字符"})
+	if len(input.NewPassword) < 8 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "新密码不能少于8个字符"})
 		return
 	}
 
@@ -607,7 +657,7 @@ func (h *AuthHandler) ResetPassword(c *gin.Context) {
 
 	h.db.Model(&user).Updates(map[string]interface{}{
 		"password_hash": hash,
-		"totp_secret":   "",
+		"reset_token":   "",
 	})
 
 	c.JSON(http.StatusOK, gin.H{"message": "密码已重置"})

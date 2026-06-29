@@ -156,8 +156,20 @@ func NewTagHandler(db *gorm.DB) *TagHandler {
 }
 
 func (h *TagHandler) List(c *gin.Context) {
-	var tags []model.Tag
-	h.db.Order("name ASC").Find(&tags)
+	type TagWithCount struct {
+		model.Tag
+		PostCount int `json:"post_count"`
+	}
+	var tags []TagWithCount
+	h.db.Model(&model.Tag{}).
+		Select("tags.*, COUNT(post_tags.post_id) as post_count").
+		Joins("LEFT JOIN post_tags ON post_tags.tag_id = tags.id").
+		Group("tags.id").
+		Order("name ASC").
+		Scan(&tags)
+	if tags == nil {
+		tags = []TagWithCount{}
+	}
 	c.JSON(http.StatusOK, gin.H{"items": tags})
 }
 

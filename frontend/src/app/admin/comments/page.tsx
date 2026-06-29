@@ -2,8 +2,109 @@
 
 import { useState, useEffect } from 'react';
 import { api } from '@/lib/api';
-import { MessageSquare, Check, X, Trash2, ExternalLink, User, CheckSquare, Square } from 'lucide-react';
+import { MessageSquare, Check, X, Trash2, ExternalLink, User, CheckSquare, Square, Info, Monitor, Smartphone } from 'lucide-react';
 import { Loading } from '@/components/Loading';
+
+function parseUA(ua: string) {
+  let browser = '未知';
+  let os = '未知';
+  let device = 'desktop';
+  if (!ua) return { browser, os, device };
+
+  if (ua.includes('Edg/')) browser = 'Edge';
+  else if (ua.includes('Chrome/')) browser = 'Chrome';
+  else if (ua.includes('Firefox/')) browser = 'Firefox';
+  else if (ua.includes('Safari/')) browser = 'Safari';
+  else if (ua.includes('MSIE') || ua.includes('Trident/')) browser = 'IE';
+
+  if (ua.includes('Windows')) os = 'Windows';
+  else if (ua.includes('Mac OS X') || ua.includes('macOS')) os = 'macOS';
+  else if (ua.includes('Linux')) os = 'Linux';
+  else if (ua.includes('Android')) os = 'Android';
+  else if (ua.includes('iPhone') || ua.includes('iPad')) os = 'iOS';
+
+  if (ua.includes('Mobile') || ua.includes('Android')) device = 'mobile';
+  else if (ua.includes('iPad') || ua.includes('Tablet')) device = 'tablet';
+
+  return { browser, os, device };
+}
+
+function CommentDetail({ comment, onClose }: { comment: any; onClose: () => void }) {
+  const { browser, os, device } = parseUA(comment.user_agent || '');
+  const DeviceIcon = device === 'mobile' ? Smartphone : device === 'tablet' ? Monitor : Monitor;
+
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.5)' }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="w-full max-w-lg max-h-[80vh] overflow-y-auto rounded-2xl shadow-2xl p-6"
+        style={{ background: 'var(--card-bg)', border: '1px solid var(--glass-border)' }}>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-bold flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
+            <Info className="w-5 h-5" />
+            评论详情
+          </h2>
+          <button onClick={onClose} className="p-1 rounded-lg btn-glass transition-colors" style={{ color: 'var(--text-secondary)' }}>
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="space-y-3">
+          <div className="flex items-center gap-3 pb-3" style={{ borderBottom: '1px solid var(--glass-border)' }}>
+            <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: 'var(--primary-sub)' }}>
+              <User className="w-5 h-5" style={{ color: 'var(--primary)' }} />
+            </div>
+            <div>
+              <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{comment.nickname}</div>
+              <div className="text-xs" style={{ color: 'var(--text-info)' }}>
+                {new Date(comment.created_at).toLocaleString('zh-CN')}
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <p className="text-sm whitespace-pre-wrap" style={{ color: 'var(--text-secondary)' }}>{comment.content}</p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 pt-3" style={{ borderTop: '1px solid var(--glass-border)' }}>
+            <DetailField label="IP 地址" value={comment.ip_address || '-'} />
+            <DetailField label="浏览器" value={browser} />
+            <DetailField label="操作系统" value={os} />
+            <DetailField label="设备类型" value={device === 'mobile' ? '移动端' : device === 'tablet' ? '平板' : '桌面端'} />
+          </div>
+
+          {comment.user_agent && (
+            <div className="pt-2">
+              <DetailField label="User-Agent" value={comment.user_agent} mono />
+            </div>
+          )}
+
+          {comment.country && (
+            <DetailField label="地理位置" value={[comment.country, comment.city].filter(Boolean).join(' - ') || '-'} />
+          )}
+
+          {comment.email && (
+            <DetailField label="邮箱" value={comment.email} />
+          )}
+
+          {comment.website && (
+            <DetailField label="网站" value={comment.website} />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DetailField({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div>
+      <div className="text-xs mb-0.5" style={{ color: 'var(--text-info)' }}>{label}</div>
+      <div className={`text-sm break-all ${mono ? 'font-mono text-xs' : ''}`} style={{ color: 'var(--text-primary)' }}>
+        {value || '-'}
+      </div>
+    </div>
+  );
+}
 
 export default function AdminComments() {
   const [items, setItems] = useState<any[]>([]);
@@ -12,6 +113,7 @@ export default function AdminComments() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [detailComment, setDetailComment] = useState<any>(null);
 
   async function load() {
     setLoading(true);
@@ -181,6 +283,10 @@ export default function AdminComments() {
 
                   {/* Actions */}
                   <div className="flex items-center gap-1 flex-shrink-0">
+                    <button onClick={() => setDetailComment(item)}
+                      className="btn-glass p-1.5 rounded transition-colors" title="详情" aria-label="查看详情">
+                      <Info className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
+                    </button>
                     {item.status !== 'approved' && (
                       <button onClick={() => handleStatus(item.id, 'approved')}
                         className="btn-glass p-1.5 rounded transition-colors" title="批准" aria-label="批准评论">
@@ -228,6 +334,10 @@ export default function AdminComments() {
               className="btn-glass px-3 py-1.5 rounded disabled:opacity-40 transition-colors" style={{ color: 'var(--text-secondary)' }}>下一页</button>
           </div>
         </div>
+      )}
+
+      {detailComment && (
+        <CommentDetail comment={detailComment} onClose={() => setDetailComment(null)} />
       )}
     </div>
   );

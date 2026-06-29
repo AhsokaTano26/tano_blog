@@ -89,12 +89,12 @@ export const api = {
     }),
 
   // Auth
-  login: (data: { username: string; password: string }) =>
+  login: (data: { username: string; password: string; remember_me?: boolean }) =>
     request<{ token: string; user: any; totp_required?: boolean; user_id?: string }>('/api/v1/auth/login', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
-  loginWithTOTP: (data: { user_id: string; code: string }) =>
+  loginWithTOTP: (data: { user_id: string; code: string; remember_me?: boolean }) =>
     request('/api/v1/auth/login/totp', { method: 'POST', body: JSON.stringify(data) }),
   logout: () =>
     request('/api/v1/auth/logout', { method: 'POST' }),

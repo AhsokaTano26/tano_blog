@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -16,6 +17,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
+
+// safeColumnName ensures a column name contains only safe characters
+var safeColumnRe = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
 
 type BackupHandler struct {
 	db        *gorm.DB
@@ -151,6 +155,9 @@ func (h *BackupHandler) restoreFromZip(zr *zip.Reader) error {
 			cols := make([]string, 0, len(row))
 			vals := make([]interface{}, 0, len(row))
 			for k, v := range row {
+				if !safeColumnRe.MatchString(k) {
+					continue // skip unsafe column names
+				}
 				cols = append(cols, k)
 				vals = append(vals, v)
 			}
@@ -187,6 +194,11 @@ func (h *BackupHandler) extractUploads(zr *zip.Reader) []string {
 		}
 		rel := parts[1]
 		targetPath := filepath.Join(uploadDir, rel)
+		// Security: prevent Zip Slip — ensure path stays within uploadDir
+		if !strings.HasPrefix(targetPath, uploadDir+string(filepath.Separator)) {
+			fileErrors = append(fileErrors, rel)
+			continue
+		}
 		os.MkdirAll(filepath.Dir(targetPath), 0755)
 
 		rc, err := f.Open()
@@ -219,7 +231,7 @@ func (h *BackupHandler) CreateBackup(c *gin.Context) {
 
 	filename := fmt.Sprintf("backup-%s.zip", time.Now().UTC().Format("2006-01-02T150405"))
 	path := filepath.Join(h.backupDir, filename)
-	if err := os.WriteFile(path, zipData, 0644); err != nil {
+	if err := os.WriteFile(path, zipData, 0600); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "保存备份文件失败"})
 		return
 	}
@@ -400,6 +412,12 @@ func (h *BackupHandler) RestoreLocal(c *gin.Context) {
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "请指定备份文件"})
+		return
+	}
+
+	// Security: prevent path traversal
+	if strings.Contains(input.Filename, "/") || strings.Contains(input.Filename, "..") {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的文件名"})
 		return
 	}
 

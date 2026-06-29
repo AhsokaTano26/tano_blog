@@ -25,6 +25,7 @@ export default function LoginPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
   const [totpCode, setTotpCode] = useState('');
   const [totpRequired, setTotpRequired] = useState(false);
   const [userId, setUserId] = useState('');
@@ -36,7 +37,7 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
     try {
-      const res = await api.login({ username, password });
+      const res = await api.login({ username, password, remember_me: rememberMe });
       if (res.totp_required && res.user_id) {
         setTotpRequired(true);
         setUserId(res.user_id);
@@ -53,7 +54,7 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
     try {
-      await api.loginWithTOTP({ user_id: userId, code: totpCode });
+      await api.loginWithTOTP({ user_id: userId, code: totpCode, remember_me: rememberMe });
       window.location.href = '/admin';
     } catch (err: any) {
       setError(err.message);
@@ -147,6 +148,12 @@ export default function LoginPage() {
                     </button>
                   </div>
                 </div>
+
+                <label className="flex items-center gap-2 mb-4 cursor-pointer">
+                  <input type="checkbox" checked={rememberMe} onChange={e => setRememberMe(e.target.checked)}
+                    className="w-4 h-4 rounded" style={{ accentColor: 'var(--primary)' }} />
+                  <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>记住登录状态（7 天）</span>
+                </label>
 
                 <button type="submit" disabled={loading}
                   className="w-full py-2.5 rounded-xl text-sm font-medium text-white transition-all hover:opacity-90 disabled:opacity-50"

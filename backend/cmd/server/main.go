@@ -58,6 +58,7 @@ func main() {
 	postRepo := repository.NewPostRepo(db)
 	commentRepo := repository.NewCommentRepo(db)
 	mediaRepo := repository.NewMediaRepo(db)
+	seriesRepo := repository.NewSeriesRepo(db)
 
 	// Initialize services
 	emailService := service.NewEmailService(db)
@@ -72,10 +73,12 @@ func main() {
 	siteConfigHandler := handler.NewSiteConfigHandler(db, emailService)
 	accessLogHandler := handler.NewAccessLogHandler(db)
 	backupHandler := handler.NewBackupHandler(db, cfg.Upload.Dir, cfg.BackupDir)
+	seriesHandler := handler.NewSeriesHandler(seriesRepo)
 	feedHandler := handler.NewFeedHandler(db)
 
 	// Setup router
 	r := gin.New()
+	r.SetTrustedProxies(nil)
 	r.Use(gin.Recovery())
 	r.Use(middleware.AccessLogger(db))
 
@@ -108,11 +111,13 @@ func main() {
 		api.GET("/posts", postHandler.ListPublic)
 		api.GET("/posts/top", postHandler.TopPosts)
 		api.GET("/posts/top-viewed", postHandler.TopViewed)
+		api.GET("/posts/:slug/adjacent", postHandler.AdjacentPosts)
+		api.GET("/posts/:slug/related", postHandler.RelatedPosts)
 		api.GET("/posts/preview", postHandler.GetByPreviewToken)
 
-		// Password reset (public)
-		api.POST("/auth/forgot-password", authHandler.ForgotPassword)
-		api.POST("/auth/reset-password", authHandler.ResetPassword)
+		// Password reset (public, with rate limiting)
+		api.POST("/auth/forgot-password", middleware.RateLimit(3, 60*time.Second), authHandler.ForgotPassword)
+		api.POST("/auth/reset-password", middleware.RateLimit(5, 60*time.Second), authHandler.ResetPassword)
 		api.GET("/posts/:slug", middleware.OptionalAuth(&cfg.JWT), postHandler.GetBySlug)
 		api.GET("/archive", postHandler.Archive)
 
@@ -124,10 +129,11 @@ func main() {
 
 		api.GET("/posts/:slug/comments", commentHandler.ListByPost)
 		api.POST("/posts/:slug/comments", middleware.RateLimit(5, 60*time.Second), commentHandler.Create)
+		api.POST("/posts/:slug/comments/:id/reactions", commentHandler.ToggleReaction)
 
 		// Authenticated endpoints (CSRF protected)
 		authRequired := api.Group("")
-		authRequired.Use(middleware.AuthRequired(&cfg.JWT))
+		authRequired.Use(middleware.AuthRequired(&cfg.JWT, db))
 		authRequired.Use(middleware.CSRF())
 		{
 			// Auth management
@@ -180,6 +186,13 @@ func main() {
 				admin.GET("/media/tags", mediaHandler.ListTags)
 				admin.POST("/media/tags", mediaHandler.CreateTag)
 				admin.DELETE("/media/tags/:id", mediaHandler.DeleteTag)
+
+				admin.GET("/series", seriesHandler.AdminList)
+				admin.POST("/series", seriesHandler.AdminCreate)
+				admin.PUT("/series/:id", seriesHandler.AdminUpdate)
+				admin.DELETE("/series/:id", seriesHandler.AdminDelete)
+				admin.GET("/series/:id/posts", seriesHandler.AdminListPosts)
+				admin.PUT("/series/:id/posts", seriesHandler.AdminSetPosts)
 
 				admin.GET("/config", siteConfigHandler.Get)
 				admin.PUT("/config", siteConfigHandler.Update)

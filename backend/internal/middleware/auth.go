@@ -7,10 +7,22 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
+	"gorm.io/gorm"
+
 	"tano_blog/backend/internal/config"
+	"tano_blog/backend/internal/model"
 )
 
-func AuthRequired(cfg *config.JWTConfig) gin.HandlerFunc {
+type jwtClaims struct {
+	UserID       string `json:"user_id"`
+	Username     string `json:"username"`
+	Role         string `json:"role"`
+	TokenVersion int    `json:"token_version"`
+	jwt.RegisteredClaims
+}
+
+func AuthRequired(cfg *config.JWTConfig, db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tokenStr := GetToken(c)
 		if tokenStr == "" {
@@ -28,18 +40,24 @@ func AuthRequired(cfg *config.JWTConfig) gin.HandlerFunc {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "登录已过期，请重新登录"})
 			return
 		}
+
+		// Verify token_version matches database (supports JWT invalidation on logout)
+		uid, err := uuid.Parse(claims.UserID)
+		if err == nil {
+			var user model.User
+			if db.First(&user, uid).Error == nil {
+				if user.TokenVersion != claims.TokenVersion {
+					c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "登录已失效，请重新登录"})
+					return
+				}
+			}
+		}
+
 		c.Set("user_id", claims.UserID)
 		c.Set("username", claims.Username)
 		c.Set("role", claims.Role)
 		c.Next()
 	}
-}
-
-type jwtClaims struct {
-	UserID   string `json:"user_id"`
-	Username string `json:"username"`
-	Role     string `json:"role"`
-	jwt.RegisteredClaims
 }
 
 // OptionalAuth sets user info if token is present, but doesn't reject

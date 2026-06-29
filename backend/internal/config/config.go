@@ -27,8 +27,9 @@ type DatabaseConfig struct {
 }
 
 type JWTConfig struct {
-	Secret     string
-	Expiration time.Duration
+	Secret              string
+	Expiration          time.Duration
+	RememberMeExpiration time.Duration
 }
 
 type UploadConfig struct {
@@ -60,8 +61,9 @@ func Load() *Config {
 			DSN: dbDSN,
 		},
 		JWT: JWTConfig{
-			Secret:     jwtSecret,
-			Expiration: 24 * time.Hour,
+			Secret:              jwtSecret,
+			Expiration:          2 * time.Hour,
+			RememberMeExpiration: 7 * 24 * time.Hour,
 		},
 		Upload: UploadConfig{
 			Dir:   getEnv("UPLOAD_DIR", "./uploads"),

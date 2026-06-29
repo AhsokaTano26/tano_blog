@@ -46,34 +46,62 @@ func (h *CommentHandler) ListByPost(c *gin.Context) {
 		return
 	}
 
-	// Strip email from public response
+	// Collect all comment IDs for batch reaction query
+	var allCommentIDs []uuid.UUID
+	var collectIDs func(c model.Comment)
+	collectIDs = func(c model.Comment) {
+		allCommentIDs = append(allCommentIDs, c.ID)
+		for _, child := range c.Children {
+			collectIDs(child)
+		}
+	}
+	for _, c := range comments {
+		collectIDs(c)
+	}
+
+	// Get reaction counts
+	reactions, _ := h.repo.GetReactions(allCommentIDs)
+	// Get current user's reactions
+	ipAddress := c.ClientIP()
+	userReactions, _ := h.repo.GetUserReactions(allCommentIDs, ipAddress)
+
 	type publicComment struct {
-		ID        uuid.UUID      `json:"id"`
-		PostID    uuid.UUID      `json:"post_id"`
-		ParentID  *uuid.UUID     `json:"parent_id"`
-		Nickname  string         `json:"nickname"`
-		Website   string         `json:"website"`
-		Content   string         `json:"content"`
-		Status    string         `json:"status"`
-		Country   string         `json:"country"`
-		City      string         `json:"city"`
-		CreatedAt string         `json:"created_at"`
-		Children  []publicComment `json:"children,omitempty"`
+		ID         uuid.UUID       `json:"id"`
+		PostID     uuid.UUID       `json:"post_id"`
+		ParentID   *uuid.UUID      `json:"parent_id"`
+		Nickname   string          `json:"nickname"`
+		Website    string          `json:"website"`
+		Content    string          `json:"content"`
+		Status     string          `json:"status"`
+		Country    string          `json:"country"`
+		City       string          `json:"city"`
+		CreatedAt  string          `json:"created_at"`
+		Children   []publicComment `json:"children,omitempty"`
+		Reactions  map[string]int  `json:"reactions"`
+		UserEmojis []string        `json:"user_emojis,omitempty"`
 	}
 
 	var convert func(c model.Comment) publicComment
 	convert = func(c model.Comment) publicComment {
 		pc := publicComment{
-			ID:        c.ID,
-			PostID:    c.PostID,
-			ParentID:  c.ParentID,
-			Nickname:  c.Nickname,
-			Website:   c.Website,
-			Content:   c.Content,
-			Status:    c.Status,
-			Country:   c.Country,
-			City:      c.City,
-			CreatedAt: c.CreatedAt.Format("2006-01-02T15:04:05Z"),
+			ID:         c.ID,
+			PostID:     c.PostID,
+			ParentID:   c.ParentID,
+			Nickname:   c.Nickname,
+			Website:    c.Website,
+			Content:    c.Content,
+			Status:     c.Status,
+			Country:    c.Country,
+			City:       c.City,
+			CreatedAt:  c.CreatedAt.Format("2006-01-02T15:04:05Z"),
+			Reactions:  reactions[c.ID.String()],
+			UserEmojis: userReactions[c.ID.String()],
+		}
+		if pc.Reactions == nil {
+			pc.Reactions = map[string]int{}
+		}
+		if pc.UserEmojis == nil {
+			pc.UserEmojis = []string{}
 		}
 		for _, child := range c.Children {
 			pc.Children = append(pc.Children, convert(child))
@@ -88,7 +116,6 @@ func (h *CommentHandler) ListByPost(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"items": result})
 }
-
 func (h *CommentHandler) Create(c *gin.Context) {
 	slug := c.Param("slug")
 	post, err := h.lookupPostBySlug(slug)
@@ -325,4 +352,45 @@ func (h *CommentHandler) Delete(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "已删除"})
+}
+
+
+
+func (h *CommentHandler) ToggleReaction(c *gin.Context) {
+	commentID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
+		return
+	}
+
+	// Verify comment exists
+	var comment model.Comment
+	if err := h.db.First(&comment, commentID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "评论不存在"})
+		return
+	}
+
+	var input struct {
+		Emoji string `json:"emoji" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
+		return
+	}
+
+	// Validate emoji is in preset list
+	validEmojis := map[string]bool{"👍": true, "❤️": true, "😂": true, "😮": true, "😢": true, "🙏": true}
+	if !validEmojis[input.Emoji] {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "不支持的表情"})
+		return
+	}
+
+	ipAddress := c.ClientIP()
+	active, err := h.repo.ToggleReaction(commentID, input.Emoji, ipAddress)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "操作失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"active": active, "emoji": input.Emoji})
 }

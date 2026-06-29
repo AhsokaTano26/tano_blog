@@ -1,300 +1,240 @@
 package utils
 
 import (
-	"crypto/rand"
-	"encoding/base64"
+	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/go-webauthn/webauthn/protocol"
+	"github.com/go-webauthn/webauthn/webauthn"
 	"gorm.io/gorm"
+
 	"tano_blog/backend/internal/model"
 )
 
-type PublicKeyCredentialCreationOptions struct {
-	Challenge      string           `json:"challenge"`
-	RP             RPInfo           `json:"rp"`
-	User           UserInfo         `json:"user"`
-	PubKeyCredParams []CredentialParam `json:"pubKeyCredParams"`
-	Timeout        int              `json:"timeout"`
-}
-
-type RPInfo struct {
-	Name string `json:"name"`
-	ID   string `json:"id"`
-}
-
-type UserInfo struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	DisplayName string `json:"displayName"`
-}
-
-type CredentialParam struct {
-	Type string `json:"type"`
-	Alg  int    `json:"alg"`
-}
-
-type PublicKeyCredentialRequestOptions struct {
-	Challenge string `json:"challenge"`
-	Timeout   int    `json:"timeout"`
-	RPID      string `json:"rpId"`
-}
-
-type RegistrationSession struct {
-	UserID    uuid.UUID
-	Challenge string
-	ExpiresAt time.Time
-}
-
-type LoginSession struct {
-	Challenge string
-	ExpiresAt time.Time
-}
-
 var (
-	registrationMu       sync.RWMutex
-	registrationSessions = make(map[string]*RegistrationSession)
-	loginMu              sync.RWMutex
-	loginSessions        = make(map[string]*LoginSession)
+	webAuthn          *webauthn.WebAuthn
+	webAuthnOnce      sync.Once
+	sessionDataStore  sync.Map
 )
 
-func cleanupSessions() {
-	now := time.Now()
-	registrationMu.Lock()
-	for k, v := range registrationSessions {
-		if now.After(v.ExpiresAt) {
-			delete(registrationSessions, k)
+func getWebAuthn() *webauthn.WebAuthn {
+	webAuthnOnce.Do(func() {
+		rpID := os.Getenv("WEBAUTHN_RP_ID")
+		if rpID == "" {
+			rpID = "localhost"
 		}
-	}
-	registrationMu.Unlock()
+		rpOrigin := os.Getenv("WEBAUTHN_ORIGIN")
+		if rpOrigin == "" {
+			rpOrigin = "http://localhost:3000"
+		}
+		rpDisplayName := os.Getenv("WEBAUTHN_DISPLAY_NAME")
+		if rpDisplayName == "" {
+			rpDisplayName = "TanoBlog"
+		}
 
-	loginMu.Lock()
-	for k, v := range loginSessions {
-		if now.After(v.ExpiresAt) {
-			delete(loginSessions, k)
+		wconfig := &webauthn.Config{
+			RPDisplayName: rpDisplayName,
+			RPID:          rpID,
+			RPOrigins:     []string{rpOrigin},
 		}
-	}
-	loginMu.Unlock()
+		wa, err := webauthn.New(wconfig)
+		if err != nil {
+			panic(fmt.Errorf("failed to initialize WebAuthn: %w", err))
+		}
+		webAuthn = wa
+	})
+	return webAuthn
 }
 
-func init() {
-	go func() {
-		ticker := time.NewTicker(5 * time.Minute)
-		defer ticker.Stop()
-		for range ticker.C {
-			cleanupSessions()
-		}
-	}()
+// webauthnUser implements the webauthn.User interface
+type webauthnUser struct {
+	id          []byte
+	name        string
+	displayName string
+	credentials []webauthn.Credential
 }
 
-func getOrigin() string {
-	if o := os.Getenv("WEBAUTHN_ORIGIN"); o != "" {
-		return o
+func (u *webauthnUser) WebAuthnID() []byte                        { return u.id }
+func (u *webauthnUser) WebAuthnName() string                      { return u.name }
+func (u *webauthnUser) WebAuthnDisplayName() string               { return u.displayName }
+func (u *webauthnUser) WebAuthnCredentials() []webauthn.Credential { return u.credentials }
+func (u *webauthnUser) WebAuthnCredentialDescriptions() []protocol.CredentialDescriptor {
+	descs := make([]protocol.CredentialDescriptor, len(u.credentials))
+	for i, c := range u.credentials {
+		descs[i] = c.Descriptor()
 	}
-	return "https://tano.asia"
+	return descs
 }
 
-func BeginPasskeyRegistration(db *gorm.DB, userID uuid.UUID) (*PublicKeyCredentialCreationOptions, error) {
+func loadCredentials(db *gorm.DB, userID uuid.UUID) []webauthn.Credential {
+	var passkeys []model.Passkey
+	db.Where("user_id = ?", userID).Find(&passkeys)
+
+	creds := make([]webauthn.Credential, 0, len(passkeys))
+	for _, pk := range passkeys {
+		if pk.CredentialData == "" {
+			continue
+		}
+		var c webauthn.Credential
+		if err := json.Unmarshal([]byte(pk.CredentialData), &c); err != nil {
+			continue
+		}
+		creds = append(creds, c)
+	}
+	return creds
+}
+
+func makeWebAuthnUser(user model.User, credentials []webauthn.Credential) *webauthnUser {
+	uid := user.ID[:]
+	return &webauthnUser{
+		id:          uid,
+		name:        user.Username,
+		displayName: user.DisplayName,
+		credentials: credentials,
+	}
+}
+
+// BeginPasskeyRegistration starts the WebAuthn credential registration ceremony
+func BeginPasskeyRegistration(db *gorm.DB, userID uuid.UUID) (*protocol.CredentialCreation, error) {
+	wa := getWebAuthn()
+
 	var user model.User
 	if err := db.First(&user, userID).Error; err != nil {
 		return nil, err
 	}
 
-	challenge := generateChallenge()
-	rpID := getRPID()
+	wu := makeWebAuthnUser(user, loadCredentials(db, userID))
 
-	session := &RegistrationSession{
-		UserID:    userID,
-		Challenge: challenge,
-		ExpiresAt: time.Now().Add(5 * time.Minute),
+	options, session, err := wa.BeginRegistration(wu)
+	if err != nil {
+		return nil, fmt.Errorf("begin registration: %w", err)
 	}
 
-	registrationMu.Lock()
-	registrationSessions[challenge] = session
-	registrationMu.Unlock()
+	// Store session data temporarily in memory
+	sessionDataStore.Store(userID.String(), session)
 
-	userIDBytes := user.ID[:]
-	return &PublicKeyCredentialCreationOptions{
-		Challenge: challenge,
-		RP: RPInfo{
-			Name: "TanoBlog",
-			ID:   rpID,
-		},
-		User: UserInfo{
-			ID:          base64.RawURLEncoding.EncodeToString(userIDBytes),
-			Name:        user.Username,
-			DisplayName: user.DisplayName,
-		},
-		PubKeyCredParams: []CredentialParam{
-			{Type: "public-key", Alg: -7},   // ES256
-			{Type: "public-key", Alg: -257}, // RS256
-		},
-		Timeout: 60000,
-	}, nil
+	return options, nil
 }
 
-func VerifyPasskeyRegistration(db *gorm.DB, userID uuid.UUID, credential map[string]interface{}) error {
-	credID, ok := credential["id"].(string)
+// VerifyPasskeyRegistration completes the WebAuthn credential registration ceremony
+func VerifyPasskeyRegistration(db *gorm.DB, userID uuid.UUID, rawBody []byte) error {
+	wa := getWebAuthn()
+
+	var user model.User
+	if err := db.First(&user, userID).Error; err != nil {
+		return err
+	}
+
+	// Retrieve stored session data
+	sessionRaw, ok := sessionDataStore.Load(userID.String())
 	if !ok {
-		return errors.New("invalid credential ID")
+		return fmt.Errorf("registration session not found, please try again")
 	}
+	sessionDataStore.Delete(userID.String())
+	session := sessionRaw.(*webauthn.SessionData)
 
-	response, ok := credential["response"].(map[string]interface{})
-	if !ok {
-		return errors.New("invalid credential response")
-	}
+	wu := makeWebAuthnUser(user, loadCredentials(db, userID))
 
-	clientDataJSON, _ := response["clientDataJSON"].(string)
-	attestationObject, _ := response["attestationObject"].(string)
-
-	clientDataBytes, err := base64.RawURLEncoding.DecodeString(clientDataJSON)
+	// Parse the credential creation response
+	pcc, err := protocol.ParseCredentialCreationResponseBody(bytes.NewReader(rawBody))
 	if err != nil {
-		return errors.New("invalid clientDataJSON")
+		return fmt.Errorf("parse credential: %w", err)
 	}
 
-	var clientData struct {
-		Challenge string `json:"challenge"`
-		Origin    string `json:"origin"`
-		Type      string `json:"type"`
-	}
-	if err := json.Unmarshal(clientDataBytes, &clientData); err != nil {
-		return errors.New("invalid clientDataJSON")
-	}
-
-	if clientData.Type != "webauthn.create" {
-		return errors.New("invalid credential type")
-	}
-
-	if clientData.Origin != getOrigin() {
-		return errors.New("invalid origin")
-	}
-
-	registrationMu.Lock()
-	session, ok := registrationSessions[clientData.Challenge]
-	if ok {
-		delete(registrationSessions, clientData.Challenge)
-	}
-	registrationMu.Unlock()
-
-	if !ok || session.UserID != userID || time.Now().After(session.ExpiresAt) {
-		return errors.New("challenge expired or invalid")
-	}
-
-	attBytes, err := base64.RawURLEncoding.DecodeString(attestationObject)
+	cred, err := wa.CreateCredential(wu, *session, pcc)
 	if err != nil {
-		return errors.New("invalid attestationObject")
+		return fmt.Errorf("create credential: %w", err)
 	}
 
-	publicKey := attBytes
+	// Serialize credential for storage
+	credJSON, err := json.Marshal(cred)
+	if err != nil {
+		return fmt.Errorf("marshal credential: %w", err)
+	}
 
+	// Store the credential in the database
 	passkey := &model.Passkey{
-		UserID:       userID,
-		CredentialID: credID,
-		PublicKey:    publicKey,
-		SignCount:    0,
-		AAGUID:       "",
-		Nickname:     fmt.Sprintf("设备 %s", time.Now().Format("2006-01-02 15:04")),
+		UserID:         userID,
+		CredentialID:   string(cred.ID),
+		PublicKey:      cred.PublicKey,
+		CredentialData: string(credJSON),
+		SignCount:      int64(cred.Authenticator.SignCount),
+		AAGUID:         fmt.Sprintf("%x", cred.Authenticator.AAGUID),
+		Nickname:       fmt.Sprintf("密钥 %s", time.Now().Format("2006-01-02 15:04")),
 	}
 
 	return db.Create(passkey).Error
 }
 
-func BeginPasskeyLogin() (*PublicKeyCredentialRequestOptions, error) {
-	challenge := generateChallenge()
-	rpID := getRPID()
+// BeginPasskeyLogin starts the WebAuthn assertion ceremony
+func BeginPasskeyLogin(db *gorm.DB) (*protocol.CredentialAssertion, error) {
+	wa := getWebAuthn()
 
-	loginMu.Lock()
-	loginSessions[challenge] = &LoginSession{
-		Challenge: challenge,
-		ExpiresAt: time.Now().Add(5 * time.Minute),
+	options, session, err := wa.BeginDiscoverableLogin()
+	if err != nil {
+		return nil, fmt.Errorf("begin login: %w", err)
 	}
-	loginMu.Unlock()
 
-	return &PublicKeyCredentialRequestOptions{
-		Challenge: challenge,
-		Timeout:   60000,
-		RPID:      rpID,
-	}, nil
+	// Store session data (keyed by challenge)
+	sessionDataStore.Store(string(session.Challenge), session)
+
+	return options, nil
 }
 
-func VerifyPasskeyLogin(db *gorm.DB, credential map[string]interface{}) (uuid.UUID, error) {
-	credID, ok := credential["id"].(string)
-	if !ok {
-		return uuid.Nil, errors.New("invalid credential ID")
-	}
+// VerifyPasskeyLogin completes the WebAuthn assertion ceremony
+func VerifyPasskeyLogin(db *gorm.DB, rawBody []byte) (uuid.UUID, error) {
+	wa := getWebAuthn()
 
-	response, ok := credential["response"].(map[string]interface{})
-	if !ok {
-		return uuid.Nil, errors.New("invalid credential response")
-	}
-
-	clientDataJSON, _ := response["clientDataJSON"].(string)
-	authenticatorData, _ := response["authenticatorData"].(string)
-	signature, _ := response["signature"].(string)
-
-	clientDataBytes, err := base64.RawURLEncoding.DecodeString(clientDataJSON)
+	// Parse the assertion response first to get the credential ID
+	parsed, err := protocol.ParseCredentialRequestResponseBody(bytes.NewReader(rawBody))
 	if err != nil {
-		return uuid.Nil, errors.New("invalid clientDataJSON")
+		return uuid.Nil, fmt.Errorf("parse assertion: %w", err)
 	}
 
-	var clientData struct {
-		Challenge string `json:"challenge"`
-		Origin    string `json:"origin"`
-		Type      string `json:"type"`
-	}
-	if err := json.Unmarshal(clientDataBytes, &clientData); err != nil {
-		return uuid.Nil, errors.New("invalid clientDataJSON")
-	}
-
-	if clientData.Type != "webauthn.get" {
-		return uuid.Nil, errors.New("invalid credential type")
-	}
-
-	if clientData.Origin != getOrigin() {
-		return uuid.Nil, errors.New("invalid origin")
-	}
-
-	loginMu.Lock()
-	session, ok := loginSessions[clientData.Challenge]
-	if ok {
-		delete(loginSessions, clientData.Challenge)
-	}
-	loginMu.Unlock()
-
-	if !ok || time.Now().After(session.ExpiresAt) {
-		return uuid.Nil, errors.New("challenge expired or invalid")
-	}
-
+	// Find the corresponding passkey by credential ID
+	credID := string(parsed.RawID)
 	var passkey model.Passkey
 	if err := db.Where("credential_id = ?", credID).First(&passkey).Error; err != nil {
-		return uuid.Nil, errors.New("passkey not found")
+		return uuid.Nil, fmt.Errorf("passkey not found")
 	}
 
-	// Verify that authenticatorData and signature are present
-	if authenticatorData == "" || signature == "" {
-		return uuid.Nil, errors.New("missing authenticator data or signature")
+	var cred webauthn.Credential
+	if err := json.Unmarshal([]byte(passkey.CredentialData), &cred); err != nil {
+		return uuid.Nil, fmt.Errorf("invalid stored credential")
+	}
+
+	// Retrieve session data by challenge
+	sessionRaw, ok := sessionDataStore.Load(string(parsed.Response.CollectedClientData.Challenge))
+	if ok {
+		sessionDataStore.Delete(string(parsed.Response.CollectedClientData.Challenge))
+	}
+
+	if !ok {
+		return uuid.Nil, fmt.Errorf("login session expired, please try again")
+	}
+	session := sessionRaw.(*webauthn.SessionData)
+
+	// Get the user
+	var user model.User
+	if err := db.First(&user, passkey.UserID).Error; err != nil {
+		return uuid.Nil, fmt.Errorf("user not found")
+	}
+
+	wu := makeWebAuthnUser(user, []webauthn.Credential{cred})
+
+	// Verify the assertion
+	_, err = wa.ValidateLogin(wu, *session, parsed)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("validate login: %w", err)
 	}
 
 	// Update sign count
-	db.Model(&passkey).Update("sign_count", passkey.SignCount+1)
+	db.Model(&passkey).Update("sign_count", cred.Authenticator.SignCount)
 
 	return passkey.UserID, nil
-}
-
-func generateChallenge() string {
-	b := make([]byte, 32)
-	rand.Read(b)
-	return base64.RawURLEncoding.EncodeToString(b)
-}
-
-func getRPID() string {
-	if id := os.Getenv("WEBAUTHN_RP_ID"); id != "" {
-		return id
-	}
-	return "tano.asia"
 }

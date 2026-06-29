@@ -140,6 +140,8 @@ func buildMIMEMessage(from, to, subject, html string) []byte {
 	var buf bytes.Buffer
 	fmt.Fprintf(&buf, "From: %s\r\n", from)
 	fmt.Fprintf(&buf, "To: %s\r\n", to)
+	// Sanitize subject to prevent header injection
+	subject = strings.ReplaceAll(strings.ReplaceAll(subject, "\r", ""), "\n", "")
 	fmt.Fprintf(&buf, "Subject: %s\r\n", subject)
 	fmt.Fprintf(&buf, "MIME-Version: 1.0\r\n")
 	fmt.Fprintf(&buf, "Content-Type: text/html; charset=UTF-8\r\n")

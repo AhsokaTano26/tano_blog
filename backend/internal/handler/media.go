@@ -74,9 +74,6 @@ func (h *MediaHandler) Upload(c *gin.Context) {
 	n, _ := f.Read(buf)
 	f.Close()
 	mimeType := http.DetectContentType(buf[:n])
-	if mimeType == "application/octet-stream" {
-		mimeType = file.Header.Get("Content-Type")
-	}
 
 	userID, _ := uuid.Parse(c.GetString("user_id"))
 	media := &model.Media{
