@@ -10,8 +10,10 @@ import {
   Undo, Redo, Minus, SquareCode, Superscript, GitBranch, Table, Video, Music, Palette
 } from 'lucide-react';
 import { Loading } from '@/components/Loading';
+import { useConfirm, Checkbox, Select } from '@/components/ConfirmDialog';
 
 export default function AdminPosts() {
+  const { confirm } = useConfirm();
   const [posts, setPosts] = useState<any[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -36,7 +38,7 @@ export default function AdminPosts() {
   useEffect(() => { load(); }, [page, statusFilter]);
 
   async function handleDelete(id: string) {
-    if (!confirm('确定删除此文章？此操作不可恢复。')) return;
+    if (!await confirm('确定删除此文章？此操作不可恢复。')) return;
     await api.admin.posts.delete(id);
     load();
   }
@@ -82,13 +84,15 @@ export default function AdminPosts() {
               className="w-full pl-9 pr-3 py-2 rounded-xl text-sm outline-none glass-card"
               style={{ color: 'var(--text-primary)' }} />
           </div>
-          <select value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(1); }}
-            className="px-3 py-2 rounded-xl text-sm outline-none glass-card"
-            style={{ color: 'var(--text-primary)' }}>
-            <option value="">全部状态</option>
-            <option value="published">已发布</option>
-            <option value="draft">草稿</option>
-          </select>
+          <div className="w-32">
+            <Select value={statusFilter}
+              onChange={v => { setStatusFilter(v); setPage(1); }}
+              options={[
+                { value: '', label: '全部状态' },
+                { value: 'published', label: '已发布' },
+                { value: 'draft', label: '草稿' },
+              ]} />
+          </div>
         </div>
 
         {loading ? (
@@ -241,6 +245,7 @@ export default function AdminPosts() {
 
 /* ── Full-page post editor ── */
 function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
+  const { confirm } = useConfirm();
   const [title, setTitle] = useState(post?.title || '');
   const [slug, setSlug] = useState(post?.slug || '');
   const [content, setContent] = useState(post?.content || '');
@@ -365,7 +370,7 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
   }
 
   async function handleRestoreRevision(revId: string) {
-    if (!post?.id || !confirm('确定要恢复到此版本？当前内容将被保存为新版本。')) return;
+    if (!post?.id || !await confirm('确定要恢复到此版本？当前内容将被保存为新版本。')) return;
     try {
       const res = await api.admin.posts.revisions.restore(post.id, revId);
       setTitle(res.post.title);
@@ -727,27 +732,21 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
                   {/* Category */}
                   <div>
                     <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-info)' }}>分类</label>
-                    <select value={categoryId} onChange={e => setCategoryId(e.target.value)}
-                      className="w-full px-3 py-2 rounded-xl text-sm outline-none glass-card"
-                      style={{ color: 'var(--text-primary)' }}>
-                      <option value="">无分类</option>
-                      {categories.map(cat => (
-                        <option key={cat.id} value={cat.id}>{cat.name}</option>
-                      ))}
-                    </select>
+                    <Select value={categoryId} onChange={setCategoryId}
+                      options={[
+                        { value: '', label: '无分类' },
+                        ...categories.map(cat => ({ value: cat.id, label: cat.name })),
+                      ]} />
                   </div>
 
                   {/* Series */}
                   <div>
                     <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-info)' }}>系列</label>
-                    <select value={selectedSeriesId} onChange={e => setSelectedSeriesId(e.target.value)}
-                      className="w-full px-3 py-2 rounded-xl text-sm outline-none glass-card"
-                      style={{ color: 'var(--text-primary)' }}>
-                      <option value="">无系列</option>
-                      {seriesList.map((s: any) => (
-                        <option key={s.id} value={s.id}>{s.name}</option>
-                      ))}
-                    </select>
+                    <Select value={selectedSeriesId} onChange={setSelectedSeriesId}
+                      options={[
+                        { value: '', label: '无系列' },
+                        ...seriesList.map(s => ({ value: s.id, label: s.name })),
+                      ]} />
                   </div>
 
                   {/* Tags */}
@@ -809,18 +808,14 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
                   </div>
 
                   {/* Top */}
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" checked={isTop} onChange={e => setIsTop(e.target.checked)}
-                      className="w-4 h-4 rounded" />
-                    <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>置顶文章</span>
-                  </label>
+                  <div className="flex items-center gap-2">
+                    <Checkbox checked={isTop} onChange={setIsTop} label="置顶文章" />
+                  </div>
 
                   {/* Allow comment */}
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" checked={allowComment} onChange={e => setAllowComment(e.target.checked)}
-                      className="w-4 h-4 rounded" />
-                    <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>允许评论</span>
-                  </label>
+                  <div className="flex items-center gap-2">
+                    <Checkbox checked={allowComment} onChange={setAllowComment} label="允许评论" />
+                  </div>
                 </div>
               ) : (
                 <div className="space-y-2">

@@ -4,8 +4,10 @@ import { useState, useEffect } from 'react';
 import { api } from '@/lib/api';
 import { Plus, Pencil, Trash2, Bookmark } from 'lucide-react';
 import { Loading } from '@/components/Loading';
+import { useConfirm, Checkbox } from '@/components/ConfirmDialog';
 
 export default function AdminSeries() {
+  const { confirm } = useConfirm();
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [editItem, setEditItem] = useState<any>(null);
@@ -57,7 +59,7 @@ export default function AdminSeries() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm('确定删除此系列？')) return;
+    if (!await confirm('确定删除此系列？')) return;
     try {
       await api.admin.series.delete(id);
       load();
@@ -103,11 +105,11 @@ export default function AdminSeries() {
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1">
                       <button onClick={() => setShowPosts(item)}
-                        className="p-1.5 rounded-lg btn-glass" style={{ color: 'var(--text-info)' }} title="设置文章">
-                        <Pencil className="w-4 h-4" />
+                        className="p-1.5 rounded-lg btn-glass" style={{ color: 'var(--primary)' }} title="设置文章">
+                        <Bookmark className="w-4 h-4" />
                       </button>
                       <button onClick={() => openEdit(item)}
-                        className="p-1.5 rounded-lg btn-glass" style={{ color: 'var(--text-info)' }} title="编辑">
+                        className="p-1.5 rounded-lg btn-glass" style={{ color: 'var(--text-info)' }} title="编辑基本信息">
                         <Pencil className="w-4 h-4" />
                       </button>
                       <button onClick={() => handleDelete(item.id)}
@@ -214,9 +216,7 @@ function SetPostsModal({ series, onClose }: { series: any; onClose: () => void }
             <label key={post.id}
               className="flex items-center gap-3 px-3 py-2 rounded-xl cursor-pointer transition-colors hover:opacity-80"
               style={{ background: selectedIds.includes(post.id) ? 'var(--primary-sub)' : 'var(--btn-card-bg)' }}>
-              <input type="checkbox" checked={selectedIds.includes(post.id)}
-                onChange={() => togglePost(post.id)}
-                className="rounded" style={{ accentColor: 'var(--primary)' }} />
+              <Checkbox checked={selectedIds.includes(post.id)} onChange={() => togglePost(post.id)} />
               <span className="text-sm" style={{ color: 'var(--text-primary)' }}>{post.title}</span>
               <span className="text-xs ml-auto" style={{ color: 'var(--text-info)' }}>
                 {post.status === 'published' ? '已发布' : '草稿'}

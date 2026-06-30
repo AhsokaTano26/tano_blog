@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import { Loading } from '@/components/Loading';
+import { ConfirmProvider } from '@/components/ConfirmDialog';
 
 const navSections = [
   {
@@ -184,9 +185,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       </aside>
 
       {/* Main content */}
-      <main className={`flex-1 min-w-0 transition-all duration-200 ${collapsed ? 'ml-[60px]' : 'ml-[220px]'}`}>
+      <main className={`flex-1 min-w-0 transition-[margin] duration-200 ${collapsed ? 'ml-[60px]' : 'ml-[220px]'}`}>
         <div className="p-6">
-          {children}
+          <ConfirmProvider>
+            {children}
+          </ConfirmProvider>
         </div>
       </main>
     </div>

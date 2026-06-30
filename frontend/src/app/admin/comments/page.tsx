@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { api } from '@/lib/api';
 import { MessageSquare, Check, X, Trash2, ExternalLink, User, CheckSquare, Square, Info, Monitor, Smartphone } from 'lucide-react';
 import { Loading } from '@/components/Loading';
+import { useConfirm } from '@/components/ConfirmDialog';
 
 function parseUA(ua: string) {
   let browser = '未知';
@@ -107,6 +108,7 @@ function DetailField({ label, value, mono }: { label: string; value: string; mon
 }
 
 export default function AdminComments() {
+  const { confirm } = useConfirm();
   const [items, setItems] = useState<any[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -138,7 +140,7 @@ export default function AdminComments() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm('确定删除此评论？')) return;
+    if (!await confirm('确定删除此评论？')) return;
     try {
       await api.admin.comments.delete(id);
       load();

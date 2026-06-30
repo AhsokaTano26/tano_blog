@@ -20,7 +20,7 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
       {!isAdmin && <Header />}
       {!isAdmin && !isHome && <Banner />}
       <main className="flex-1 w-full mx-auto">
-        <PageTransition>{children}</PageTransition>
+        {isAdmin ? children : <PageTransition>{children}</PageTransition>}
       </main>
       {!isAdmin && !isHome && <FooterInjection />}
       {!isAdmin && <BackToTop />}

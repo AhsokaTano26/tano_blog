@@ -53,6 +53,7 @@ func (h *PostHandler) ListPublic(c *gin.Context) {
 		Author      map[string]interface{} `json:"author,omitempty"`
 		Category    map[string]interface{} `json:"category,omitempty"`
 		Tags        []map[string]interface{} `json:"tags,omitempty"`
+			Series      []map[string]interface{} `json:"series,omitempty"`
 	}
 
 	items := make([]PostItem, 0, len(posts))
@@ -77,7 +78,7 @@ func (h *PostHandler) ListPublic(c *gin.Context) {
 				"slug": p.Category.Slug,
 			}
 		}
-		if p.Author.ID != uuid.Nil {
+		if p.Author != nil && p.Author.ID != uuid.Nil {
 			item.Author = map[string]interface{}{
 				"username":     p.Author.Username,
 				"display_name": p.Author.DisplayName,
@@ -89,6 +90,13 @@ func (h *PostHandler) ListPublic(c *gin.Context) {
 				"id":   t.ID,
 				"name": t.Name,
 				"slug": t.Slug,
+			})
+		}
+		for _, s := range p.Series {
+			item.Series = append(item.Series, map[string]interface{}{
+				"id":   s.ID,
+				"name": s.Name,
+				"slug": s.Slug,
 			})
 		}
 		items = append(items, item)
@@ -285,6 +293,7 @@ func (h *PostHandler) Create(c *gin.Context) {
 		CategoryID   string   `json:"category_id"`
 		TagIDs       []string `json:"tag_ids"`
 		ScheduledAt  string   `json:"scheduled_at"`
+		SeriesID     string   `json:"series_id"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
@@ -369,6 +378,7 @@ func (h *PostHandler) Update(c *gin.Context) {
 		CategoryID   *string  `json:"category_id"`
 		TagIDs       []string `json:"tag_ids"`
 		ScheduledAt  *string  `json:"scheduled_at"`
+		SeriesID     *string  `json:"series_id"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
@@ -455,6 +465,15 @@ func (h *PostHandler) Update(c *gin.Context) {
 		}
 		if len(tagUUIDs) > 0 {
 			h.repo.SetTags(id, tagUUIDs)
+		}
+
+		// Handle series
+		if input.SeriesID != nil {
+			if *input.SeriesID == "" {
+				h.repo.ClearSeries(id)
+			} else if sid, err := uuid.Parse(*input.SeriesID); err == nil {
+				h.repo.SetSeries(id, sid)
+			}
 		}
 	}
 

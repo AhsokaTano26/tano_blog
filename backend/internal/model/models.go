@@ -180,7 +180,7 @@ type Series struct {
 	SortOrder   int        `gorm:"default:0" json:"sort_order"`
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
-	Posts       []Post     `gorm:"many2many:post_series;" json:"-"`
+	Posts       []Post     `gorm:"many2many:post_series;" json:"posts,omitempty"`
 }
 
 type PostSeries struct {

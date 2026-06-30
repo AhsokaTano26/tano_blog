@@ -127,6 +127,9 @@ func main() {
 		api.GET("/tags", tagHandler.List)
 		api.GET("/tags/:slug", tagHandler.GetBySlug)
 
+		api.GET("/series", seriesHandler.List)
+		api.GET("/series/:slug", seriesHandler.GetBySlug)
+
 		api.GET("/posts/:slug/comments", commentHandler.ListByPost)
 		api.POST("/posts/:slug/comments", middleware.RateLimit(5, 60*time.Second), commentHandler.Create)
 		api.POST("/posts/:slug/comments/:id/reactions", commentHandler.ToggleReaction)

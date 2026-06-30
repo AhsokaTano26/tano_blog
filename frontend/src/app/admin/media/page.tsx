@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import { api } from '@/lib/api';
 import { Image, Upload, Trash2, Copy, Check, Grid, List, Search, X, FileText, Video, Music, File, Tag, Plus, Settings } from 'lucide-react';
 import { Loading } from '@/components/Loading';
+import { useConfirm } from '@/components/ConfirmDialog';
 
 const SITE_URL = typeof window !== 'undefined' ? window.location.origin : 'https://tano.asia';
 
@@ -89,6 +90,7 @@ const typeTabs = [
 ];
 
 export default function AdminMedia() {
+  const { confirm } = useConfirm();
   const [items, setItems] = useState<MediaItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -147,7 +149,7 @@ export default function AdminMedia() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm('确定删除此文件？')) return;
+    if (!await confirm('确定删除此文件？')) return;
     try { await api.admin.media.delete(id); load(); } catch { /* empty */ }
   }
 
@@ -181,7 +183,7 @@ export default function AdminMedia() {
   }
 
   async function handleDeleteTag(id: string) {
-    if (!confirm('确定删除此标签？')) return;
+    if (!await confirm('确定删除此标签？')) return;
     try {
       await api.admin.media.tags.delete(id);
       if (tagFilter === id) setTagFilter('');

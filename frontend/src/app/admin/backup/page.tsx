@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { api } from '@/lib/api';
 import { Download, Upload, Trash2, Plus, Link, FolderOpen, AlertTriangle, HardDrive } from 'lucide-react';
 import { Loading } from '@/components/Loading';
+import { useConfirm, Select } from '@/components/ConfirmDialog';
 
 const tabs = [
   { key: 'manage', label: '备份管理', icon: HardDrive },
@@ -26,6 +27,7 @@ function formatTime(iso: string): string {
 }
 
 export default function AdminBackup() {
+  const { confirm } = useConfirm();
   const [activeTab, setActiveTab] = useState('manage');
   const [backups, setBackups] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -69,7 +71,7 @@ export default function AdminBackup() {
   }
 
   async function handleDelete(filename: string) {
-    if (!confirm(`确定要删除备份 ${filename} 吗？`)) return;
+    if (!await confirm(`确定要删除备份 ${filename} 吗？`)) return;
     try {
       await api.admin.backups.delete(filename);
       setMessage('已删除');
@@ -81,7 +83,7 @@ export default function AdminBackup() {
 
   async function handleRestoreUpload() {
     if (!restoreFile) return;
-    if (!confirm('确定要恢复数据吗？此操作将覆盖所有现有数据！')) return;
+    if (!await confirm('确定要恢复数据吗？此操作将覆盖所有现有数据！')) return;
     setRestoring(true);
     setRestoreMessage('');
     try {
@@ -98,7 +100,7 @@ export default function AdminBackup() {
 
   async function handleRestoreUrl() {
     if (!restoreUrl.trim()) return;
-    if (!confirm('确定要恢复数据吗？此操作将覆盖所有现有数据！')) return;
+    if (!await confirm('确定要恢复数据吗？此操作将覆盖所有现有数据！')) return;
     setRestoring(true);
     setRestoreMessage('');
     try {
@@ -113,7 +115,7 @@ export default function AdminBackup() {
 
   async function handleRestoreLocal() {
     if (!restoreFilename) return;
-    if (!confirm('确定要恢复数据吗？此操作将覆盖所有现有数据！')) return;
+    if (!await confirm('确定要恢复数据吗？此操作将覆盖所有现有数据！')) return;
     setRestoring(true);
     setRestoreMessage('');
     try {
@@ -292,15 +294,13 @@ export default function AdminBackup() {
                   从本地备份选择恢复
                 </h3>
                 <div className="flex items-center gap-3">
-                  <select value={restoreFilename} onChange={e => setRestoreFilename(e.target.value)}
-                    className={inputClass} style={inputStyle}>
-                    <option value="">-- 请选择备份文件 --</option>
-                    {backups.map(b => (
-                      <option key={b.filename} value={b.filename}>
-                        {b.filename} ({formatSize(b.size)})
-                      </option>
-                    ))}
-                  </select>
+                  <div className="flex-1">
+                    <Select value={restoreFilename} onChange={setRestoreFilename}
+                      options={[
+                        { value: '', label: '-- 请选择备份文件 --' },
+                        ...backups.map(b => ({ value: b.filename, label: `${b.filename} (${formatSize(b.size)})` })),
+                      ]} />
+                  </div>
                   <button onClick={handleRestoreLocal} disabled={!restoreFilename || restoring}
                     className="flex items-center gap-1.5 px-5 py-2.5 rounded-lg text-sm font-medium text-white disabled:opacity-50 transition-colors flex-shrink-0"
                     style={{ background: 'hsl(0, 60%, 55%)' }}>

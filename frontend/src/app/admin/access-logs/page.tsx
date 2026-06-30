@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import { api } from '@/lib/api';
 import { ScrollText, Search, Download, Trash2, X, Activity, Globe, AlertTriangle, Clock } from 'lucide-react';
 import { Loading } from '@/components/Loading';
+import { useConfirm, Select } from '@/components/ConfirmDialog';
 
 type AccessLog = {
   id: string;
@@ -53,6 +54,7 @@ function FloatingModal({ onClose, children }: { onClose: () => void; children: R
 }
 
 export default function AdminAccessLogs() {
+  const { confirm } = useConfirm();
   const [items, setItems] = useState<AccessLog[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -114,7 +116,7 @@ export default function AdminAccessLogs() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm('确定删除此日志？')) return;
+    if (!await confirm('确定删除此日志？')) return;
     try {
       await api.admin.accessLogs.delete(id);
       setItems(prev => prev.filter(i => i.id !== id));
@@ -124,7 +126,7 @@ export default function AdminAccessLogs() {
   }
 
   async function handleClearAll() {
-    if (!confirm('确定清空所有日志？此操作不可恢复！')) return;
+    if (!await confirm('确定清空所有日志？此操作不可恢复！')) return;
     try {
       await api.admin.accessLogs.clear();
       setItems([]);
@@ -239,26 +241,26 @@ export default function AdminAccessLogs() {
             </div>
             <div className="w-28">
               <label className="block text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>方法</label>
-              <select value={methodFilter} onChange={e => setMethodFilter(e.target.value)}
-                className={inputClass} style={inputStyle}>
-                <option value="">全部</option>
-                <option value="GET">GET</option>
-                <option value="POST">POST</option>
-                <option value="PUT">PUT</option>
-                <option value="PATCH">PATCH</option>
-                <option value="DELETE">DELETE</option>
-              </select>
+              <Select value={methodFilter} onChange={setMethodFilter}
+                options={[
+                  { value: '', label: '全部' },
+                  { value: 'GET', label: 'GET' },
+                  { value: 'POST', label: 'POST' },
+                  { value: 'PUT', label: 'PUT' },
+                  { value: 'PATCH', label: 'PATCH' },
+                  { value: 'DELETE', label: 'DELETE' },
+                ]} />
             </div>
             <div className="w-28">
               <label className="block text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>状态码</label>
-              <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
-                className={inputClass} style={inputStyle}>
-                <option value="">全部</option>
-                <option value="200">2xx 成功</option>
-                <option value="301">3xx 重定向</option>
-                <option value="400">4xx 客户端错误</option>
-                <option value="500">5xx 服务器错误</option>
-              </select>
+              <Select value={statusFilter} onChange={setStatusFilter}
+                options={[
+                  { value: '', label: '全部' },
+                  { value: '200', label: '2xx 成功' },
+                  { value: '301', label: '3xx 重定向' },
+                  { value: '400', label: '4xx 客户端错误' },
+                  { value: '500', label: '5xx 服务器错误' },
+                ]} />
             </div>
             <div className="w-36">
               <label className="block text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>开始日期</label>

@@ -5,6 +5,7 @@ import { api } from '@/lib/api';
 import QRCode from 'qrcode';
 import { Save, Lock, User, Shield, KeyRound, Trash2, Plus } from 'lucide-react';
 import { Loading } from '@/components/Loading';
+import { useConfirm } from '@/components/ConfirmDialog';
 
 function bufferToBase64url(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
@@ -24,6 +25,7 @@ function base64urlToBuffer(base64url: string): ArrayBuffer {
 }
 
 export default function AdminProfile() {
+  const { confirm } = useConfirm();
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -138,7 +140,7 @@ export default function AdminProfile() {
   }
 
   async function handleDisableTOTP() {
-    if (!confirm('确定要关闭两步验证？')) return;
+    if (!await confirm('确定要关闭两步验证？')) return;
     try {
       await api.disableTOTP();
       setTotpEnabled(false);
@@ -193,7 +195,7 @@ export default function AdminProfile() {
   }
 
   async function handleDeletePasskey(id: string) {
-    if (!confirm('确定要删除此通行密钥？')) return;
+    if (!await confirm('确定要删除此通行密钥？')) return;
     try {
       await api.passkeyDelete(id);
       setPasskeys(passkeys.filter(p => p.id !== id));

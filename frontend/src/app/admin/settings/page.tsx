@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { api } from '@/lib/api';
 import { Save, Globe, FileText, Palette, MessageSquare, Code, Mail, User, Plus, Trash2 } from 'lucide-react';
 import { Loading } from '@/components/Loading';
+import { Select } from '@/components/ConfirmDialog';
 
 const contactTypes = [
   { value: 'email', label: '邮箱' },
@@ -136,18 +137,15 @@ export default function AdminSettings() {
                 <div className="space-y-2">
                   {getContacts().map((c, i) => (
                     <div key={i} className="flex items-center gap-2">
-                      <select value={c.type}
-                        onChange={e => {
-                          const list = getContacts();
-                          list[i] = { ...list[i], type: e.target.value };
-                          setContacts(list);
-                        }}
-                        className="px-3 py-2.5 rounded-lg text-sm outline-none w-32"
-                        style={inputStyle}>
-                        {contactTypes.map(t => (
-                          <option key={t.value} value={t.value}>{t.label}</option>
-                        ))}
-                      </select>
+                      <div className="w-32">
+                        <Select value={c.type}
+                          onChange={v => {
+                            const list = getContacts();
+                            list[i] = { ...list[i], type: v };
+                            setContacts(list);
+                          }}
+                          options={contactTypes.map(t => ({ value: t.value, label: t.label }))} />
+                      </div>
                       <input type="text" value={c.value}
                         onChange={e => {
                           const list = getContacts();
@@ -222,12 +220,13 @@ export default function AdminSettings() {
             <div className="space-y-5 max-w-2xl">
               <div>
                 <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>默认主题</label>
-                <select value={config.default_theme || 'dark'} onChange={e => setConfig({ ...config, default_theme: e.target.value })}
-                  className={inputClass} style={inputStyle}>
-                  <option value="dark">深色</option>
-                  <option value="light">浅色</option>
-                  <option value="system">跟随系统</option>
-                </select>
+                <Select value={config.default_theme || 'dark'}
+                  onChange={v => setConfig({ ...config, default_theme: v })}
+                  options={[
+                    { value: 'dark', label: '深色' },
+                    { value: 'light', label: '浅色' },
+                    { value: 'system', label: '跟随系统' },
+                  ]} />
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>主题色</label>
@@ -324,11 +323,12 @@ export default function AdminSettings() {
               {/* Provider selection */}
               <div>
                 <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>邮件服务商</label>
-                <select value={config.email_provider || 'zeabur'} onChange={e => setConfig({ ...config, email_provider: e.target.value })}
-                  className={inputClass} style={inputStyle}>
-                  <option value="zeabur">Zeabur Email</option>
-                  <option value="smtp">SMTP（QQ邮箱、Gmail 等）</option>
-                </select>
+                <Select value={config.email_provider || 'zeabur'}
+                  onChange={v => setConfig({ ...config, email_provider: v })}
+                  options={[
+                    { value: 'zeabur', label: 'Zeabur Email' },
+                    { value: 'smtp', label: 'SMTP（QQ邮箱、Gmail 等）' },
+                  ]} />
               </div>
 
               {/* From address */}

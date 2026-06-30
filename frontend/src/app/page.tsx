@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
-import { Eye, Mail, ChevronRight, Calendar, BookOpen, Tag, MessageSquare, Globe, Send, MessageCircle, User } from 'lucide-react';
+import { Eye, Mail, ChevronRight, Calendar, BookOpen, Tag, MessageSquare, Globe, Send, MessageCircle, User, Bookmark } from 'lucide-react';
 import { FooterInjection } from '@/components/HtmlInjection';
 import { Loading } from '@/components/Loading';
 import { TagCloud } from '@/components/TagCloud';
@@ -12,6 +12,7 @@ export default function Home() {
   const [posts, setPosts] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [tags, setTags] = useState<any[]>([]);
+  const [series, setSeries] = useState<any[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -54,15 +55,17 @@ export default function Home() {
       const params: Record<string, string> = { page: String(page), page_size: String(pageSize) };
       if (activeCategory) params.category = activeCategory;
       if (activeTag) params.tag = activeTag;
-      const [postRes, catRes, tagRes] = await Promise.all([
+      const [postRes, catRes, tagRes, seriesRes] = await Promise.all([
         api.getPosts(params),
         api.getCategories(),
         api.getTags(),
+        api.getSeries(),
       ]);
       setPosts(postRes.items);
       setTotal(postRes.total);
       setCategories(catRes.items);
       setTags(tagRes.items);
+      setSeries(seriesRes.items || []);
     } catch {
       setError('加载失败，请刷新重试');
     }
@@ -201,6 +204,24 @@ export default function Home() {
                   </div>
                 )}
 
+                {/* Series */}
+                {series.length > 0 && (
+                  <div className="card-base p-4 rounded-2xl">
+                    <div className="text-sm font-bold mb-3" style={{ color: 'var(--text-primary)' }}>系列</div>
+                    <div className="flex flex-col gap-1">
+                      {series.map((s: any) => (
+                        <Link key={s.id} href={`/series/${s.slug}`}
+                          className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all hover:opacity-80"
+                          style={{ color: 'var(--text-secondary)' }}>
+                          <Bookmark className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'var(--primary)' }} />
+                          <span className="flex-1 line-clamp-1">{s.name}</span>
+                          <span className="text-xs" style={{ color: 'var(--text-info)' }}>{s.post_count || 0}</span>
+                        </Link>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 <TagCloud />
               </div>
             </aside>
@@ -280,6 +301,14 @@ export default function Home() {
                                   <BookOpen className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
                                   <span className="transition-colors hover:text-[var(--primary)]">
                                     {post.category.name}
+                                  </span>
+                                </div>
+                              )}
+                              {post.series && post.series.length > 0 && (
+                                <div className="flex items-center gap-1.5 text-sm">
+                                  <Bookmark className="w-3.5 h-3.5" style={{ color: 'var(--primary)' }} />
+                                  <span style={{ color: 'var(--primary)' }}>
+                                    {post.series[0].name}
                                   </span>
                                 </div>
                               )}

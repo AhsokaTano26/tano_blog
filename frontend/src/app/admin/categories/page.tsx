@@ -4,8 +4,10 @@ import { useState, useEffect } from 'react';
 import { api } from '@/lib/api';
 import { Plus, Pencil, Trash2, FolderTree } from 'lucide-react';
 import { Loading } from '@/components/Loading';
+import { useConfirm } from '@/components/ConfirmDialog';
 
 export default function AdminCategories() {
+  const { confirm } = useConfirm();
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<any>(null);
@@ -33,7 +35,7 @@ export default function AdminCategories() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm('确定删除此分类？')) return;
+    if (!await confirm('确定删除此分类？')) return;
     try {
       await api.admin.categories.delete(id);
       load();

@@ -4,8 +4,10 @@ import { useState, useEffect } from 'react';
 import { api } from '@/lib/api';
 import { Plus, Pencil, Trash2, Tags } from 'lucide-react';
 import { Loading } from '@/components/Loading';
+import { useConfirm } from '@/components/ConfirmDialog';
 
 export default function AdminTags() {
+  const { confirm } = useConfirm();
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [name, setName] = useState('');
@@ -30,7 +32,7 @@ export default function AdminTags() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm('确定删除此标签？')) return;
+    if (!await confirm('确定删除此标签？')) return;
     try {
       await api.admin.tags.delete(id);
       load();

@@ -303,6 +303,15 @@ func (r *PostRepo) SetTags(postID uuid.UUID, tagIDs []uuid.UUID) error {
 	return r.db.Model(post).Association("Tags").Replace(tags)
 }
 
+func (r *PostRepo) SetSeries(postID uuid.UUID, seriesID uuid.UUID) error {
+	r.db.Where("post_id = ?", postID).Delete(&model.PostSeries{})
+	return r.db.Create(&model.PostSeries{SeriesID: seriesID, PostID: postID}).Error
+}
+
+func (r *PostRepo) ClearSeries(postID uuid.UUID) error {
+	return r.db.Where("post_id = ?", postID).Delete(&model.PostSeries{}).Error
+}
+
 func (r *PostRepo) SaveRevision(revision *model.PostRevision) error {
 	return r.db.Create(revision).Error
 }

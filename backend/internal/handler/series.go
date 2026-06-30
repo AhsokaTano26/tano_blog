@@ -58,7 +58,6 @@ func (h *SeriesHandler) AdminList(c *gin.Context) {
 func (h *SeriesHandler) AdminCreate(c *gin.Context) {
 	var input struct {
 		Name        string `json:"name" binding:"required"`
-		Slug        string `json:"slug"`
 		Description string `json:"description"`
 		CoverImage  string `json:"cover_image"`
 		SortOrder   int    `json:"sort_order"`
@@ -68,10 +67,7 @@ func (h *SeriesHandler) AdminCreate(c *gin.Context) {
 		return
 	}
 
-	slug := input.Slug
-	if slug == "" {
-		slug = uuid.New().String()[:8]
-	}
+	slug := uuid.New().String()[:8]
 
 	s := &model.Series{
 		ID:          uuid.New(),
@@ -98,7 +94,6 @@ func (h *SeriesHandler) AdminUpdate(c *gin.Context) {
 
 	var input struct {
 		Name        string `json:"name"`
-		Slug        string `json:"slug"`
 		Description string `json:"description"`
 		CoverImage  string `json:"cover_image"`
 		SortOrder   *int   `json:"sort_order"`
@@ -111,9 +106,6 @@ func (h *SeriesHandler) AdminUpdate(c *gin.Context) {
 	updates := map[string]interface{}{}
 	if input.Name != "" {
 		updates["name"] = input.Name
-	}
-	if input.Slug != "" {
-		updates["slug"] = input.Slug
 	}
 	updates["description"] = input.Description
 	updates["cover_image"] = input.CoverImage

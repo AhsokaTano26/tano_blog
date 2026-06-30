@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { api } from '@/lib/api';
 import { ArrowLeft, Eye, EyeOff, KeyRound } from 'lucide-react';
+import { Checkbox } from '@/components/ConfirmDialog';
 
 function bufferToBase64url(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
@@ -149,11 +150,9 @@ export default function LoginPage() {
                   </div>
                 </div>
 
-                <label className="flex items-center gap-2 mb-4 cursor-pointer">
-                  <input type="checkbox" checked={rememberMe} onChange={e => setRememberMe(e.target.checked)}
-                    className="w-4 h-4 rounded" style={{ accentColor: 'var(--primary)' }} />
-                  <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>记住登录状态（7 天）</span>
-                </label>
+                <div className="mb-4">
+                  <Checkbox checked={rememberMe} onChange={setRememberMe} label="记住登录状态（7 天）" />
+                </div>
 
                 <button type="submit" disabled={loading}
                   className="w-full py-2.5 rounded-xl text-sm font-medium text-white transition-all hover:opacity-90 disabled:opacity-50"

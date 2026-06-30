@@ -378,12 +378,11 @@ func (h *CommentHandler) ToggleReaction(c *gin.Context) {
 		return
 	}
 
-	// Validate emoji is in preset list
-	validEmojis := map[string]bool{"👍": true, "❤️": true, "😂": true, "😮": true, "😢": true, "🙏": true}
-	if !validEmojis[input.Emoji] {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "不支持的表情"})
+		// Validate emoji is not empty and within reasonable length
+		if len([]rune(input.Emoji)) == 0 || len([]rune(input.Emoji)) > 10 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
 		return
-	}
+		}
 
 	ipAddress := c.ClientIP()
 	active, err := h.repo.ToggleReaction(commentID, input.Emoji, ipAddress)
