@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { api } from '@/lib/api';
 import { Bookmark, Calendar, Eye, BookOpen, Tag, ChevronRight, MessageSquare, User } from 'lucide-react';
 import { Loading } from '@/components/Loading';
+import { ScrollReveal } from '@/components/ScrollReveal';
 
 export default function SeriesPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = React.use(params);
@@ -30,6 +31,7 @@ export default function SeriesPage({ params }: { params: Promise<{ slug: string 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
       {/* Series header */}
+      <ScrollReveal>
       <div className="glass-card rounded-2xl p-6 mb-8">
         <div className="flex items-center gap-3 mb-2">
           <Bookmark className="w-5 h-5" style={{ color: 'var(--primary)' }} />
@@ -42,11 +44,14 @@ export default function SeriesPage({ params }: { params: Promise<{ slug: string 
           共 {series.posts?.length || 0} 篇文章
         </p>
       </div>
+      </ScrollReveal>
 
       {/* Post list */}
       <div className="flex flex-col gap-4">
         {series.posts?.map((post: any, index: number) => (
-          <Link key={post.id || post.slug || index}
+          <ScrollReveal key={post.id || post.slug || index}
+            className={`stagger-${(index % 8) + 1}`}>
+          <Link
             href={`/posts/${post.slug}`}
             className="card-base post-card rounded-2xl overflow-hidden block">
             <div className="flex flex-col-reverse md:flex-row">
@@ -135,6 +140,7 @@ export default function SeriesPage({ params }: { params: Promise<{ slug: string 
               )}
             </div>
           </Link>
+          </ScrollReveal>
         ))}
         {(!series.posts || series.posts.length === 0) && (
           <p className="text-center py-10" style={{ color: 'var(--text-info)' }}>暂无文章</p>

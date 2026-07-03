@@ -17,6 +17,8 @@ import { ContentHeadInjection } from '@/components/HtmlInjection';
 import { ReadingProgress } from '@/components/ReadingProgress';
 import { ImageLightbox } from '@/components/ImageLightbox';
 import { Loading } from '@/components/Loading';
+import { EmojiPickerButton } from '@/components/EmojiPicker';
+import { ScrollReveal } from '@/components/ScrollReveal';
 
 interface TocItem {
   id: string;
@@ -109,7 +111,6 @@ function SharePanel({ url, title }: { url: string; title: string }) {
   );
 }
 
-const EMOJI_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 
 /* ── Mermaid Diagram Renderer ── */
 
@@ -165,11 +166,9 @@ function CommentItem({ comment, depth, onReply, reactions, onReaction }: {
         </div>
         <p className="whitespace-pre-wrap text-sm" style={{ color: 'var(--text-secondary)' }}>{comment.content}</p>
         {/* Reaction buttons */}
-        <div className="flex items-center gap-1 mt-2">
-          {EMOJI_REACTIONS.map(emoji => {
-            const commentReactions = reactions?.[comment.id];
-            const count = commentReactions?.counts?.[emoji] || 0;
-            const isActive = commentReactions?.user?.includes(emoji);
+        <div className="flex items-center gap-1 mt-2 flex-wrap">
+          {reactions?.[comment.id] && Object.entries(reactions[comment.id].counts).map(([emoji, count]) => {
+            const isActive = reactions[comment.id].user?.includes(emoji);
             return (
               <button
                 key={emoji}
@@ -187,6 +186,7 @@ function CommentItem({ comment, depth, onReply, reactions, onReaction }: {
               </button>
             );
           })}
+          <EmojiPickerButton onSelect={(emoji) => onReaction(comment.id, emoji)} />
         </div>
       </div>
       {comment.children?.map((child: any) => (
@@ -216,6 +216,8 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
   const [reactions, setReactions] = useState<Record<string, {counts: Record<string, number>, user: string[]}>>({});
   const [showPreview, setShowPreview] = useState(false);
   const [adjacentPosts, setAdjacentPosts] = useState<{ prev: any; next: any } | null>(null);
+  const [postReactions, setPostReactions] = useState<Record<string, number>>({});
+  const [postUserEmojis, setPostUserEmojis] = useState<string[]>([]);
   const contentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -223,6 +225,8 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
       try {
         const res = await api.getPost(slug);
         setPost(res.post);
+        if (res.reactions) setPostReactions(res.reactions);
+        if (res.user_emojis) setPostUserEmojis(res.user_emojis);
         loadComments(slug);
         // Load adjacent and related posts in parallel
         api.getAdjacentPosts(slug).then(adj => {
@@ -301,6 +305,31 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
 
         next[commentId] = { counts: newCounts, user: newUser };
         return next;
+      });
+    } catch (e) {
+      // Ignore reaction errors
+    }
+  }
+
+  async function handleTogglePostReaction(emoji: string) {
+    try {
+      const res = await api.togglePostReaction(slug, emoji);
+      setPostReactions(prev => {
+        const next = { ...prev };
+        if (res.active) {
+          next[emoji] = (next[emoji] || 0) + 1;
+        } else {
+          next[emoji] = Math.max(0, (next[emoji] || 0) - 1);
+          if (next[emoji] === 0) delete next[emoji];
+        }
+        return next;
+      });
+      setPostUserEmojis(prev => {
+        if (res.active) {
+          return prev.includes(emoji) ? prev : [...prev, emoji];
+        } else {
+          return prev.filter(e => e !== emoji);
+        }
       });
     } catch (e) {
       // Ignore reaction errors
@@ -448,10 +477,12 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
       <div className="w-full max-w-3xl min-w-0">
         <article>
           {/* Cover image */}
+          <ScrollReveal margin="-40px">
           {post.cover_image && (
             <img src={post.cover_image} alt={post.title} loading="lazy"
               className="w-full h-56 md:h-72 object-cover rounded-xl mb-6" />
           )}
+          </ScrollReveal>
 
           {/* Admin status bar */}
           {isAdmin && (
@@ -537,6 +568,7 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
           )}
 
           {/* Markdown Content */}
+          <ScrollReveal margin="-60px">
           <div ref={contentRef} className="prose dark:prose-invert prose-sm sm:prose-base max-w-none mb-10">
             <ReactMarkdown
               remarkPlugins={[remarkGfm, remarkMath]}
@@ -547,24 +579,73 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
                   if (match?.[1] === 'mermaid') {
                     return <MermaidDiagram>{String(children).replace(/\n$/, '')}</MermaidDiagram>;
                   }
-                  const isBlock = className && className.includes('hljs');
-                  if (isBlock) {
-                    return <code className={className} {...props}>{children}</code>;
-                  }
                   return <code className={className} {...props}>{children}</code>;
+                },
+                pre: ({ children, ...props }: any) => {
+                  const codeEl = (Array.isArray(children) ? children[0] : children) as any;
+                  const lang = codeEl?.props?.className?.match(/language-(\w+)/)?.[1] || '';
+                  const [copied, setCopied] = useState(false);
+                  const codeText = useMemo(() => {
+                    const extractText = (node: any): string => {
+                      if (typeof node === 'string') return node;
+                      if (Array.isArray(node)) return node.map(extractText).join('');
+                      return extractText(node?.props?.children);
+                    };
+                    return extractText(codeEl?.props?.children);
+                  }, [codeEl]);
+                  return (
+                    <div className="my-4 overflow-hidden rounded-xl" style={{ background: 'var(--card-bg)', border: '1px solid var(--glass-border)' }}>
+                      <div className="flex items-center justify-between px-4 py-1.5 text-xs" style={{ background: 'var(--btn-card-bg)', borderBottom: '1px solid var(--glass-border)' }}>
+                        <span style={{ color: 'var(--text-info)' }}>{lang || 'code'}</span>
+                        <button onClick={async () => { await navigator.clipboard.writeText(codeText); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
+                          className="flex items-center gap-1 px-2 py-0.5 rounded-lg transition-colors hover:opacity-80"
+                          style={{ color: 'var(--text-info)' }}>
+                          {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                          {copied ? '已复制' : '复制'}
+                        </button>
+                      </div>
+                      <pre {...props} className="!mt-0 !rounded-t-none !rounded-b-xl !border-0" style={{ background: 'transparent !important' as any }}>
+                        {children}
+                      </pre>
+                    </div>
+                  );
                 },
               }}
             >
               {post.content}
             </ReactMarkdown>
           </div>
+          </ScrollReveal>
 
           {/* Share buttons */}
+          <ScrollReveal margin="-40px">
           <div className="border-t pt-6 mb-6" style={{ borderColor: 'var(--glass-border)' }}>
             <SharePanel url={shareUrl} title={post.title} />
           </div>
+          </ScrollReveal>
+
+          {/* Post reactions */}
+          <ScrollReveal margin="-40px">
+          <div className="border-t pt-6 mb-6" style={{ borderColor: 'var(--glass-border)' }}>
+            <div className="flex items-center gap-2 flex-wrap">
+              {Object.entries(postReactions).map(([emoji, count]) => (
+                <button key={emoji} onClick={() => handleTogglePostReaction(emoji)}
+                  className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-sm transition-all"
+                  style={{
+                    background: postUserEmojis.includes(emoji) ? 'var(--primary-sub)' : 'var(--btn-card-bg)',
+                    color: postUserEmojis.includes(emoji) ? 'var(--primary)' : 'var(--text-secondary)',
+                  }}>
+                  <span className="text-base leading-none">{emoji}</span>
+                  <span>{count}</span>
+                </button>
+              ))}
+              <EmojiPickerButton onSelect={handleTogglePostReaction} />
+            </div>
+          </div>
+          </ScrollReveal>
 
           {/* CC License — Fuwari style */}
+          <ScrollReveal margin="-40px">
           <div className="relative mb-6 overflow-hidden rounded-xl px-8 py-6 transition"
             style={{ background: 'var(--card-bg)' }}>
             <div className="font-bold transition" style={{ color: 'var(--text-primary)' }}>{post.title}</div>
@@ -599,9 +680,11 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
               </svg>
             </div>
           </div>
+          </ScrollReveal>
         </article>
 
         {/* Adjacent Posts Navigation */}
+        <ScrollReveal margin="-40px">
         {(adjacentPosts?.prev || adjacentPosts?.next) && (
           <div className="flex items-center justify-between gap-4 mb-6">
             <div className="flex-1">
@@ -628,8 +711,10 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
             </div>
           </div>
         )}
+        </ScrollReveal>
 
         {/* Related Posts (tag-based) */}
+        <ScrollReveal margin="-40px">
         {relatedPosts.length > 0 && (
           <div className="mt-10">
             <h2 className="text-xl font-bold mb-4" style={{ color: 'var(--text-primary)' }}>猜你喜欢</h2>
@@ -661,8 +746,10 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
             </div>
           </div>
         )}
+        </ScrollReveal>
 
         {/* Comments */}
+        <ScrollReveal margin="-40px">
         <section className="border-t pt-8" style={{ borderColor: 'var(--glass-border)' }}>
           <h2 className="text-xl font-bold mb-6" style={{ color: 'var(--text-primary)' }}>
             评论
@@ -754,6 +841,7 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
             </button>
           </form>
         </section>
+        </ScrollReveal>
       </div>
 
       {/* TOC Sidebar */}

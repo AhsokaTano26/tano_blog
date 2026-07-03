@@ -70,6 +70,7 @@ const LoadingSVG = () => (
 export function PageTransition({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [showLoader, setShowLoader] = useState(false);
+  const [animating, setAnimating] = useState(false);
   const prevPathname = useRef(pathname);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -77,6 +78,7 @@ export function PageTransition({ children }: { children: React.ReactNode }) {
     if (pathname !== prevPathname.current) {
       prevPathname.current = pathname;
       setShowLoader(true);
+      setAnimating(false);
 
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
@@ -84,6 +86,7 @@ export function PageTransition({ children }: { children: React.ReactNode }) {
 
       timeoutRef.current = setTimeout(() => {
         setShowLoader(false);
+        setAnimating(true);
       }, 800);
     }
 
@@ -102,7 +105,7 @@ export function PageTransition({ children }: { children: React.ReactNode }) {
           <LoadingSVG />
         </div>
       )}
-      <div style={{
+      <div className={animating ? 'page-transition' : ''} style={{
         opacity: showLoader ? 0 : 1,
         transition: 'opacity 0.15s ease',
       }}>

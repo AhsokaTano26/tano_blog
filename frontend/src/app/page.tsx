@@ -7,6 +7,7 @@ import { Eye, Mail, ChevronRight, Calendar, BookOpen, Tag, MessageSquare, Globe,
 import { FooterInjection } from '@/components/HtmlInjection';
 import { Loading } from '@/components/Loading';
 import { TagCloud } from '@/components/TagCloud';
+import { ScrollReveal } from '@/components/ScrollReveal';
 
 export default function Home() {
   const [posts, setPosts] = useState<any[]>([]);
@@ -125,6 +126,7 @@ export default function Home() {
             <aside className="col-span-2 row-start-2 row-end-3 mb-4 lg:col-span-1 lg:row-start-1 lg:row-end-2 lg:max-w-[17.5rem]">
               <div className="flex flex-col gap-4">
                 {/* Profile */}
+                <ScrollReveal>
                 <div className="card-base p-3 rounded-2xl">
                   <Link href="/" className="group relative mx-auto mb-3 mt-1 block max-w-[12rem] overflow-hidden rounded-xl lg:mx-0 lg:mt-0 lg:max-w-none">
                     <img src={profile.profile_avatar || '/aimi.png'} alt={profile.profile_name || 'Tano'}
@@ -164,8 +166,10 @@ export default function Home() {
                     })()}
                   </div>
                 </div>
+                </ScrollReveal>
 
                 {/* Categories */}
+                <ScrollReveal margin="-40px">
                 {categories.length > 0 && (
                   <div className="card-base p-4 rounded-2xl">
                     <div className="text-sm font-bold mb-3" style={{ color: 'var(--text-primary)' }}>分类</div>
@@ -184,8 +188,10 @@ export default function Home() {
                     </div>
                   </div>
                 )}
+                </ScrollReveal>
 
                 {/* Tags */}
+                <ScrollReveal margin="-60px">
                 {tags.length > 0 && (
                   <div className="card-base p-4 rounded-2xl">
                     <div className="text-sm font-bold mb-3" style={{ color: 'var(--text-primary)' }}>标签</div>
@@ -203,8 +209,10 @@ export default function Home() {
                     </div>
                   </div>
                 )}
+                </ScrollReveal>
 
                 {/* Series */}
+                <ScrollReveal margin="-80px">
                 {series.length > 0 && (
                   <div className="card-base p-4 rounded-2xl">
                     <div className="text-sm font-bold mb-3" style={{ color: 'var(--text-primary)' }}>系列</div>
@@ -221,8 +229,11 @@ export default function Home() {
                     </div>
                   </div>
                 )}
+                </ScrollReveal>
 
+                <ScrollReveal margin="-100px">
                 <TagCloud />
+                </ScrollReveal>
               </div>
             </aside>
 
@@ -269,7 +280,9 @@ export default function Home() {
                 ) : (
                   <>
                     {posts.map((post: any, index: number) => (
-                      <Link key={post.id || post.slug || index}
+                      <ScrollReveal key={post.id || post.slug || index}
+                        className={`stagger-${(index % 8) + 1}`}>
+                      <Link
                         href={`/posts/${post.slug}`}
                         className="card-base post-card rounded-2xl overflow-hidden block">
                         <div className="flex flex-col-reverse md:flex-row">
@@ -368,6 +381,7 @@ export default function Home() {
                           )}
                         </div>
                       </Link>
+                      </ScrollReveal>
                     ))}
 
                     {/* Pagination */}

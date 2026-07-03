@@ -214,11 +214,29 @@ html {
   animation: fade-in 0.5s ease-out forwards;
 }
 
-/* ===== Page Transition ===== */
-.page-transition {
-  animation: page-reveal 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+/* ===== Stagger Animation Delays ===== */
+.stagger-1 { animation-delay: 0.05s; }
+.stagger-2 { animation-delay: 0.1s; }
+.stagger-3 { animation-delay: 0.15s; }
+.stagger-4 { animation-delay: 0.2s; }
+.stagger-5 { animation-delay: 0.25s; }
+.stagger-6 { animation-delay: 0.3s; }
+.stagger-7 { animation-delay: 0.35s; }
+.stagger-8 { animation-delay: 0.4s; }
+
+/* ===== Scroll Reveal ===== */
+.reveal {
+  opacity: 0;
+  transform: translateY(24px);
+  transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.reveal.reveal-visible {
+  opacity: 1;
+  transform: translateY(0);
 }
 
+/* ===== Page Transition ===== */
 @keyframes page-reveal {
   from {
     opacity: 0;
@@ -232,20 +250,49 @@ html {
   }
 }
 
-.page-transition.page-leave {
-  animation: page-hide 0.25s cubic-bezier(0.4, 0, 1, 1) forwards;
+.page-transition {
+  animation: page-reveal 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-@keyframes page-hide {
-  from {
-    opacity: 1;
-    filter: blur(0);
-    transform: translateY(0);
+/* ===== Card Hover Micro-Interactions ===== */
+.card-hover {
+  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+              box-shadow 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+              background 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.card-hover:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 40px -8px rgba(0, 0, 0, 0.4);
+}
+.light .card-hover:hover {
+  box-shadow: 0 12px 40px -8px rgba(0, 0, 0, 0.12);
+}
+
+/* ===== Reduced Motion ===== */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
-  to {
-    opacity: 0;
-    filter: blur(6px);
-    transform: translateY(8px);
+  .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+  .page-transition {
+    animation: none;
+  }
+  .card-base:hover,
+  .card-hover:hover {
+    transform: none;
+    box-shadow: none;
+  }
+  html {
+    scroll-behavior: auto;
   }
 }
 
