@@ -7,7 +7,6 @@
 Dockerfile
 .dockerignore
 docker-compose.yml
-docker-entrypoint.sh
 
 # CI/CD
 .github
