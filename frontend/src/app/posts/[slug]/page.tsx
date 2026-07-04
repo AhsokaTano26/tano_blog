@@ -218,6 +218,9 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
   const [adjacentPosts, setAdjacentPosts] = useState<{ prev: any; next: any } | null>(null);
   const [postReactions, setPostReactions] = useState<Record<string, number>>({});
   const [postUserEmojis, setPostUserEmojis] = useState<string[]>([]);
+  const [passwordInput, setPasswordInput] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordVerifying, setPasswordVerifying] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -249,6 +252,19 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
       if (u.role === 'admin') setIsAdmin(true);
     }).catch(() => {});
   }, []);
+
+  async function handleVerifyPassword(e: React.FormEvent) {
+    e.preventDefault();
+    setPasswordError('');
+    setPasswordVerifying(true);
+    try {
+      await api.verifyPostPassword(slug, passwordInput);
+      window.location.reload();
+    } catch (err: any) {
+      setPasswordError(err.message || '密码错误');
+    }
+    setPasswordVerifying(false);
+  }
 
   async function loadComments(postId: string) {
     try {
@@ -457,6 +473,40 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
       <div className="text-center py-20" style={{ color: 'var(--text-secondary)' }}>
         <p className="text-lg mb-2">文章不存在</p>
         <Link href="/" className="hover:underline text-sm" style={{ color: 'var(--primary)' }}>返回首页</Link>
+      </div>
+    );
+  }
+
+  // Password protection gate
+  if ((post as any).password_protected) {
+    return (
+      <div className="max-w-md mx-auto px-4 py-20">
+        <div className="glass-card rounded-2xl p-8 text-center">
+          <Shield className="w-12 h-12 mx-auto mb-4" style={{ color: 'var(--primary)' }} />
+          <h1 className="text-xl font-bold mb-2" style={{ color: 'var(--text-primary)' }}>{post.title}</h1>
+          {(post as any).password_hint && (
+            <p className="text-sm mb-4" style={{ color: 'var(--text-info)' }}>{(post as any).password_hint}</p>
+          )}
+          <form onSubmit={handleVerifyPassword} className="space-y-3">
+            <input
+              type="password"
+              value={passwordInput}
+              onChange={e => setPasswordInput(e.target.value)}
+              placeholder="请输入文章密码"
+              className="w-full px-4 py-2.5 rounded-xl text-sm outline-none"
+              style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }}
+              autoFocus
+            />
+            {passwordError && (
+              <p className="text-sm" style={{ color: 'var(--color-error)' }}>{passwordError}</p>
+            )}
+            <button type="submit" disabled={passwordVerifying}
+              className="w-full px-4 py-2.5 rounded-xl text-sm font-medium text-white transition-all disabled:opacity-50"
+              style={{ background: 'var(--primary)' }}>
+              {passwordVerifying ? '验证中...' : '验证密码'}
+            </button>
+          </form>
+        </div>
       </div>
     );
   }

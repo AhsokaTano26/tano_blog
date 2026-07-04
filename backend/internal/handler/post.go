@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"tano_blog/backend/internal/model"
 	"tano_blog/backend/internal/repository"
+	"tano_blog/backend/internal/utils"
 )
 
 type PostHandler struct {
@@ -125,12 +126,68 @@ func (h *PostHandler) GetBySlug(c *gin.Context) {
 		return
 	}
 
+	// Check password protection
+	if post.PasswordHash != "" && c.GetString("user_id") == "" {
+		cookieKey := "post_access_" + post.ID.String()
+		if cookie, err := c.Cookie(cookieKey); err != nil || cookie != "granted" {
+			c.JSON(http.StatusOK, gin.H{
+				"post": map[string]interface{}{
+					"id":                 post.ID,
+					"title":              post.Title,
+					"slug":               post.Slug,
+					"excerpt":            post.Excerpt,
+					"cover_image":        post.CoverImage,
+					"category":           post.Category,
+					"tags":               post.Tags,
+					"author_name":        post.AuthorName,
+					"view_count":         post.ViewCount,
+					"password_protected": true,
+					"password_hint":      post.PasswordHint,
+				},
+			})
+			return
+		}
+	}
+
 	// Increment view count
 	h.repo.IncrementView(post.ID)
 
 	c.JSON(http.StatusOK, gin.H{
 		"post": post,
 	})
+}
+
+// VerifyPassword verifies post password and sets access cookie
+func (h *PostHandler) VerifyPassword(c *gin.Context) {
+	slug := c.Param("slug")
+	post, err := h.repo.GetBySlug(slug)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "文章不存在"})
+		return
+	}
+
+	if post.PasswordHash == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "文章未设置密码"})
+		return
+	}
+
+	var input struct {
+		Password string `json:"password"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
+		return
+	}
+
+	if !utils.CheckPassword(input.Password, post.PasswordHash) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "密码错误"})
+		return
+	}
+
+	cookieKey := "post_access_" + post.ID.String()
+	c.SetCookie(cookieKey, "granted", 7*24*3600, "/", "", false, true)
+
+	c.JSON(http.StatusOK, gin.H{"verified": true})
 }
 
 // GetByPreviewToken returns a draft post by preview token
@@ -186,6 +243,37 @@ func (h *PostHandler) TopViewed(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"items": posts})
+}
+
+func (h *PostHandler) ToggleReaction(c *gin.Context) {
+	slug := c.Param("slug")
+	post, err := h.repo.GetBySlug(slug)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "文章不存在"})
+		return
+	}
+
+	var input struct {
+		Emoji string `json:"emoji"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
+		return
+	}
+
+	if len([]rune(input.Emoji)) == 0 || len([]rune(input.Emoji)) > 10 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
+		return
+	}
+
+	ipAddress := c.ClientIP()
+	active, err := h.repo.ToggleReaction(post.ID, input.Emoji, ipAddress)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "操作失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"active": active, "emoji": input.Emoji})
 }
 
 func (h *PostHandler) AdjacentPosts(c *gin.Context) {
@@ -294,6 +382,8 @@ func (h *PostHandler) Create(c *gin.Context) {
 		TagIDs       []string `json:"tag_ids"`
 		ScheduledAt  string   `json:"scheduled_at"`
 		SeriesID     string   `json:"series_id"`
+		Password     string   `json:"password"`
+		PasswordHint string   `json:"password_hint"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
@@ -333,6 +423,14 @@ func (h *PostHandler) Create(c *gin.Context) {
 		if cid, err := uuid.Parse(input.CategoryID); err == nil {
 			post.CategoryID = &cid
 		}
+	}
+
+	// Handle password protection
+	if input.Password != "" {
+		if hash, err := utils.HashPassword(input.Password); err == nil {
+			post.PasswordHash = hash
+		}
+		post.PasswordHint = input.PasswordHint
 	}
 
 	post.ID = uuid.New()
@@ -379,6 +477,8 @@ func (h *PostHandler) Update(c *gin.Context) {
 		TagIDs       []string `json:"tag_ids"`
 		ScheduledAt  *string  `json:"scheduled_at"`
 		SeriesID     *string  `json:"series_id"`
+		Password     *string  `json:"password"`
+		PasswordHint *string  `json:"password_hint"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
@@ -447,6 +547,19 @@ func (h *PostHandler) Update(c *gin.Context) {
 		} else if cid, err := uuid.Parse(*input.CategoryID); err == nil {
 			updates["category_id"] = cid
 		}
+	}
+
+	// Handle password protection
+	if input.Password != nil {
+		if *input.Password == "" {
+			updates["password_hash"] = nil
+			updates["password_hint"] = ""
+		} else if hash, err := utils.HashPassword(*input.Password); err == nil {
+			updates["password_hash"] = hash
+			updates["password_hint"] = *input.PasswordHint
+		}
+	} else if input.PasswordHint != nil {
+		updates["password_hint"] = *input.PasswordHint
 	}
 
 	// Set editor to current user

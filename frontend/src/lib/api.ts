@@ -1,4 +1,4 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
 
 interface FetchOptions extends RequestInit {
   params?: Record<string, string>;
@@ -57,7 +57,7 @@ export const api = {
   getPosts: (params?: Record<string, string>) =>
     request<{ items: any[]; total: number; page: number; size: number }>('/api/v1/posts', { params }),
   getPost: (slug: string) =>
-    request<{ post: any }>(`/api/v1/posts/${slug}`),
+    request<{ post: any; reactions?: Record<string, number>; user_emojis?: string[] }>(`/api/v1/posts/${slug}`),
   getPostByPreview: (token: string) =>
     request<{ post: any }>('/api/v1/posts/preview', { params: { token } }),
   getTopPosts: () =>
@@ -95,6 +95,13 @@ export const api = {
       body: JSON.stringify({ emoji }),
     }),
 
+  // Post reactions
+  togglePostReaction: (slug: string, emoji: string) =>
+    request<{ active: boolean; emoji: string }>(`/api/v1/posts/${slug}/reactions`, {
+      method: 'POST',
+      body: JSON.stringify({ emoji }),
+    }),
+
   // Series
   getSeries: () =>
     request<{ items: any[] }>('/api/v1/series'),
@@ -108,6 +115,16 @@ export const api = {
   // Related posts
   getRelatedPosts: (slug: string) =>
     request<{ items: any[] }>(`/api/v1/posts/${slug}/related`),
+
+  // Friend links
+  getLinks: () =>
+    request<{ items: any[] }>('/api/v1/links'),
+  applyLink: (data: any) =>
+    request('/api/v1/links/apply', { method: 'POST', body: JSON.stringify(data) }),
+  getNavLinks: () =>
+    request<{ items: any[] }>('/api/v1/nav-links'),
+  verifyPostPassword: (slug: string, password: string) =>
+    request<{ verified: boolean }>(`/api/v1/posts/${slug}/verify-password`, { method: 'POST', body: JSON.stringify({ password }) }),
 
   // Auth
   login: (data: { username: string; password: string; remember_me?: boolean }) =>
@@ -299,6 +316,30 @@ export const api = {
           method: 'POST',
           body: JSON.stringify({ filename }),
         }),
+    },
+    navLinks: {
+      list: () =>
+        request<{ items: any[] }>('/api/v1/admin/nav-links'),
+      create: (data: any) =>
+        request('/api/v1/admin/nav-links', { method: 'POST', body: JSON.stringify(data) }),
+      update: (id: string, data: any) =>
+        request(`/api/v1/admin/nav-links/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+      delete: (id: string) =>
+        request(`/api/v1/admin/nav-links/${id}`, { method: 'DELETE' }),
+      reorder: (ids: string[]) =>
+        request('/api/v1/admin/nav-links/reorder', { method: 'PUT', body: JSON.stringify({ ids }) }),
+    },
+    links: {
+      list: () =>
+        request<{ items: any[] }>('/api/v1/admin/links'),
+      create: (data: any) =>
+        request('/api/v1/admin/links', { method: 'POST', body: JSON.stringify(data) }),
+      update: (id: string, data: any) =>
+        request(`/api/v1/admin/links/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+      updateStatus: (id: string, status: string) =>
+        request(`/api/v1/admin/links/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
+      delete: (id: string) =>
+        request(`/api/v1/admin/links/${id}`, { method: 'DELETE' }),
     },
   },
 };

@@ -344,6 +344,67 @@ func (r *PostRepo) ExportAll() ([]model.Post, error) {
 	return posts, err
 }
 
+func (r *PostRepo) ToggleReaction(postID uuid.UUID, emoji, ipAddress string) (bool, error) {
+	var existing model.PostReaction
+	err := r.db.Where("post_id = ? AND emoji = ? AND ip_address = ?", postID, emoji, ipAddress).Take(&existing).Error
+	if err == nil {
+		r.db.Delete(&existing)
+		return false, nil
+	}
+	reaction := model.PostReaction{
+		PostID:    postID,
+		Emoji:     emoji,
+		IPAddress: ipAddress,
+	}
+	if err := r.db.Create(&reaction).Error; err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func (r *PostRepo) GetReactions(postIDs []uuid.UUID) (map[string]map[string]int, error) {
+	type ReactionCount struct {
+		PostID uuid.UUID
+		Emoji  string
+		Count  int
+	}
+	var rows []ReactionCount
+	r.db.Model(&model.PostReaction{}).
+		Select("post_id, emoji, COUNT(*) as count").
+		Where("post_id IN ?", postIDs).
+		Group("post_id, emoji").
+		Find(&rows)
+
+	result := make(map[string]map[string]int)
+	for _, row := range rows {
+		pid := row.PostID.String()
+		if result[pid] == nil {
+			result[pid] = make(map[string]int)
+		}
+		result[pid][row.Emoji] = row.Count
+	}
+	return result, nil
+}
+
+func (r *PostRepo) GetUserReactions(postIDs []uuid.UUID, ipAddress string) (map[string][]string, error) {
+	type UserReaction struct {
+		PostID uuid.UUID
+		Emoji  string
+	}
+	var rows []UserReaction
+	r.db.Model(&model.PostReaction{}).
+		Select("post_id, emoji").
+		Where("post_id IN ? AND ip_address = ?", postIDs, ipAddress).
+		Find(&rows)
+
+	result := make(map[string][]string)
+	for _, row := range rows {
+		pid := row.PostID.String()
+		result[pid] = append(result[pid], row.Emoji)
+	}
+	return result, nil
+}
+
 type CategoryRepo struct {
 	db *gorm.DB
 }

@@ -17,5 +17,32 @@ services:
       timeout: 3s
       retries: 5
 
+  app:
+    image: ${DOCKER_IMAGE:-tano/blog:latest}
+    container_name: tano_blog_app
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      DB_DSN: postgres://tano:${DB_PASSWORD:-tano_blog_pass}@postgres:5432/tano_blog?sslmode=disable
+      JWT_SECRET: ${JWT_SECRET}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      SERVER_PORT: "8080"
+      UPLOAD_DIR: /data/uploads
+      BACKUP_DIR: /data/backups
+      CORS_ORIGINS: ""
+      SITE_URL: ${SITE_URL:-http://localhost:3000}
+      GIN_MODE: release
+      API_UPSTREAM_URL: http://localhost:8080
+      TZ: ${TZ:-Asia/Shanghai}
+    volumes:
+      - app-uploads:/data/uploads
+      - app-backups:/data/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 volumes:
   pgdata:
+  app-uploads:
+  app-backups:

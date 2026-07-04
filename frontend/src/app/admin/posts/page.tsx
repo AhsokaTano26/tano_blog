@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { Loading } from '@/components/Loading';
 import { useConfirm, Checkbox, Select } from '@/components/ConfirmDialog';
+import { MediaField, MediaPickerModal } from '@/components/MediaField';
 
 export default function AdminPosts() {
   const { confirm } = useConfirm();
@@ -265,12 +266,18 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
   const [authorName, setAuthorName] = useState(post?.author_name || '');
   const [excerptMode, setExcerptMode] = useState<'manual' | 'auto'>(post?.excerpt ? 'manual' : 'auto');
   const [scheduledAt, setScheduledAt] = useState(post?.published_at && post?.status === 'draft' ? post.published_at.slice(0, 16) : '');
+  const [password, setPassword] = useState('');
+  const [passwordHint, setPasswordHint] = useState(post?.password_hint || '');
+  const [passwordSet, setPasswordSet] = useState(!!post?.password_hash);
   const [users, setUsers] = useState<any[]>([]);
   const [rightTab, setRightTab] = useState<'outline' | 'detail' | 'history'>('outline');
   const [revisions, setRevisions] = useState<any[]>([]);
   const [showRightPanel, setShowRightPanel] = useState(true);
   const [showRestoreBanner, setShowRestoreBanner] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [mediaPickerType, setMediaPickerType] = useState<'image' | 'video' | 'audio' | null>(null);
+  const mediaFileRef = useRef<HTMLInputElement>(null);
+  const [mediaUploading, setMediaUploading] = useState(false);
 
   function generateSlug() {
     return crypto.randomUUID().slice(0, 8);
@@ -403,6 +410,13 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
         allow_comment: allowComment,
       };
       data.author_name = authorName;
+      if (password) {
+        data.password = password;
+        data.password_hint = passwordHint;
+      } else if (passwordSet === false && post?.id) {
+        data.password = '';
+        data.password_hint = '';
+      }
       if (categoryId) data.category_id = categoryId;
       if (tagIds.length > 0) data.tag_ids = tagIds;
       if (selectedSeriesId) data.series_id = selectedSeriesId;
@@ -442,6 +456,44 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
     }, 0);
   }
 
+  function insertMedia(url: string, type: 'image' | 'video' | 'audio') {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+    let before = '', after = '';
+    if (type === 'image') {
+      before = '![](';
+      after = ')';
+    } else if (type === 'video') {
+      before = '<video src="';
+      after = '" controls></video>';
+    } else {
+      before = '<audio src="';
+      after = '" controls></audio>';
+    }
+    const newText = content.substring(0, start) + before + url + after + content.substring(end);
+    setContent(newText);
+    setMediaPickerType(null);
+    setTimeout(() => { ta.focus(); ta.setSelectionRange(start + before.length + url.length + after.length, start + before.length + url.length + after.length); }, 0);
+  }
+
+  async function handleMediaUpload(e: React.ChangeEvent<HTMLInputElement>, type: 'image' | 'video' | 'audio') {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setMediaUploading(true);
+    try {
+      const res = await api.admin.media.upload(file);
+      const url = res.media?.url;
+      if (url) insertMedia(url, type);
+    } catch (err) {
+      console.error('Upload failed', err);
+    } finally {
+      setMediaUploading(false);
+      if (mediaFileRef.current) mediaFileRef.current.value = '';
+    }
+  }
+
   const headings = content.split('\n').filter((line: string) => /^#{1,3}\s/.test(line)).map((line: string, i: number) => {
     const match = line.match(/^(#{1,3})\s+(.+)/);
     return { level: match?.[1].length || 1, text: match?.[2] || '', index: i };
@@ -458,7 +510,7 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
     { icon: Heading3, action: () => insertMarkdown('### '), title: '标题 3' },
     { type: 'divider' as const },
     { icon: Link, action: () => insertMarkdown('[', '](url)'), title: '链接 (Ctrl+K)' },
-    { icon: ImageIcon, action: () => insertMarkdown('![alt](', ')'), title: '图片' },
+    { icon: ImageIcon, action: () => setMediaPickerType('image'), title: '图片' },
     { icon: Code, action: () => insertMarkdown('`', '`'), title: '行内代码' },
     { icon: SquareCode, action: () => insertMarkdown('```\n', '\n```'), title: '代码块' },
     { icon: Quote, action: () => insertMarkdown('> '), title: '引用' },
@@ -473,8 +525,8 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
     { icon: Minus, action: () => insertMarkdown('\n---\n'), title: '分割线' },
     { type: 'divider' as const },
     { icon: Palette, action: () => insertMarkdown('<span style="color: ', '">文字</span>'), title: '文字颜色' },
-    { icon: Video, action: () => insertMarkdown('<video src="', '" controls></video>'), title: '视频' },
-    { icon: Music, action: () => insertMarkdown('<audio src="', '" controls></audio>'), title: '音频' },
+    { icon: Video, action: () => setMediaPickerType('video'), title: '视频' },
+    { icon: Music, action: () => setMediaPickerType('audio'), title: '音频' },
   ];
 
   function handleKeyDown(e: React.KeyboardEvent) {
@@ -627,6 +679,18 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
               })}
             </div>
 
+            {/* Media picker & upload for toolbar */}
+            <input ref={mediaFileRef} type="file" accept="image/*,video/*,audio/*"
+              onChange={e => mediaPickerType && handleMediaUpload(e, mediaPickerType)}
+              style={{ display: 'none' }} />
+            {mediaPickerType && (
+              <MediaPickerModal
+                onSelect={(url) => insertMedia(url, mediaPickerType)}
+                onClose={() => setMediaPickerType(null)}
+                onUpload={() => mediaFileRef.current?.click()}
+              />
+            )}
+
             <textarea
               ref={textareaRef}
               placeholder="输入 Markdown 内容..."
@@ -769,12 +833,7 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
                   {/* Cover image */}
                   <div>
                     <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-info)' }}>封面图</label>
-                    <input type="url" placeholder="https://..." value={coverImage} onChange={e => setCoverImage(e.target.value)}
-                      className="w-full px-3 py-2 rounded-xl text-sm outline-none glass-card"
-                      style={{ color: 'var(--text-primary)' }} />
-                    {coverImage && (
-                      <img src={coverImage} alt="封面预览" className="mt-2 w-full h-20 object-cover rounded-xl" onError={(e: React.SyntheticEvent<HTMLImageElement>) => { e.currentTarget.style.display = 'none'; }} />
-                    )}
+                    <MediaField value={coverImage} onChange={setCoverImage} placeholder="https://..." />
                   </div>
 
                   {/* Excerpt */}
@@ -815,6 +874,38 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
                   {/* Allow comment */}
                   <div className="flex items-center gap-2">
                     <Checkbox checked={allowComment} onChange={setAllowComment} label="允许评论" />
+                  </div>
+
+                  {/* Password protection */}
+                  <div>
+                    <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-info)' }}>密码保护</label>
+                    {post?.id && passwordSet ? (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm glass-card" style={{ color: 'var(--text-primary)' }}>
+                          <span style={{ color: 'var(--color-success)' }}>已设置密码</span>
+                          <button type="button" onClick={() => { setPasswordSet(false); setPassword(''); }}
+                            className="ml-auto text-xs px-2 py-0.5 rounded btn-glass" style={{ color: 'var(--color-error)' }}>清除密码</button>
+                        </div>
+                        {!passwordSet && (
+                          <input type="password" value={password} onChange={e => setPassword(e.target.value)}
+                            placeholder="新密码（留空不修改）" maxLength={100}
+                            className="w-full px-3 py-2 rounded-xl text-sm outline-none glass-card"
+                            style={{ color: 'var(--text-primary)' }} />
+                        )}
+                      </div>
+                    ) : (
+                      <input type="password" value={password} onChange={e => setPassword(e.target.value)}
+                        placeholder="设置访问密码（留空则不设密码）" maxLength={100}
+                        className="w-full px-3 py-2 rounded-xl text-sm outline-none glass-card"
+                        style={{ color: 'var(--text-primary)' }} />
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-info)' }}>密码提示</label>
+                    <input type="text" value={passwordHint} onChange={e => setPasswordHint(e.target.value)}
+                      placeholder="如：请输入文章访问密码（选填）" maxLength={200}
+                      className="w-full px-3 py-2 rounded-xl text-sm outline-none glass-card"
+                      style={{ color: 'var(--text-primary)' }} />
                   </div>
                 </div>
               ) : (

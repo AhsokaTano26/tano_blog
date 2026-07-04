@@ -6,6 +6,7 @@ import QRCode from 'qrcode';
 import { Save, Lock, User, Shield, KeyRound, Trash2, Plus } from 'lucide-react';
 import { Loading } from '@/components/Loading';
 import { useConfirm } from '@/components/ConfirmDialog';
+import { MediaField } from '@/components/MediaField';
 
 function bufferToBase64url(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
@@ -273,15 +274,16 @@ export default function AdminProfile() {
         <div className="p-6">
           {tab === 'profile' && (
             <div className="space-y-5 max-w-2xl">
-              {/* Avatar preview */}
               <div className="flex items-center gap-4">
-                <img src={avatarUrl || '/aimi.png'} alt="头像"
-                  className="w-16 h-16 rounded-full object-cover"
-                  onError={(e: React.SyntheticEvent<HTMLImageElement>) => { e.currentTarget.src = '/aimi.png'; }} />
                 <div>
                   <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{displayName || user?.username}</div>
                   <div className="text-xs" style={{ color: 'var(--text-info)' }}>@{user?.username}</div>
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>头像</label>
+                <MediaField value={avatarUrl} onChange={setAvatarUrl} rounded="circle" placeholder="https://example.com/avatar.png" />
               </div>
 
               <div>
@@ -295,12 +297,6 @@ export default function AdminProfile() {
                 <input type="email" value={email} onChange={e => setEmail(e.target.value)}
                   placeholder="admin@example.com" className={inputClass} style={inputStyle} />
                 <p className="text-xs mt-1" style={{ color: 'var(--text-info)' }}>用于接收评论通知等邮件</p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>头像链接</label>
-                <input type="url" value={avatarUrl} onChange={e => setAvatarUrl(e.target.value)}
-                  placeholder="https://example.com/avatar.png" className={inputClass} style={inputStyle} />
               </div>
 
               <div>

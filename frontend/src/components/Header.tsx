@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { useTheme } from '@/lib/theme';
+import { api } from '@/lib/api';
 import { Menu, X, Sun, Moon, Palette } from 'lucide-react';
 
 export function Header() {
@@ -11,12 +12,24 @@ export function Header() {
   const [hueOpen, setHueOpen] = useState(false);
   const hueRef = useRef<HTMLDivElement>(null);
 
-  const navLinks = [
+  const defaultNavLinks = [
     { href: '/', label: '首页' },
     { href: '/archive', label: '归档' },
+    { href: '/links', label: '友链' },
     { href: '/about', label: '关于' },
     { href: '/admin', label: '管理' },
   ];
+
+  const [navLinks, setNavLinks] = useState(defaultNavLinks);
+
+  useEffect(() => {
+    api.getNavLinks().then(res => {
+      const items = res.items || [];
+      if (items.length > 0) {
+        setNavLinks(items.map((item: any) => ({ href: item.url, label: item.title })));
+      }
+    }).catch(() => {});
+  }, []);
 
   // Close hue panel on outside click
   useEffect(() => {

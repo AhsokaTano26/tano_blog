@@ -5,6 +5,7 @@ import { api } from '@/lib/api';
 import { Save, Globe, FileText, Palette, MessageSquare, Code, Mail, User, Plus, Trash2 } from 'lucide-react';
 import { Loading } from '@/components/Loading';
 import { Select } from '@/components/ConfirmDialog';
+import { MediaField } from '@/components/MediaField';
 
 const contactTypes = [
   { value: 'email', label: '邮箱' },
@@ -111,13 +112,7 @@ export default function AdminSettings() {
             <div className="space-y-5 max-w-2xl">
               <div>
                 <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>头像</label>
-                <div className="flex items-center gap-4 mb-2">
-                  <img src={config.profile_avatar || '/aimi.png'} alt="头像"
-                    className="w-16 h-16 rounded-full object-cover"
-                    onError={(e: React.SyntheticEvent<HTMLImageElement>) => { e.currentTarget.src = '/aimi.png'; }} />
-                </div>
-                <input type="text" value={config.profile_avatar || ''} onChange={e => setConfig({ ...config, profile_avatar: e.target.value })}
-                  placeholder="/aimi.png" className={inputClass} style={inputStyle} />
+                <MediaField value={config.profile_avatar || ''} onChange={url => setConfig({ ...config, profile_avatar: url })} rounded="circle" placeholder="/aimi.png" />
                 <p className="text-xs mt-1" style={{ color: 'var(--text-info)' }}>图片路径或 URL</p>
               </div>
               <div>
@@ -197,6 +192,11 @@ export default function AdminSettings() {
                 <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>页脚文本</label>
                 <input type="text" value={config.footer_text || ''} onChange={e => setConfig({ ...config, footer_text: e.target.value })}
                   className={inputClass} style={inputStyle} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>站点 Favicon</label>
+                <MediaField value={config.site_favicon || ''} onChange={url => setConfig({ ...config, site_favicon: url })} previewSize={32} placeholder="/favicon.ico" />
+                <p className="text-xs mt-1" style={{ color: 'var(--text-info)' }}>建议尺寸 32×32，支持 .ico / .png / .svg</p>
               </div>
             </div>
           )}

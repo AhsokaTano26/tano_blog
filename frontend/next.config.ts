@@ -1,8 +1,10 @@
 import type { NextConfig } from "next";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+// Internal URL for the Go API backend (used by Next.js rewrites/proxy)
+const API_UPSTREAM = process.env.API_UPSTREAM_URL || 'http://localhost:8080';
 
 const nextConfig: NextConfig = {
+  output: 'standalone',
   poweredByHeader: false,
   images: {
     remotePatterns: [
@@ -28,9 +30,10 @@ const nextConfig: NextConfig = {
   },
   async rewrites() {
     return [
-      { source: '/uploads/:path*', destination: `${API_URL}/uploads/:path*` },
-      { source: '/rss.xml', destination: `${API_URL}/rss.xml` },
-      { source: '/sitemap.xml', destination: `${API_URL}/sitemap.xml` },
+      { source: '/api/:path*', destination: `${API_UPSTREAM}/api/:path*` },
+      { source: '/uploads/:path*', destination: `${API_UPSTREAM}/uploads/:path*` },
+      { source: '/rss.xml', destination: `${API_UPSTREAM}/rss.xml` },
+      { source: '/sitemap.xml', destination: `${API_UPSTREAM}/sitemap.xml` },
     ];
   },
   turbopack: {

@@ -48,6 +48,11 @@ func main() {
 	}
 	log.Println("Database migrated")
 
+	// Enable pg_trgm extension for full-text search
+	db.Exec("CREATE EXTENSION IF NOT EXISTS pg_trgm")
+	db.Exec("CREATE INDEX IF NOT EXISTS idx_posts_title_trgm ON posts USING GIN (title gin_trgm_ops)")
+	db.Exec("CREATE INDEX IF NOT EXISTS idx_posts_content_trgm ON posts USING GIN (content gin_trgm_ops)")
+
 	// Seed default admin user if not exists
 	seedAdmin(db, cfg.AdminPassword)
 
@@ -75,6 +80,8 @@ func main() {
 	backupHandler := handler.NewBackupHandler(db, cfg.Upload.Dir, cfg.BackupDir)
 	seriesHandler := handler.NewSeriesHandler(seriesRepo)
 	feedHandler := handler.NewFeedHandler(db)
+	friendLinkHandler := handler.NewFriendLinkHandler(db)
+	navLinkHandler := handler.NewNavLinkHandler(db)
 
 	// Setup router
 	r := gin.New()
@@ -111,8 +118,10 @@ func main() {
 		api.GET("/posts", postHandler.ListPublic)
 		api.GET("/posts/top", postHandler.TopPosts)
 		api.GET("/posts/top-viewed", postHandler.TopViewed)
+		api.POST("/posts/:slug/reactions", postHandler.ToggleReaction)
 		api.GET("/posts/:slug/adjacent", postHandler.AdjacentPosts)
 		api.GET("/posts/:slug/related", postHandler.RelatedPosts)
+		api.POST("/posts/:slug/verify-password", middleware.RateLimit(5, 60*time.Second), postHandler.VerifyPassword)
 		api.GET("/posts/preview", postHandler.GetByPreviewToken)
 
 		// Password reset (public, with rate limiting)
@@ -120,6 +129,13 @@ func main() {
 		api.POST("/auth/reset-password", middleware.RateLimit(5, 60*time.Second), authHandler.ResetPassword)
 		api.GET("/posts/:slug", middleware.OptionalAuth(&cfg.JWT), postHandler.GetBySlug)
 		api.GET("/archive", postHandler.Archive)
+
+		// Friend links (public)
+		api.GET("/links", friendLinkHandler.ListPublic)
+		api.POST("/links/apply", middleware.RateLimit(5, 60*time.Second), friendLinkHandler.Apply)
+
+			// Nav links (public)
+			api.GET("/nav-links", navLinkHandler.ListPublic)
 
 		api.GET("/categories", categoryHandler.List)
 		api.GET("/categories/:slug", categoryHandler.GetBySlug)
@@ -219,6 +235,20 @@ func main() {
 				admin.POST("/restore/upload", backupHandler.RestoreUpload)
 				admin.POST("/restore/url", backupHandler.RestoreURL)
 				admin.POST("/restore/local", backupHandler.RestoreLocal)
+
+				// Friend links
+				admin.GET("/links", friendLinkHandler.AdminList)
+				admin.POST("/links", friendLinkHandler.AdminCreate)
+				admin.PUT("/links/:id", friendLinkHandler.AdminUpdate)
+				admin.PATCH("/links/:id/status", friendLinkHandler.AdminUpdateStatus)
+				admin.DELETE("/links/:id", friendLinkHandler.AdminDelete)
+
+					// Nav links
+					admin.GET("/nav-links", navLinkHandler.AdminList)
+					admin.POST("/nav-links", navLinkHandler.AdminCreate)
+					admin.PUT("/nav-links/:id", navLinkHandler.AdminUpdate)
+					admin.DELETE("/nav-links/:id", navLinkHandler.AdminDelete)
+					admin.PUT("/nav-links/reorder", navLinkHandler.AdminReorder)
 			}
 		}
 	}
@@ -341,6 +371,7 @@ func seedSiteConfigs(db *gorm.DB) {
 		"profile_name":     "Tano",
 		"profile_bio":      "A BanG Dreamer!",
 		"profile_contacts": `[{"type":"email","value":"public@tano.asia"},{"type":"github","value":"AhsokaTano26"}]`,
+		"site_favicon":     "/favicon.ico",
 	}
 
 	for key, value := range defaults {
@@ -363,8 +394,8 @@ func init() {
 
 	fmt.Println(`
   ╔══════════════════════════════════════╗
-  ║        Tano Blog Backend API        ║
-  ║        Powered by Go + Gin          ║
+  ║        Tano Blog Backend API         ║
+  ║        Powered by Go + Gin           ║
   ╚══════════════════════════════════════╝
 	`)
 }

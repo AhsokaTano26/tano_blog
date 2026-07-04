@@ -72,6 +72,8 @@ type Post struct {
 	AuthorName   string     `gorm:"size:100" json:"author_name"`
 	EditorID     *uuid.UUID `gorm:"type:uuid;index" json:"editor_id"`
 	PreviewToken string     `gorm:"size:64;index" json:"-"`
+	PasswordHash string     `gorm:"size:255" json:"-"`
+	PasswordHint string     `gorm:"size:200" json:"password_hint,omitempty"`
 	PublishedAt  *time.Time `json:"published_at"`
 	CreatedAt    time.Time  `json:"created_at"`
 	UpdatedAt    time.Time  `json:"updated_at"`
@@ -201,6 +203,36 @@ type CommentReaction struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+type PostReaction struct {
+	ID        uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	PostID    uuid.UUID `gorm:"type:uuid;index:idx_post_reaction,unique;not null" json:"post_id"`
+	Emoji     string    `gorm:"size:20;index:idx_post_reaction,unique;not null" json:"emoji"`
+	IPAddress string    `gorm:"size:45;index:idx_post_reaction,unique;not null" json:"ip_address"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+type NavLink struct {
+	ID        uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	Title     string    `gorm:"size:100;not null" json:"title"`
+	URL       string    `gorm:"size:500;not null" json:"url"`
+	SortOrder int       `gorm:"default:0" json:"sort_order"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type FriendLink struct {
+	ID          uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	Name        string    `gorm:"size:100;not null" json:"name"`
+	URL         string    `gorm:"size:500;not null" json:"url"`
+	Description string    `gorm:"size:500" json:"description"`
+	Avatar      string    `gorm:"size:500" json:"avatar"`
+	Email       string    `gorm:"size:255" json:"email"`
+	Status      string    `gorm:"size:20;default:pending;index" json:"status"`
+	SortOrder   int       `gorm:"default:0" json:"sort_order"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
 func AutoMigrate(db *gorm.DB) error {
 	return db.AutoMigrate(
 		&User{},
@@ -218,5 +250,8 @@ func AutoMigrate(db *gorm.DB) error {
 		&Series{},
 		&PostSeries{},
 		&CommentReaction{},
+		&PostReaction{},
+		&FriendLink{},
+		&NavLink{},
 	)
 }

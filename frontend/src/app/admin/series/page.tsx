@@ -5,6 +5,7 @@ import { api } from '@/lib/api';
 import { Plus, Pencil, Trash2, Bookmark } from 'lucide-react';
 import { Loading } from '@/components/Loading';
 import { useConfirm, Checkbox } from '@/components/ConfirmDialog';
+import { MediaField } from '@/components/MediaField';
 
 export default function AdminSeries() {
   const { confirm } = useConfirm();
@@ -148,10 +149,10 @@ export default function AdminSeries() {
                 onChange={e => setForm({ ...form, description: e.target.value })}
                 className="w-full px-3 py-2.5 rounded-xl text-sm outline-none glass-card resize-none"
                 style={{ color: 'var(--text-primary)' }} rows={3} />
-              <input placeholder="封面图 URL" value={form.cover_image}
-                onChange={e => setForm({ ...form, cover_image: e.target.value })}
-                className="w-full px-3 py-2.5 rounded-xl text-sm outline-none glass-card"
-                style={{ color: 'var(--text-primary)' }} />
+              <div>
+                <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-info)' }}>封面图</label>
+                <MediaField value={form.cover_image} onChange={url => setForm({ ...form, cover_image: url })} placeholder="封面图 URL" />
+              </div>
               <input type="number" placeholder="排序权重" value={form.sort_order}
                 onChange={e => setForm({ ...form, sort_order: parseInt(e.target.value) || 0 })}
                 className="w-full px-3 py-2.5 rounded-xl text-sm outline-none glass-card"

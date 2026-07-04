@@ -9,6 +9,10 @@ export default function AdminDashboard() {
   const [stats, setStats] = useState<any>(null);
   const [counts, setCounts] = useState({ posts: 0, comments: 0, media: 0 });
   const [topViewed, setTopViewed] = useState<any[]>([]);
+  const [pendingComments, setPendingComments] = useState(0);
+  const [pendingLinks, setPendingLinks] = useState(0);
+  const [categoriesCount, setCategoriesCount] = useState(0);
+  const [tagsCount, setTagsCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -18,7 +22,11 @@ export default function AdminDashboard() {
       api.admin.comments.list({ page: '1', page_size: '1' }).catch(() => ({ total: 0 })),
       api.admin.media.list({ page: '1', page_size: '1' }).catch(() => ({ total: 0 })),
       api.getTopViewed().catch(() => ({ items: [] })),
-    ]).then(([statRes, postsRes, commentsRes, mediaRes, topViewedRes]) => {
+      api.admin.comments.list({ page: '1', page_size: '1', status: 'pending' }).catch(() => ({ total: 0 })),
+      api.admin.links.list().catch(() => ({ items: [] })),
+      api.getCategories().catch(() => ({ items: [] })),
+      api.getTags().catch(() => ({ items: [] })),
+    ]).then(([statRes, postsRes, commentsRes, mediaRes, topViewedRes, pendingCommentsRes, linksRes, categoriesRes, tagsRes]) => {
       setStats(statRes);
       setCounts({
         posts: postsRes?.total || 0,
@@ -26,6 +34,11 @@ export default function AdminDashboard() {
         media: mediaRes?.total || 0,
       });
       setTopViewed(topViewedRes?.items?.slice(0, 5) || []);
+      setPendingComments(pendingCommentsRes?.total || 0);
+      const pending = linksRes?.items?.filter((i: any) => i.status === 'pending').length || 0;
+      setPendingLinks(pending);
+      setCategoriesCount(categoriesRes?.items?.length || 0);
+      setTagsCount(tagsRes?.items?.length || 0);
     }).finally(() => setLoading(false));
   }, []);
 
@@ -36,6 +49,8 @@ export default function AdminDashboard() {
   const statCards = [
     { label: '文章', value: counts.posts, icon: FileText, color: 'hsl(210, 60%, 55%)', bg: 'hsla(210, 60%, 50%, 0.1)' },
     { label: '评论', value: counts.comments, icon: MessageSquare, color: 'hsl(142, 60%, 50%)', bg: 'hsla(142, 60%, 50%, 0.1)' },
+    { label: '待审核评论', value: pendingComments, icon: MessageSquare, color: 'hsl(40, 80%, 55%)', bg: 'hsla(40, 80%, 50%, 0.1)' },
+    { label: '待审核友链', value: pendingLinks, icon: MessageSquare, color: 'hsl(40, 80%, 55%)', bg: 'hsla(40, 80%, 50%, 0.1)' },
     { label: '附件', value: counts.media, icon: Image, color: 'hsl(270, 60%, 55%)', bg: 'hsla(270, 60%, 50%, 0.1)' },
     { label: '访问量', value: stats?.total_requests || 0, icon: Eye, color: 'hsl(30, 60%, 55%)', bg: 'hsla(30, 60%, 50%, 0.1)' },
   ];
@@ -52,7 +67,7 @@ export default function AdminDashboard() {
       <h1 className="text-xl font-bold mb-5" style={{ color: 'var(--text-primary)' }}>概览</h1>
 
       {/* Stat cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
         {statCards.map((card) => (
           <div key={card.label} className="glass-card rounded-xl p-5 flex items-center gap-4">
             <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: card.bg }}>
@@ -137,7 +152,7 @@ export default function AdminDashboard() {
       {/* System info */}
       <div className="glass-card rounded-xl p-5 mt-6">
         <h2 className="text-sm font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>系统信息</h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
           <div className="text-center p-4 rounded-lg" style={{ background: 'var(--surface-bg)' }}>
             <div className="text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>独立 IP</div>
             <div className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>{stats?.unique_ips || 0}</div>

@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useContext, useState, useCallback, useRef, useEffect, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { ChevronDown } from 'lucide-react';
 
 interface ConfirmState {
@@ -99,16 +100,35 @@ export function Select({ value, onChange, options, placeholder }: {
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const portalRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState({ top: 0, left: 0, width: 0 });
 
+  // Compute position after open state is committed to DOM
   useEffect(() => {
+    if (open && ref.current) {
+      const rect = ref.current.getBoundingClientRect();
+      setPos({ top: rect.bottom + 4, left: rect.left, width: rect.width });
+    }
+  }, [open]);
+
+  // Click outside to close
+  useEffect(() => {
+    if (!open) return;
     function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      const triggerEl = ref.current;
+      const portalEl = portalRef.current;
+      if (triggerEl && !triggerEl.contains(target) && portalEl && !portalEl.contains(target)) {
         setOpen(false);
       }
     }
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, []);
+    // Delay adding listener to avoid catching the opening click
+    const id = setTimeout(() => document.addEventListener('mousedown', handleClick), 0);
+    return () => {
+      clearTimeout(id);
+      document.removeEventListener('mousedown', handleClick);
+    };
+  }, [open]);
 
   const selected = options.find(o => o.value === value);
 
@@ -121,9 +141,20 @@ export function Select({ value, onChange, options, placeholder }: {
         <ChevronDown className={`w-4 h-4 transition-transform ${open ? 'rotate-180' : ''}`}
           style={{ color: 'var(--text-info)' }} />
       </div>
-      {open && (
-        <div className="absolute z-50 w-full mt-1 rounded-xl shadow-2xl overflow-hidden"
-          style={{ background: 'var(--card-bg)', border: '1px solid var(--glass-border)' }}>
+
+      {open && typeof window !== 'undefined' && createPortal(
+        <div ref={portalRef}
+          className="rounded-xl shadow-2xl py-1"
+          style={{
+            position: 'fixed',
+            top: pos.top,
+            left: pos.left,
+            width: pos.width,
+            zIndex: 9999,
+            background: 'var(--card-bg)',
+            border: '1px solid var(--glass-border)',
+            backdropFilter: 'blur(24px)',
+          }}>
           {options.map(opt => (
             <div key={opt.value} onClick={() => { onChange(opt.value); setOpen(false); }}
               className="px-3 py-2 text-sm cursor-pointer transition-colors hover:opacity-80"
@@ -134,7 +165,8 @@ export function Select({ value, onChange, options, placeholder }: {
               {opt.label}
             </div>
           ))}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

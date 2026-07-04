@@ -1,11 +1,26 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
 import { Search, TrendingUp } from 'lucide-react';
 import { Loading } from '@/components/Loading';
+
+
+function highlightText(text: string, keyword: string): React.ReactNode {
+  if (!keyword || !text) return text;
+  const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const parts = text.split(new RegExp(`(${escaped})`, 'gi'));
+  return parts.map((part, i) =>
+    part.toLowerCase() === keyword.toLowerCase()
+      ? React.createElement('mark', {
+          key: i,
+          style: { background: 'var(--primary-sub)', color: 'var(--primary)', borderRadius: '2px', padding: '0 2px' }
+        }, part)
+      : part
+  );
+}
 
 function SearchContent() {
   const searchParams = useSearchParams();
@@ -78,11 +93,11 @@ function SearchContent() {
                 <div key={post.id} className="card-base rounded-2xl p-6" style={{ background: 'var(--card-bg)' }}>
                   <h2 className="text-xl font-bold">
                     <Link href={`/posts/${post.slug}`} className="hover:opacity-80 transition-opacity" style={{ color: 'var(--text-primary)' }}>
-                      {post.title}
+                      {highlightText(post.title, q)}
                     </Link>
                   </h2>
                   {post.excerpt && (
-                    <p className="mt-2 text-sm" style={{ color: 'var(--text-secondary)' }}>{post.excerpt}</p>
+                    <p className="mt-2 text-sm" style={{ color: 'var(--text-secondary)' }}>{highlightText(post.excerpt, q)}</p>
                   )}
                 </div>
               ))}

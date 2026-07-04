@@ -378,11 +378,11 @@ func (h *CommentHandler) ToggleReaction(c *gin.Context) {
 		return
 	}
 
-		// Validate emoji is not empty and within reasonable length
-		if len([]rune(input.Emoji)) == 0 || len([]rune(input.Emoji)) > 10 {
+	// Validate emoji is not empty and within reasonable length
+	if len([]rune(input.Emoji)) == 0 || len([]rune(input.Emoji)) > 10 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
 		return
-		}
+	}
 
 	ipAddress := c.ClientIP()
 	active, err := h.repo.ToggleReaction(commentID, input.Emoji, ipAddress)

@@ -1,0 +1,46 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Docker
+Dockerfile
+.dockerignore
+docker-compose.yml
+docker-entrypoint.sh
+
+# CI/CD
+.github
+
+# Docs
+docs
+*.md
+CLAUDE.md
+AGENTS.md
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Backend
+backend/tmp
+backend/uploads
+backend/backups
+backend/*.db
+
+# Frontend
+frontend/node_modules
+frontend/.next
+frontend/out
+frontend/.turbo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.idea
+.vscode
+*.swp
+*.swo
