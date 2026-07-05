@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"sync"
 	"time"
@@ -25,14 +26,29 @@ var (
 func getWebAuthn() *webauthn.WebAuthn {
 	webAuthnOnce.Do(func() {
 		rpID := os.Getenv("WEBAUTHN_RP_ID")
+		rpOrigin := os.Getenv("WEBAUTHN_ORIGIN")
+		rpDisplayName := os.Getenv("WEBAUTHN_DISPLAY_NAME")
+
+		// Derive from SITE_URL if not explicitly set
+		if rpID == "" || rpOrigin == "" {
+			if siteURL := os.Getenv("SITE_URL"); siteURL != "" {
+				if u, err := url.Parse(siteURL); err == nil {
+					if rpID == "" {
+						rpID = u.Hostname()
+					}
+					if rpOrigin == "" {
+						rpOrigin = fmt.Sprintf("%s://%s", u.Scheme, u.Host)
+					}
+				}
+			}
+		}
+
 		if rpID == "" {
 			rpID = "localhost"
 		}
-		rpOrigin := os.Getenv("WEBAUTHN_ORIGIN")
 		if rpOrigin == "" {
 			rpOrigin = "http://localhost:3000"
 		}
-		rpDisplayName := os.Getenv("WEBAUTHN_DISPLAY_NAME")
 		if rpDisplayName == "" {
 			rpDisplayName = "TanoBlog"
 		}
