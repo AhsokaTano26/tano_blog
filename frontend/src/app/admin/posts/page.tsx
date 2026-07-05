@@ -7,7 +7,7 @@ import {
   ArrowLeft, Save, ChevronDown, ChevronRight, User,
   Bold, Italic, Underline, Strikethrough, Link, Code, Quote, List, ListOrdered,
   AlignLeft, AlignCenter, AlignRight, Image as ImageIcon, Heading1, Heading2, Heading3,
-  Undo, Redo, Minus, SquareCode, Superscript, GitBranch, Table, Video, Music, Palette
+  Undo, Redo, Minus, SquareCode, Superscript, GitBranch, Table, Video, Music, Palette, Settings
 } from 'lucide-react';
 import { Loading } from '@/components/Loading';
 import { useConfirm, Checkbox, Select } from '@/components/ConfirmDialog';
@@ -19,6 +19,7 @@ import rehypeHighlight from 'rehype-highlight';
 import rehypeKatex from 'rehype-katex';
 import rehypeRaw from 'rehype-raw';
 import rehypeSlug from 'rehype-slug';
+import DOMPurify from 'dompurify';
 
 export default function AdminPosts() {
   const { confirm } = useConfirm();
@@ -29,6 +30,10 @@ export default function AdminPosts() {
   const [editing, setEditing] = useState<any>(undefined);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [detailPost, setDetailPost] = useState<any>(null);
+  const [categories, setCategories] = useState<any[]>([]);
+  const [tags, setTags] = useState<any[]>([]);
+  const [seriesList, setSeriesList] = useState<any[]>([]);
 
   async function load() {
     setLoading(true);
@@ -44,6 +49,11 @@ export default function AdminPosts() {
   }
 
   useEffect(() => { load(); }, [page, statusFilter]);
+  useEffect(() => {
+    api.getCategories().then(res => setCategories(res.items)).catch(() => {});
+    api.getTags().then(res => setTags(res.items)).catch(() => {});
+    api.admin.series.list().then(res => setSeriesList(res.items || [])).catch(() => {});
+  }, []);
 
   async function handleDelete(id: string) {
     if (!await confirm('确定删除此文章？此操作不可恢复。')) return;
@@ -205,6 +215,11 @@ export default function AdminPosts() {
                           title={post.status === 'published' ? '下架' : '发布'}>
                           {post.status === 'published' ? <X className="w-4 h-4" /> : <Check className="w-4 h-4" />}
                         </button>
+                        <button onClick={() => setDetailPost(post)}
+                          className="p-1.5 rounded-lg transition-colors btn-glass"
+                          style={{ color: 'var(--text-info)' }} title="设置">
+                          <Settings className="w-4 h-4" />
+                        </button>
                         <button onClick={() => handleDelete(post.id)}
                           className="p-1.5 rounded-lg transition-colors btn-glass"
                           style={{ color: 'var(--color-error)' }} title="删除">
@@ -247,6 +262,329 @@ export default function AdminPosts() {
           </div>
         </div>
       )}
+      {detailPost && (
+        <PostDetailDialog
+          post={detailPost}
+          categories={categories}
+          tags={tags}
+          seriesList={seriesList}
+          onSave={async (data) => {
+            await api.admin.posts.update(detailPost.id, data);
+            setDetailPost(null);
+            load();
+          }}
+          onClose={() => setDetailPost(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ── Mermaid Diagram Renderer ── */
+
+const mermaidCache = new Map<string, string>();
+
+function MermaidDiagram({ children }: { children: string }) {
+  const [svg, setSvg] = useState(() => mermaidCache.get(children) || '');
+  const [error, setError] = useState('');
+  const id = useRef(`mermaid-${Math.random().toString(36).slice(2)}`).current;
+
+  useEffect(() => {
+    if (svg) return;
+    let cancelled = false;
+    import('mermaid').then(({ default: mermaid }) => {
+      const isDark = document.documentElement.classList.contains('dark');
+      mermaid.initialize({ startOnLoad: false, theme: isDark ? 'dark' : 'default' });
+      mermaid.render(id, children).then(({ svg: rendered }) => {
+        if (!cancelled) {
+          const clean = DOMPurify.sanitize(rendered, { USE_PROFILES: { svg: true } });
+          mermaidCache.set(children, clean);
+          setSvg(clean);
+          setError('');
+        }
+      }).catch((e) => {
+        if (!cancelled) setError(e.message || 'Mermaid render error');
+      });
+    });
+    return () => { cancelled = true; };
+  }, [children, id, svg]);
+
+  if (error) return <pre className="mermaid-container" style={{ color: 'var(--color-error)' }}>{error}</pre>;
+  if (!svg) return <div className="mermaid-container" style={{ color: 'var(--text-info)' }}>渲染中...</div>;
+  return <div className="mermaid-container" dangerouslySetInnerHTML={{ __html: svg }} />;
+}
+
+/* ── Post Detail Dialog ── */
+function PostDetailDialog({ post, categories, tags, seriesList, onSave, onClose }: {
+  post: any;
+  categories: any[];
+  tags: any[];
+  seriesList: any[];
+  onSave: (data: any) => Promise<void>;
+  onClose: () => void;
+}) {
+  const [authorName, setAuthorName] = useState(post?.author_name || '');
+  const [status, setStatus] = useState(post?.status || 'draft');
+  const [scheduledAt, setScheduledAt] = useState(post?.published_at && post?.status === 'draft' ? post.published_at.slice(0, 16) : '');
+  const [categoryId, setCategoryId] = useState(post?.category_id || post?.category?.id || '');
+  const [selectedSeriesId, setSelectedSeriesId] = useState(post?.series?.[0]?.id || '');
+  const [tagIds, setTagIds] = useState<string[]>(post?.tags?.map((t: any) => t.id) || []);
+  const [coverImage, setCoverImage] = useState(post?.cover_image || '');
+  const [excerpt, setExcerpt] = useState(post?.excerpt || '');
+  const [excerptMode, setExcerptMode] = useState<'manual' | 'auto'>(post?.excerpt ? 'manual' : 'auto');
+  const [isTop, setIsTop] = useState(post?.is_top || false);
+  const [allowComment, setAllowComment] = useState(post?.allow_comment !== false);
+  const [password, setPassword] = useState('');
+  const [passwordHint, setPasswordHint] = useState(post?.password_hint || '');
+  const [passwordSet, setPasswordSet] = useState(post?.password_set || false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  function generateExcerpt(md: string): string {
+    const text = md
+      .replace(/```[\s\S]*?```/g, '')
+      .replace(/`[^`]*`/g, '')
+      .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+      .replace(/\[[^\]]*\]\([^)]*\)/g, '')
+      .replace(/#{1,6}\s+/g, '')
+      .replace(/[*_~>|-]/g, '')
+      .replace(/<[^>]*>/g, '')
+      .replace(/\n+/g, ' ')
+      .trim();
+    return text.length > 200 ? text.slice(0, 200) + '...' : text;
+  }
+
+  function toggleTag(id: string) {
+    setTagIds(prev => prev.includes(id) ? prev.filter(t => t !== id) : [...prev, id]);
+  }
+
+  async function handleSave() {
+    if (saving) return;
+    setSaving(true);
+    setError('');
+    try {
+      const data: any = {
+        author_name: authorName,
+        status,
+        is_top: isTop,
+        allow_comment: allowComment,
+      };
+      if (categoryId) data.category_id = categoryId;
+      if (tagIds.length > 0) data.tag_ids = tagIds;
+      if (selectedSeriesId) data.series_id = selectedSeriesId;
+      if (coverImage) data.cover_image = coverImage;
+      data.excerpt = excerptMode === 'manual' ? excerpt : generateExcerpt(post?.content || '');
+      if (scheduledAt && status === 'draft') {
+        data.scheduled_at = scheduledAt;
+      }
+      if (password) {
+        data.password = password;
+        data.password_hint = passwordHint;
+      } else if (passwordSet === false && post?.id) {
+        data.password = '';
+        data.password_hint = '';
+      }
+      await onSave(data);
+      onClose();
+    } catch (err: any) {
+      setError(err.message || '保存失败');
+    }
+    setSaving(false);
+  }
+
+  const inputStyle = {
+    background: 'var(--glass-bg)',
+    border: '1px solid var(--glass-border)',
+    color: 'var(--text-primary)',
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.5)' }}>
+      <div className="rounded-2xl w-full max-w-xl max-h-[85vh] flex flex-col overflow-hidden" style={{ background: 'var(--color-bg)', border: '1px solid var(--glass-border)' }}>
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 flex-shrink-0" style={{ borderBottom: '1px solid var(--glass-border)' }}>
+          <h2 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
+            {post?.title ? `设置：${post.title.slice(0, 30)}` : '文章详情与设置'}
+          </h2>
+          <button onClick={onClose} className="p-1.5 rounded-lg transition-colors btn-glass" style={{ color: 'var(--text-info)' }}>
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-5">
+          {error && (
+            <div className="px-4 py-2.5 rounded-xl text-sm" style={{ color: 'var(--color-error)', background: 'var(--glass-bg)' }}>
+              {error}
+            </div>
+          )}
+
+          {/* Author */}
+          <div>
+            <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-info)' }}>作者（文章创作者）</label>
+            <input type="text" value={authorName} onChange={e => setAuthorName(e.target.value)}
+              placeholder="输入作者名称" className="w-full px-3 py-2 rounded-xl text-sm outline-none glass-card"
+              style={{ color: 'var(--text-primary)' }} />
+            <p className="mt-1 text-xs" style={{ color: 'var(--text-info)' }}>留空则不显示作者</p>
+          </div>
+
+          {/* Status */}
+          <div>
+            <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-info)' }}>发布状态</label>
+            <div className="flex gap-2">
+              <button onClick={() => setStatus('published')}
+                className="flex-1 px-4 py-2 rounded-xl text-sm font-medium transition-all"
+                style={{
+                  background: status === 'published' ? 'var(--primary)' : 'var(--btn-card-bg)',
+                  color: status === 'published' ? '#fff' : 'var(--text-secondary)',
+                  boxShadow: status === 'published' ? '0 0 12px var(--primary-glow)' : 'none',
+                }}>发布</button>
+              <button onClick={() => setStatus('draft')}
+                className="flex-1 px-4 py-2 rounded-xl text-sm font-medium transition-all"
+                style={{
+                  background: status === 'draft' ? 'var(--btn-card-bg)' : 'transparent',
+                  color: 'var(--text-secondary)',
+                  border: status === 'draft' ? '1px solid var(--glass-border)' : '1px solid transparent',
+                }}>草稿</button>
+            </div>
+          </div>
+
+          {/* Scheduled publish */}
+          {status === 'draft' && (
+            <div>
+              <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-info)' }}>定时发布</label>
+              <input type="datetime-local" value={scheduledAt}
+                onChange={e => setScheduledAt(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl text-sm outline-none glass-card"
+                style={{ color: 'var(--text-primary)' }} />
+              {scheduledAt && (
+                <p className="mt-1 text-xs" style={{ color: 'var(--primary)' }}>
+                  将在 {new Date(scheduledAt).toLocaleString('zh-CN')} 自动发布
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Category */}
+          <div>
+            <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-info)' }}>分类</label>
+            <Select value={categoryId} onChange={setCategoryId}
+              options={[
+                { value: '', label: '无分类' },
+                ...categories.map(cat => ({ value: cat.id, label: cat.name })),
+              ]} />
+          </div>
+
+          {/* Series */}
+          <div>
+            <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-info)' }}>系列</label>
+            <Select value={selectedSeriesId} onChange={setSelectedSeriesId}
+              options={[
+                { value: '', label: '无系列' },
+                ...seriesList.map(s => ({ value: s.id, label: s.name })),
+              ]} />
+          </div>
+
+          {/* Tags */}
+          <div>
+            <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-info)' }}>标签</label>
+            <div className="flex flex-wrap gap-1.5">
+              {tags.map(tag => (
+                <button key={tag.id} onClick={() => toggleTag(tag.id)}
+                  className="px-2.5 py-1 rounded-lg text-xs transition-all"
+                  style={{
+                    background: tagIds.includes(tag.id) ? 'var(--primary-sub)' : 'var(--btn-card-bg)',
+                    color: tagIds.includes(tag.id) ? 'var(--primary)' : 'var(--text-secondary)',
+                  }}>
+                  {tag.name}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Cover image */}
+          <div>
+            <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-info)' }}>封面图</label>
+            <MediaField value={coverImage} onChange={setCoverImage} placeholder="https://..." />
+          </div>
+
+          {/* Excerpt */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-medium" style={{ color: 'var(--text-info)' }}>摘要</label>
+              <div className="flex gap-1">
+                <button onClick={() => setExcerptMode('manual')}
+                  className="px-2 py-0.5 rounded text-xs transition-all"
+                  style={{
+                    background: excerptMode === 'manual' ? 'var(--primary-sub)' : 'transparent',
+                    color: excerptMode === 'manual' ? 'var(--primary)' : 'var(--text-info)',
+                  }}>手动</button>
+                <button onClick={() => setExcerptMode('auto')}
+                  className="px-2 py-0.5 rounded text-xs transition-all"
+                  style={{
+                    background: excerptMode === 'auto' ? 'var(--primary-sub)' : 'transparent',
+                    color: excerptMode === 'auto' ? 'var(--primary)' : 'var(--text-info)',
+                  }}>自动</button>
+              </div>
+            </div>
+            {excerptMode === 'manual' ? (
+              <textarea placeholder="文章摘要" value={excerpt} onChange={e => setExcerpt(e.target.value)} rows={3}
+                className="w-full px-3 py-2 rounded-xl text-sm outline-none resize-none glass-card"
+                style={{ color: 'var(--text-primary)' }} />
+            ) : (
+              <div className="px-3 py-2 rounded-xl text-sm glass-card" style={{ color: 'var(--text-secondary)' }}>
+                {post?.content ? generateExcerpt(post.content) : '输入内容后自动生成摘要'}
+              </div>
+            )}
+          </div>
+
+          {/* Top & Allow comment */}
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <Checkbox checked={isTop} onChange={setIsTop} label="置顶文章" />
+            </div>
+            <div className="flex items-center gap-2">
+              <Checkbox checked={allowComment} onChange={setAllowComment} label="允许评论" />
+            </div>
+          </div>
+
+          {/* Password protection */}
+          <div>
+            <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-info)' }}>密码保护</label>
+            {post?.id && passwordSet ? (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm glass-card" style={{ color: 'var(--text-primary)' }}>
+                  <span style={{ color: 'var(--color-success)' }}>已设置密码</span>
+                  <button type="button" onClick={() => { setPasswordSet(false); setPassword(''); }}
+                    className="ml-auto text-xs px-2 py-0.5 rounded btn-glass" style={{ color: 'var(--color-error)' }}>清除密码</button>
+                </div>
+              </div>
+            ) : (
+              <input type="password" value={password} onChange={e => setPassword(e.target.value)}
+                placeholder="设置访问密码（留空则不设密码）" maxLength={100}
+                className="w-full px-3 py-2 rounded-xl text-sm outline-none glass-card"
+                style={{ color: 'var(--text-primary)' }} />
+            )}
+          </div>
+          <div>
+            <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-info)' }}>密码提示</label>
+            <input type="text" value={passwordHint} onChange={e => setPasswordHint(e.target.value)}
+              placeholder="如：请输入文章访问密码（选填）" maxLength={200}
+              className="w-full px-3 py-2 rounded-xl text-sm outline-none glass-card"
+              style={{ color: 'var(--text-primary)' }} />
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-2 px-6 py-4 flex-shrink-0" style={{ borderTop: '1px solid var(--glass-border)' }}>
+          <button onClick={onClose} className="px-4 py-2 rounded-xl text-sm btn-glass" style={{ color: 'var(--text-secondary)' }}>取消</button>
+          <button onClick={handleSave} disabled={saving}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium text-white disabled:opacity-50 transition-all"
+            style={{ background: 'var(--primary)', boxShadow: '0 0 12px var(--primary-glow)' }}>
+            {saving ? '保存中...' : '保存设置'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -277,23 +615,23 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
   const [passwordHint, setPasswordHint] = useState(post?.password_hint || '');
   const [passwordSet, setPasswordSet] = useState(post?.password_set || false);
   const [users, setUsers] = useState<any[]>([]);
-  const [rightTab, setRightTab] = useState<'outline' | 'detail' | 'history'>('outline');
+  const [rightTab, setRightTab] = useState<'outline' | 'history'>('outline');
   const [revisions, setRevisions] = useState<any[]>([]);
   const [showRightPanel, setShowRightPanel] = useState(true);
+  const [showDetailDialog, setShowDetailDialog] = useState(false);
   const [viewMode, setViewMode] = useState<'edit' | 'preview' | 'split'>('split');
   const [showRestoreBanner, setShowRestoreBanner] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [mediaPickerType, setMediaPickerType] = useState<'image' | 'video' | 'audio' | null>(null);
   const mediaFileRef = useRef<HTMLInputElement>(null);
   const [mediaUploading, setMediaUploading] = useState(false);
-  const editorScrollRef = useRef<HTMLDivElement>(null);
   const previewScrollRef = useRef<HTMLDivElement>(null);
   const syncingRef = useRef<'editor' | 'preview' | null>(null);
 
   const handleEditorScroll = useCallback(() => {
-    if (!editorScrollRef.current || !previewScrollRef.current || syncingRef.current === 'preview') return;
+    if (!textareaRef.current || !previewScrollRef.current || syncingRef.current === 'preview') return;
     syncingRef.current = 'editor';
-    const editor = editorScrollRef.current;
+    const editor = textareaRef.current;
     const preview = previewScrollRef.current;
     const ratio = editor.scrollHeight > editor.clientHeight ? editor.scrollTop / (editor.scrollHeight - editor.clientHeight) : 0;
     preview.scrollTop = ratio * (preview.scrollHeight - preview.clientHeight);
@@ -301,10 +639,10 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
   }, []);
 
   const handlePreviewScroll = useCallback(() => {
-    if (!previewScrollRef.current || !editorScrollRef.current || syncingRef.current === 'editor') return;
+    if (!previewScrollRef.current || !textareaRef.current || syncingRef.current === 'editor') return;
     syncingRef.current = 'preview';
     const preview = previewScrollRef.current;
-    const editor = editorScrollRef.current;
+    const editor = textareaRef.current;
     const ratio = preview.scrollHeight > preview.clientHeight ? preview.scrollTop / (preview.scrollHeight - preview.clientHeight) : 0;
     editor.scrollTop = ratio * (editor.scrollHeight - editor.clientHeight);
     setTimeout(() => { syncingRef.current = null; }, 30);
@@ -632,6 +970,12 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
             title="切换编辑/预览模式">
             {viewMode === 'edit' ? '编辑' : viewMode === 'preview' ? '预览' : '分屏'}
           </button>
+          <button onClick={() => setShowDetailDialog(true)}
+            className="px-3 py-2 rounded-xl transition-colors btn-glass text-xs font-medium"
+            style={{ color: 'var(--text-secondary)' }}
+            title="文章详情与设置">
+            <Settings className="w-3.5 h-3.5 inline mr-1" />详情
+          </button>
           <button onClick={() => setShowRightPanel(!showRightPanel)}
             className="p-2 rounded-xl transition-colors btn-glass"
             style={{ color: showRightPanel ? 'var(--primary)' : 'var(--text-info)' }}
@@ -683,8 +1027,9 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
         {/* Editor + Preview container (takes remaining space) */}
         <div className="flex-1 flex overflow-hidden">
           {/* Editor */}
-          <div ref={editorScrollRef} className="overflow-y-auto" style={{ display: viewMode === 'preview' ? 'none' : '', flex: viewMode === 'split' ? '0 0 50%' : '1 1 0%' }} onScroll={handleEditorScroll}>
-            <div className="max-w-5xl mx-auto py-8 px-6">
+          <div style={{ display: viewMode === 'preview' ? 'none' : '', flex: viewMode === 'split' ? '0 0 50%' : '1 1 0%' }} className="flex flex-col overflow-hidden">
+            {/* Fixed header: title, slug, toolbar */}
+            <div className="max-w-5xl mx-auto w-full pt-8 px-6 flex-shrink-0">
               <input
                 type="text"
                 placeholder="请输入标题"
@@ -729,15 +1074,19 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
                   onUpload={() => mediaFileRef.current?.click()}
                 />
               )}
+            </div>
 
+            {/* Scrollable textarea */}
+            <div className="flex-1 min-h-0 max-w-5xl mx-auto w-full px-6 pb-8">
               <textarea
                 ref={textareaRef}
                 placeholder="输入 Markdown 内容..."
                 value={content}
                 onChange={e => setContent(e.target.value)}
                 onKeyDown={handleKeyDown}
-                className="w-full min-h-[calc(100vh-8rem)] outline-none border-0 bg-transparent resize-none leading-relaxed"
-                style={{ color: 'var(--text-primary)' }}
+                onScroll={handleEditorScroll}
+                className="w-full h-full outline-none border-0 bg-transparent resize-none leading-relaxed"
+                style={{ color: 'var(--text-primary)', overflowY: 'auto' }}
               />
             </div>
           </div>
@@ -751,6 +1100,13 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
                     remarkPlugins={[remarkGfm, remarkMath]}
                     rehypePlugins={[rehypeHighlight, rehypeKatex, rehypeRaw, rehypeSlug]}
                     components={{
+                      code: ({ className, children, ...props }: any) => {
+                        const match = /language-(\w+)/.exec(className || '');
+                        if (match?.[1] === 'mermaid') {
+                          return <MermaidDiagram>{String(children).replace(/\n$/, '')}</MermaidDiagram>;
+                        }
+                        return <code className={className} {...props}>{children}</code>;
+                      },
                       a: ({ href, children }) => (
                         <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary)' }}>{children}</a>
                       ),
@@ -779,12 +1135,6 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
                 大纲
                 {rightTab === 'outline' && <div className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full" style={{ background: 'var(--primary)' }} />}
               </button>
-              <button onClick={() => setRightTab('detail')}
-                className="flex-1 px-4 py-2.5 text-sm font-medium transition-colors relative"
-                style={{ color: rightTab === 'detail' ? 'var(--primary)' : 'var(--text-info)' }}>
-                详情
-                {rightTab === 'detail' && <div className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full" style={{ background: 'var(--primary)' }} />}
-              </button>
               {post?.id && (
                 <button onClick={() => { setRightTab('history'); loadRevisions(); }}
                   className="flex-1 px-4 py-2.5 text-sm font-medium transition-colors relative"
@@ -810,169 +1160,6 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
                       ))}
                     </div>
                   )}
-                </div>
-              ) : rightTab === 'detail' ? (
-                <div className="space-y-4">
-                  {/* Author */}
-                  <div>
-                    <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-info)' }}>作者（文章创作者）</label>
-                    <input type="text" value={authorName} onChange={e => setAuthorName(e.target.value)}
-                      placeholder="输入作者名称" className="w-full px-3 py-2 rounded-xl text-sm outline-none glass-card"
-                      style={{ color: 'var(--text-primary)' }} />
-                    <p className="mt-1 text-xs" style={{ color: 'var(--text-info)' }}>留空则不显示作者；编辑者自动记录为当前登录用户</p>
-                  </div>
-
-                  {/* Status */}
-                  <div>
-                    <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-info)' }}>发布状态</label>
-                    <div className="flex gap-2">
-                      <button onClick={() => setStatus('published')}
-                        className="flex-1 px-3 py-1.5 rounded-xl text-xs font-medium transition-all"
-                        style={{
-                          background: status === 'published' ? 'var(--primary)' : 'var(--btn-card-bg)',
-                          color: status === 'published' ? '#fff' : 'var(--text-secondary)',
-                          boxShadow: status === 'published' ? '0 0 12px var(--primary-glow)' : 'none',
-                        }}>发布</button>
-                      <button onClick={() => setStatus('draft')}
-                        className="flex-1 px-3 py-1.5 rounded-xl text-xs font-medium transition-all"
-                        style={{
-                          background: status === 'draft' ? 'var(--btn-card-bg)' : 'transparent',
-                          color: 'var(--text-secondary)',
-                          border: status === 'draft' ? '1px solid var(--glass-border)' : '1px solid transparent',
-                        }}>草稿</button>
-                    </div>
-                  </div>
-
-                  {/* Scheduled publish date */}
-                  {status === 'draft' && (
-                    <div>
-                      <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-info)' }}>定时发布</label>
-                      <input type="datetime-local" value={scheduledAt}
-                        onChange={e => setScheduledAt(e.target.value)}
-                        className="w-full px-3 py-2 rounded-xl text-sm outline-none glass-card"
-                        style={{ color: 'var(--text-primary)' }} />
-                      {scheduledAt && (
-                        <p className="mt-1 text-xs" style={{ color: 'var(--primary)' }}>
-                          将在 {new Date(scheduledAt).toLocaleString('zh-CN')} 自动发布
-                        </p>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Category */}
-                  <div>
-                    <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-info)' }}>分类</label>
-                    <Select value={categoryId} onChange={setCategoryId}
-                      options={[
-                        { value: '', label: '无分类' },
-                        ...categories.map(cat => ({ value: cat.id, label: cat.name })),
-                      ]} />
-                  </div>
-
-                  {/* Series */}
-                  <div>
-                    <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-info)' }}>系列</label>
-                    <Select value={selectedSeriesId} onChange={setSelectedSeriesId}
-                      options={[
-                        { value: '', label: '无系列' },
-                        ...seriesList.map(s => ({ value: s.id, label: s.name })),
-                      ]} />
-                  </div>
-
-                  {/* Tags */}
-                  <div>
-                    <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-info)' }}>标签</label>
-                    <div className="flex flex-wrap gap-1.5">
-                      {tags.map(tag => (
-                        <button key={tag.id} onClick={() => toggleTag(tag.id)}
-                          className="px-2 py-0.5 rounded-lg text-xs transition-all"
-                          style={{
-                            background: tagIds.includes(tag.id) ? 'var(--primary-sub)' : 'var(--btn-card-bg)',
-                            color: tagIds.includes(tag.id) ? 'var(--primary)' : 'var(--text-secondary)',
-                          }}>
-                          {tag.name}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Cover image */}
-                  <div>
-                    <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-info)' }}>封面图</label>
-                    <MediaField value={coverImage} onChange={setCoverImage} placeholder="https://..." />
-                  </div>
-
-                  {/* Excerpt */}
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label className="text-xs font-medium" style={{ color: 'var(--text-info)' }}>摘要</label>
-                      <div className="flex gap-1">
-                        <button onClick={() => setExcerptMode('manual')}
-                          className="px-2 py-0.5 rounded text-xs transition-all"
-                          style={{
-                            background: excerptMode === 'manual' ? 'var(--primary-sub)' : 'transparent',
-                            color: excerptMode === 'manual' ? 'var(--primary)' : 'var(--text-info)',
-                          }}>手动</button>
-                        <button onClick={() => setExcerptMode('auto')}
-                          className="px-2 py-0.5 rounded text-xs transition-all"
-                          style={{
-                            background: excerptMode === 'auto' ? 'var(--primary-sub)' : 'transparent',
-                            color: excerptMode === 'auto' ? 'var(--primary)' : 'var(--text-info)',
-                          }}>自动</button>
-                      </div>
-                    </div>
-                    {excerptMode === 'manual' ? (
-                      <textarea placeholder="文章摘要" value={excerpt} onChange={e => setExcerpt(e.target.value)} rows={3}
-                        className="w-full px-3 py-2 rounded-xl text-sm outline-none resize-none glass-card"
-                        style={{ color: 'var(--text-primary)' }} />
-                    ) : (
-                      <div className="px-3 py-2 rounded-xl text-sm glass-card" style={{ color: 'var(--text-secondary)' }}>
-                        {content ? generateExcerpt(content) : '输入内容后自动生成摘要'}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Top */}
-                  <div className="flex items-center gap-2">
-                    <Checkbox checked={isTop} onChange={setIsTop} label="置顶文章" />
-                  </div>
-
-                  {/* Allow comment */}
-                  <div className="flex items-center gap-2">
-                    <Checkbox checked={allowComment} onChange={setAllowComment} label="允许评论" />
-                  </div>
-
-                  {/* Password protection */}
-                  <div>
-                    <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-info)' }}>密码保护</label>
-                    {post?.id && passwordSet ? (
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm glass-card" style={{ color: 'var(--text-primary)' }}>
-                          <span style={{ color: 'var(--color-success)' }}>已设置密码</span>
-                          <button type="button" onClick={() => { setPasswordSet(false); setPassword(''); }}
-                            className="ml-auto text-xs px-2 py-0.5 rounded btn-glass" style={{ color: 'var(--color-error)' }}>清除密码</button>
-                        </div>
-                        {!passwordSet && (
-                          <input type="password" value={password} onChange={e => setPassword(e.target.value)}
-                            placeholder="新密码（留空不修改）" maxLength={100}
-                            className="w-full px-3 py-2 rounded-xl text-sm outline-none glass-card"
-                            style={{ color: 'var(--text-primary)' }} />
-                        )}
-                      </div>
-                    ) : (
-                      <input type="password" value={password} onChange={e => setPassword(e.target.value)}
-                        placeholder="设置访问密码（留空则不设密码）" maxLength={100}
-                        className="w-full px-3 py-2 rounded-xl text-sm outline-none glass-card"
-                        style={{ color: 'var(--text-primary)' }} />
-                    )}
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-info)' }}>密码提示</label>
-                    <input type="text" value={passwordHint} onChange={e => setPasswordHint(e.target.value)}
-                      placeholder="如：请输入文章访问密码（选填）" maxLength={200}
-                      className="w-full px-3 py-2 rounded-xl text-sm outline-none glass-card"
-                      style={{ color: 'var(--text-primary)' }} />
-                  </div>
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -1002,6 +1189,30 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
           </div>
         )}
       </div>
+
+      {showDetailDialog && (
+        <PostDetailDialog
+          post={post}
+          categories={categories}
+          tags={tags}
+          seriesList={seriesList}
+          onSave={async (data) => {
+            if (data.author_name !== undefined) setAuthorName(data.author_name);
+            if (data.status !== undefined) setStatus(data.status);
+            if (data.is_top !== undefined) setIsTop(data.is_top);
+            if (data.allow_comment !== undefined) setAllowComment(data.allow_comment);
+            if (data.category_id !== undefined) setCategoryId(data.category_id);
+            if (data.tag_ids) setTagIds(data.tag_ids);
+            if (data.series_id !== undefined) setSelectedSeriesId(data.series_id);
+            if (data.cover_image !== undefined) setCoverImage(data.cover_image);
+            if (data.excerpt !== undefined) setExcerpt(data.excerpt);
+            if (data.scheduled_at !== undefined) setScheduledAt(data.scheduled_at);
+            if ('password' in data) { setPassword(data.password); setPasswordHint(data.password_hint || ''); }
+            if ('password_set' in data) setPasswordSet(data.password_set);
+          }}
+          onClose={() => setShowDetailDialog(false)}
+        />
+      )}
     </div>
   );
 }

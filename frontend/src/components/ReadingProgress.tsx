@@ -18,12 +18,14 @@ export function ReadingProgress() {
   }, []);
 
   return (
-    <div className="fixed top-0 left-0 right-0 z-[60] h-1">
+    <div className="fixed top-0 left-0 right-0 z-[60] h-0.5"
+      style={{ background: 'var(--glass-border)' }}>
       <div
         className="h-full transition-[width] duration-150 ease-out"
         style={{
           width: `${progress}%`,
           background: 'var(--primary)',
+          boxShadow: '0 0 6px var(--primary-glow)',
         }}
       />
     </div>
