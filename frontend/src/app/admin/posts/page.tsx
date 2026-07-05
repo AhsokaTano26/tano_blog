@@ -12,6 +12,13 @@ import {
 import { Loading } from '@/components/Loading';
 import { useConfirm, Checkbox, Select } from '@/components/ConfirmDialog';
 import { MediaField, MediaPickerModal } from '@/components/MediaField';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeHighlight from 'rehype-highlight';
+import rehypeKatex from 'rehype-katex';
+import rehypeRaw from 'rehype-raw';
+import rehypeSlug from 'rehype-slug';
 
 export default function AdminPosts() {
   const { confirm } = useConfirm();
@@ -273,6 +280,7 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
   const [rightTab, setRightTab] = useState<'outline' | 'detail' | 'history'>('outline');
   const [revisions, setRevisions] = useState<any[]>([]);
   const [showRightPanel, setShowRightPanel] = useState(true);
+  const [viewMode, setViewMode] = useState<'edit' | 'preview' | 'split'>('split');
   const [showRestoreBanner, setShowRestoreBanner] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [mediaPickerType, setMediaPickerType] = useState<'image' | 'video' | 'audio' | null>(null);
@@ -595,6 +603,12 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
               <ExternalLink className="w-4 h-4" />
             </button>
           )}
+          <button onClick={() => setViewMode(viewMode === 'edit' ? 'split' : viewMode === 'split' ? 'preview' : 'edit')}
+            className="px-3 py-2 rounded-xl transition-colors btn-glass text-xs font-medium"
+            style={{ color: 'var(--text-secondary)' }}
+            title="切换编辑/预览模式">
+            {viewMode === 'edit' ? '编辑' : viewMode === 'preview' ? '预览' : '分屏'}
+          </button>
           <button onClick={() => setShowRightPanel(!showRightPanel)}
             className="p-2 rounded-xl transition-colors btn-glass"
             style={{ color: showRightPanel ? 'var(--primary)' : 'var(--text-info)' }}
@@ -644,7 +658,7 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
       {/* Main content area */}
       <div className="flex-1 flex overflow-hidden">
         {/* Editor */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="overflow-y-auto" style={{ display: viewMode === 'preview' ? 'none' : '', flex: viewMode === 'split' ? '0 0 50%' : '1 1 0%' }}>
           <div className="max-w-5xl mx-auto py-8 px-6">
             <input
               type="text"
@@ -700,6 +714,32 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
               className="w-full min-h-[calc(100vh-8rem)] outline-none border-0 bg-transparent resize-none leading-relaxed"
               style={{ color: 'var(--text-primary)' }}
             />
+          </div>
+        </div>
+
+        {/* Live preview */}
+        <div className="overflow-y-auto" style={{ display: viewMode === 'edit' ? 'none' : '', flex: viewMode === 'split' ? '0 0 50%' : '1 1 0%' }}>
+          <div className="max-w-5xl mx-auto py-8 px-6">
+            <div className="prose prose-sm max-w-none" style={{ color: 'var(--text-primary)' }}>
+              {content ? (
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm, remarkMath]}
+                  rehypePlugins={[rehypeHighlight, rehypeKatex, rehypeRaw, rehypeSlug]}
+                  components={{
+                    a: ({ href, children }) => (
+                      <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary)' }}>{children}</a>
+                    ),
+                    img: ({ src, alt }) => (
+                      <img src={src} alt={alt || ''} style={{ maxWidth: '100%', borderRadius: '8px' }} />
+                    ),
+                  }}
+                >
+                  {content}
+                </ReactMarkdown>
+              ) : (
+                <p className="text-sm" style={{ color: 'var(--text-info)' }}>输入内容开始预览...</p>
+              )}
+            </div>
           </div>
         </div>
 
