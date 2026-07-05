@@ -268,7 +268,7 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
   const [scheduledAt, setScheduledAt] = useState(post?.published_at && post?.status === 'draft' ? post.published_at.slice(0, 16) : '');
   const [password, setPassword] = useState('');
   const [passwordHint, setPasswordHint] = useState(post?.password_hint || '');
-  const [passwordSet, setPasswordSet] = useState(!!post?.password_hash);
+  const [passwordSet, setPasswordSet] = useState(post?.password_set || false);
   const [users, setUsers] = useState<any[]>([]);
   const [rightTab, setRightTab] = useState<'outline' | 'detail' | 'history'>('outline');
   const [revisions, setRevisions] = useState<any[]>([]);

@@ -336,7 +336,32 @@ func (h *PostHandler) AdminGet(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"post": post})
+	// Add password_set for frontend (password_hash is json:"-")
+	passwordSet := post.PasswordHash != ""
+	c.JSON(http.StatusOK, gin.H{
+		"post": map[string]interface{}{
+			"password_set": passwordSet,
+			"id":              post.ID,
+			"title":           post.Title,
+			"slug":            post.Slug,
+			"content":         post.Content,
+			"excerpt":         post.Excerpt,
+			"cover_image":     post.CoverImage,
+			"status":          post.Status,
+			"is_top":          post.IsTop,
+			"allow_comment":   post.AllowComment,
+			"author_name":     post.AuthorName,
+			"author_id":       post.AuthorID,
+			"editor_id":       post.EditorID,
+			"category_id":     post.CategoryID,
+			"published_at":    post.PublishedAt,
+			"created_at":      post.CreatedAt,
+			"updated_at":      post.UpdatedAt,
+			"password_hint":   post.PasswordHint,
+			"category":        post.Category,
+			"author":          post.Author,
+		},
+	})
 }
 
 // AdminList returns all posts (including drafts) for admin
