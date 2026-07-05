@@ -3,7 +3,6 @@ package utils
 import (
 	"bytes"
 	"encoding/hex"
-	"log"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -233,22 +232,10 @@ func BeginPasskeyLogin(db *gorm.DB) (*protocol.CredentialAssertion, error) {
 func VerifyPasskeyLogin(db *gorm.DB, rawBody []byte) (uuid.UUID, error) {
 	wa := getWebAuthn(db)
 
-	// Parse the assertion response first to get the credential ID
+	// Parse the assertion response
 	parsed, err := protocol.ParseCredentialRequestResponseBody(bytes.NewReader(rawBody))
 	if err != nil {
 		return uuid.Nil, fmt.Errorf("parse assertion: %w", err)
-	}
-
-	// Find the corresponding passkey by credential ID
-	credID := hex.EncodeToString(parsed.RawID)
-	var passkey model.Passkey
-	if err := db.Where("credential_id = ?", credID).First(&passkey).Error; err != nil {
-		return uuid.Nil, fmt.Errorf("passkey not found")
-	}
-
-	var cred webauthn.Credential
-	if err := json.Unmarshal([]byte(passkey.CredentialData), &cred); err != nil {
-		return uuid.Nil, fmt.Errorf("invalid stored credential")
 	}
 
 	// Retrieve session data by challenge
@@ -256,34 +243,44 @@ func VerifyPasskeyLogin(db *gorm.DB, rawBody []byte) (uuid.UUID, error) {
 	if ok {
 		sessionDataStore.Delete(string(parsed.Response.CollectedClientData.Challenge))
 	}
-
 	if !ok {
-		log.Printf("passkey login: session not found for challenge")
 		return uuid.Nil, fmt.Errorf("login session expired, please try again")
 	}
 	session := sessionRaw.(*webauthn.SessionData)
 
-	// Get the user
-	var user model.User
-	if err := db.First(&user, passkey.UserID).Error; err != nil {
-		return uuid.Nil, fmt.Errorf("user not found")
-	}
+	// Use ValidatePasskeyLogin with a handler that looks up user from credential
+	_, _, err = wa.ValidatePasskeyLogin(func(rawID, userHandle []byte) (webauthn.User, error) {
+		credID := hex.EncodeToString(rawID)
+		var passkey model.Passkey
+		if err := db.Where("credential_id = ?", credID).First(&passkey).Error; err != nil {
+			return nil, err
+		}
 
-	wu := makeWebAuthnUser(user, []webauthn.Credential{cred})
+		var cred webauthn.Credential
+		if err := json.Unmarshal([]byte(passkey.CredentialData), &cred); err != nil {
+			return nil, err
+		}
 
-	// Log session/user details for debugging ID mismatch
-	log.Printf("[passkey debug] session.UserID=%q (len=%d)", session.UserID, len(session.UserID))
-	log.Printf("[passkey debug] user.WebAuthnID()=%q (len=%d)", wu.WebAuthnID(), len(wu.WebAuthnID()))
-	log.Printf("[passkey debug] parsed.Response.UserHandle=%q (len=%d)", parsed.Response.UserHandle, len(parsed.Response.UserHandle))
+		var user model.User
+		if err := db.First(&user, passkey.UserID).Error; err != nil {
+			return nil, err
+		}
 
-	// Verify the assertion
-	_, err = wa.ValidateLogin(wu, *session, parsed)
+		return makeWebAuthnUser(user, []webauthn.Credential{cred}), nil
+	}, *session, parsed)
 	if err != nil {
 		return uuid.Nil, fmt.Errorf("validate login: %w", err)
 	}
 
 	// Update sign count
-	db.Model(&passkey).Update("sign_count", cred.Authenticator.SignCount)
+	credID := hex.EncodeToString(parsed.RawID)
+	var passkey model.Passkey
+	if err := db.Where("credential_id = ?", credID).First(&passkey).Error; err == nil {
+		var cred webauthn.Credential
+		if json.Unmarshal([]byte(passkey.CredentialData), &cred) == nil {
+			db.Model(&passkey).Update("sign_count", cred.Authenticator.SignCount)
+		}
+	}
 
 	return passkey.UserID, nil
 }
