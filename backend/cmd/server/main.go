@@ -85,7 +85,6 @@ func main() {
 
 	// Setup router
 	r := gin.New()
-	r.SetTrustedProxies(nil)
 	r.Use(gin.Recovery())
 	r.Use(middleware.AccessLogger(db))
 
