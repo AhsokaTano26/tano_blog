@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { api } from '@/lib/api';
 import {
   Plus, Pencil, Trash2, ExternalLink, Eye, Search, X, Check, FileText,
@@ -286,6 +286,29 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
   const [mediaPickerType, setMediaPickerType] = useState<'image' | 'video' | 'audio' | null>(null);
   const mediaFileRef = useRef<HTMLInputElement>(null);
   const [mediaUploading, setMediaUploading] = useState(false);
+  const editorScrollRef = useRef<HTMLDivElement>(null);
+  const previewScrollRef = useRef<HTMLDivElement>(null);
+  const [syncingScroll, setSyncingScroll] = useState<'editor' | 'preview' | null>(null);
+
+  const handleEditorScroll = useCallback(() => {
+    if (!editorScrollRef.current || !previewScrollRef.current || syncingScroll === 'preview') return;
+    setSyncingScroll('editor');
+    const editor = editorScrollRef.current;
+    const preview = previewScrollRef.current;
+    const ratio = editor.scrollTop / (editor.scrollHeight - editor.clientHeight);
+    preview.scrollTop = ratio * (preview.scrollHeight - preview.clientHeight);
+    setTimeout(() => setSyncingScroll(null), 20);
+  }, [syncingScroll]);
+
+  const handlePreviewScroll = useCallback(() => {
+    if (!previewScrollRef.current || !editorScrollRef.current || syncingScroll === 'editor') return;
+    setSyncingScroll('preview');
+    const preview = previewScrollRef.current;
+    const editor = editorScrollRef.current;
+    const ratio = preview.scrollTop / (preview.scrollHeight - preview.clientHeight);
+    editor.scrollTop = ratio * (editor.scrollHeight - editor.clientHeight);
+    setTimeout(() => setSyncingScroll(null), 20);
+  }, [syncingScroll]);
 
   function generateSlug() {
     return crypto.randomUUID().slice(0, 8);
@@ -657,88 +680,91 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
 
       {/* Main content area */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Editor */}
-        <div className="overflow-y-auto" style={{ display: viewMode === 'preview' ? 'none' : '', flex: viewMode === 'split' ? '0 0 50%' : '1 1 0%' }}>
-          <div className="max-w-5xl mx-auto py-8 px-6">
-            <input
-              type="text"
-              placeholder="请输入标题"
-              value={title}
-              onChange={e => handleTitleChange(e.target.value)}
-              className="w-full text-3xl font-bold outline-none border-0 bg-transparent mb-2"
-              style={{ color: 'var(--text-primary)' }}
-            />
-            <input
-              type="text"
-              placeholder="url-slug"
-              value={slug}
-              onChange={e => handleSlugChange(e.target.value)}
-              className="w-full text-sm outline-none border-0 bg-transparent font-mono mb-6"
-              style={{ color: 'var(--text-info)' }}
-            />
-
-            {/* Toolbar */}
-            <div className="flex items-center gap-0.5 pb-3 mb-4 flex-wrap" style={{ borderBottom: '1px solid var(--glass-border)' }}>
-              {toolbarButtons.map((btn, i) => {
-                if ('type' in btn && btn.type === 'divider') {
-                  return <div key={`d-${i}`} className="w-px h-5 mx-1" style={{ background: 'var(--glass-border)' }} />;
-                }
-                const Icon = btn.icon!;
-                return (
-                  <button key={i} onClick={btn.action} title={btn.title}
-                    className="p-1.5 rounded-lg transition-colors btn-glass" style={{ color: 'var(--text-secondary)' }}>
-                    <Icon className="w-4 h-4" />
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Media picker & upload for toolbar */}
-            <input ref={mediaFileRef} type="file" accept="image/*,video/*,audio/*"
-              onChange={e => mediaPickerType && handleMediaUpload(e, mediaPickerType)}
-              style={{ display: 'none' }} />
-            {mediaPickerType && (
-              <MediaPickerModal
-                onSelect={(url) => insertMedia(url, mediaPickerType)}
-                onClose={() => setMediaPickerType(null)}
-                onUpload={() => mediaFileRef.current?.click()}
+        {/* Editor + Preview container (takes remaining space) */}
+        <div className="flex-1 flex overflow-hidden">
+          {/* Editor */}
+          <div ref={editorScrollRef} className="overflow-y-auto" style={{ display: viewMode === 'preview' ? 'none' : '', flex: viewMode === 'split' ? '0 0 50%' : '1 1 0%' }} onScroll={handleEditorScroll}>
+            <div className="max-w-5xl mx-auto py-8 px-6">
+              <input
+                type="text"
+                placeholder="请输入标题"
+                value={title}
+                onChange={e => handleTitleChange(e.target.value)}
+                className="w-full text-3xl font-bold outline-none border-0 bg-transparent mb-2"
+                style={{ color: 'var(--text-primary)' }}
               />
-            )}
+              <input
+                type="text"
+                placeholder="url-slug"
+                value={slug}
+                onChange={e => handleSlugChange(e.target.value)}
+                className="w-full text-sm outline-none border-0 bg-transparent font-mono mb-6"
+                style={{ color: 'var(--text-info)' }}
+              />
 
-            <textarea
-              ref={textareaRef}
-              placeholder="输入 Markdown 内容..."
-              value={content}
-              onChange={e => setContent(e.target.value)}
-              onKeyDown={handleKeyDown}
-              className="w-full min-h-[calc(100vh-8rem)] outline-none border-0 bg-transparent resize-none leading-relaxed"
-              style={{ color: 'var(--text-primary)' }}
-            />
-          </div>
-        </div>
+              {/* Toolbar */}
+              <div className="flex items-center gap-0.5 pb-3 mb-4 flex-wrap" style={{ borderBottom: '1px solid var(--glass-border)' }}>
+                {toolbarButtons.map((btn, i) => {
+                  if ('type' in btn && btn.type === 'divider') {
+                    return <div key={`d-${i}`} className="w-px h-5 mx-1" style={{ background: 'var(--glass-border)' }} />;
+                  }
+                  const Icon = btn.icon!;
+                  return (
+                    <button key={i} onClick={btn.action} title={btn.title}
+                      className="p-1.5 rounded-lg transition-colors btn-glass" style={{ color: 'var(--text-secondary)' }}>
+                      <Icon className="w-4 h-4" />
+                    </button>
+                  );
+                })}
+              </div>
 
-        {/* Live preview */}
-        <div className="overflow-y-auto" style={{ display: viewMode === 'edit' ? 'none' : '', flex: viewMode === 'split' ? '0 0 50%' : '1 1 0%' }}>
-          <div className="max-w-5xl mx-auto py-8 px-6">
-            <div className="prose prose-sm max-w-none" style={{ color: 'var(--text-primary)' }}>
-              {content ? (
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm, remarkMath]}
-                  rehypePlugins={[rehypeHighlight, rehypeKatex, rehypeRaw, rehypeSlug]}
-                  components={{
-                    a: ({ href, children }) => (
-                      <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary)' }}>{children}</a>
-                    ),
-                    img: ({ src, alt }) => (
-                      <img src={src} alt={alt || ''} style={{ maxWidth: '100%', borderRadius: '8px' }} />
-                    ),
-                  }}
-                >
-                  {content}
-                </ReactMarkdown>
-              ) : (
-                <p className="text-sm" style={{ color: 'var(--text-info)' }}>输入内容开始预览...</p>
+              {/* Media picker & upload for toolbar */}
+              <input ref={mediaFileRef} type="file" accept="image/*,video/*,audio/*"
+                onChange={e => mediaPickerType && handleMediaUpload(e, mediaPickerType)}
+                style={{ display: 'none' }} />
+              {mediaPickerType && (
+                <MediaPickerModal
+                  onSelect={(url) => insertMedia(url, mediaPickerType)}
+                  onClose={() => setMediaPickerType(null)}
+                  onUpload={() => mediaFileRef.current?.click()}
+                />
               )}
+
+              <textarea
+                ref={textareaRef}
+                placeholder="输入 Markdown 内容..."
+                value={content}
+                onChange={e => setContent(e.target.value)}
+                onKeyDown={handleKeyDown}
+                className="w-full min-h-[calc(100vh-8rem)] outline-none border-0 bg-transparent resize-none leading-relaxed"
+                style={{ color: 'var(--text-primary)' }}
+              />
+            </div>
+          </div>
+
+          {/* Live preview */}
+          <div ref={previewScrollRef} className="overflow-y-auto" style={{ display: viewMode === 'edit' ? 'none' : '', flex: viewMode === 'split' ? '0 0 50%' : '1 1 0%', borderLeft: viewMode === 'split' ? '1px solid var(--glass-border)' : '' }} onScroll={handlePreviewScroll}>
+            <div className="max-w-5xl mx-auto py-8 px-6">
+              <div className="prose prose-sm max-w-none" style={{ color: 'var(--text-primary)' }}>
+                {content ? (
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm, remarkMath]}
+                    rehypePlugins={[rehypeHighlight, rehypeKatex, rehypeRaw, rehypeSlug]}
+                    components={{
+                      a: ({ href, children }) => (
+                        <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary)' }}>{children}</a>
+                      ),
+                      img: ({ src, alt }) => (
+                        <img src={src} alt={alt || ''} style={{ maxWidth: '100%', borderRadius: '8px' }} />
+                      ),
+                    }}
+                  >
+                    {content}
+                  </ReactMarkdown>
+                ) : (
+                  <p className="text-sm" style={{ color: 'var(--text-info)' }}>输入内容开始预览...</p>
+                )}
+              </div>
             </div>
           </div>
         </div>
