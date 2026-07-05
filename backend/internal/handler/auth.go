@@ -476,6 +476,7 @@ func (h *AuthHandler) PasskeyLoginVerify(c *gin.Context) {
 
 	userID, err := utils.VerifyPasskeyLogin(h.db, rawBody)
 	if err != nil {
+		log.Printf("passkey login verify failed: %v", err)
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Passkey 验证失败"})
 		return
 	}

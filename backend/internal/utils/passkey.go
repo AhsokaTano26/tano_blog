@@ -3,6 +3,7 @@ package utils
 import (
 	"bytes"
 	"encoding/hex"
+	"log"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -257,6 +258,7 @@ func VerifyPasskeyLogin(db *gorm.DB, rawBody []byte) (uuid.UUID, error) {
 	}
 
 	if !ok {
+		log.Printf("passkey login: session not found for challenge")
 		return uuid.Nil, fmt.Errorf("login session expired, please try again")
 	}
 	session := sessionRaw.(*webauthn.SessionData)
