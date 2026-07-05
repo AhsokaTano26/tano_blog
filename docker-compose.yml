@@ -4,7 +4,7 @@ services:
     container_name: tano_blog_db
     restart: unless-stopped
     ports:
-      - "5432:5432"
+      - "5431:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     environment:
@@ -18,13 +18,13 @@ services:
       retries: 5
 
   app:
-    image: ${DOCKER_IMAGE:-tano/blog:latest}
+    image: tano26/tano_blog:latest
     container_name: tano_blog_app
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "3001:3000"
     environment:
-      DB_DSN: postgres://tano:${DB_PASSWORD:-tano_blog_pass}@postgres:5432/tano_blog?sslmode=disable
+      DB_DSN: postgres://tano:${DB_PASSWORD:-tano_blog_pass}@postgres:5431/tano_blog?sslmode=disable
       JWT_SECRET: ${JWT_SECRET}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
       SERVER_PORT: "8080"
