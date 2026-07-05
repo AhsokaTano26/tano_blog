@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"log"
 	"net/http"
 	"net/mail"
 	"time"
@@ -476,7 +475,7 @@ func (h *AuthHandler) PasskeyLoginVerify(c *gin.Context) {
 
 	userID, err := utils.VerifyPasskeyLogin(h.db, rawBody)
 	if err != nil {
-		log.Printf("passkey login verify failed: %v", err)
+		utils.LogError("passkey login verify failed", "error", err)
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Passkey 验证失败"})
 		return
 	}
@@ -674,7 +673,7 @@ func (h *AuthHandler) sendLoginNotify(c *gin.Context, user model.User) {
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				log.Printf("[Email] panic in login notify: %v", r)
+				utils.LogError("panic in login notify", "error", r)
 			}
 		}()
 		h.emailService.SendLoginNotifyEmail(user.Email, user.Username, loginIP, loginTime)

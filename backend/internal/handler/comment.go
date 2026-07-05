@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"log"
 	"net/http"
 	"net/mail"
 	"strconv"
@@ -11,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 	"tano_blog/backend/internal/model"
+	"tano_blog/backend/internal/utils"
 	"tano_blog/backend/internal/repository"
 	"tano_blog/backend/internal/service"
 )
@@ -218,7 +218,7 @@ func (h *CommentHandler) Create(c *gin.Context) {
 		go func() {
 			defer func() {
 				if r := recover(); r != nil {
-					log.Printf("[Email] panic in new comment notify: %v", r)
+					utils.LogError("panic in new comment notify", "error", r)
 				}
 			}()
 			h.emailService.SendNewCommentNotify(comment.Nickname, comment.Content, post.Title, post.Slug)
@@ -230,7 +230,7 @@ func (h *CommentHandler) Create(c *gin.Context) {
 		go func() {
 			defer func() {
 				if r := recover(); r != nil {
-					log.Printf("[Email] panic in reply notify: %v", r)
+					utils.LogError("panic in reply notify", "error", r)
 				}
 			}()
 			h.emailService.SendReplyNotify(parent.Email, parent.Nickname, comment.Nickname, comment.Content, post.Title, post.Slug)
@@ -305,7 +305,7 @@ func (h *CommentHandler) UpdateStatus(c *gin.Context) {
 		go func() {
 			defer func() {
 				if r := recover(); r != nil {
-					log.Printf("[Email] panic in comment approved notify: %v", r)
+					utils.LogError("panic in comment approved notify", "error", r)
 				}
 			}()
 			h.emailService.SendCommentApprovedNotify(comment.Email, comment.Nickname, post.Title, post.Slug)

@@ -27,26 +27,32 @@ import (
 )
 
 func main() {
+	// Initialize logging
+	logLevel := os.Getenv("LOG_LEVEL")
+	if logLevel == "" {
+		logLevel = "info"
+	}
+	utils.InitLogging(logLevel)
 	cfg := config.Load()
 
 	// Connect to database
-	logLevel := logger.Warn
+	gormLogLevel := logger.Warn
 	if gin.Mode() == gin.DebugMode {
-		logLevel = logger.Info
+		gormLogLevel = logger.Info
 	}
 	db, err := gorm.Open(postgres.Open(cfg.Database.DSN), &gorm.Config{
-		Logger: logger.Default.LogMode(logLevel),
+		Logger: logger.Default.LogMode(gormLogLevel),
 	})
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
-	log.Println("Connected to database")
+	utils.LogInfo("Connected to database")
 
 	// Auto migrate
 	if err := model.AutoMigrate(db); err != nil {
 		log.Fatalf("Failed to migrate database: %v", err)
 	}
-	log.Println("Database migrated")
+	utils.LogInfo("Database migrated")
 
 	// Enable pg_trgm extension for full-text search
 	db.Exec("CREATE EXTENSION IF NOT EXISTS pg_trgm")
@@ -292,7 +298,7 @@ func main() {
 				Where("status = ? AND published_at IS NOT NULL AND published_at <= ?", "draft", now).
 				Updates(map[string]interface{}{"status": "published"})
 			if result.RowsAffected > 0 {
-				log.Printf("Published %d scheduled posts", result.RowsAffected)
+				utils.LogInfo("Published scheduled posts", "count", result.RowsAffected)
 			}
 		}
 	}()
@@ -307,7 +313,7 @@ func main() {
 	}()
 
 	go func() {
-		log.Printf("Server starting on port %s", port)
+		utils.LogInfo("Server starting", "port", port)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Failed to start server: %v", err)
 		}
@@ -316,14 +322,14 @@ func main() {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
-	log.Println("Shutting down server...")
+	utils.LogInfo("Shutting down server...")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
 		log.Fatalf("Server forced to shutdown: %v", err)
 	}
-	log.Println("Server exited")
+	utils.LogInfo("Server exited")
 }
 
 func seedAdmin(db *gorm.DB, password string) {
@@ -351,7 +357,7 @@ func seedAdmin(db *gorm.DB, password string) {
 		log.Fatalf("Failed to seed admin user: %v", err)
 	}
 
-	log.Println("Default admin user created: admin")
+	utils.LogInfo("Default admin user created: admin")
 }
 
 func seedSiteConfigs(db *gorm.DB) {

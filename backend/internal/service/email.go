@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net"
 	"net/http"
 	"net/smtp"
@@ -14,6 +13,7 @@ import (
 
 	"gorm.io/gorm"
 	"tano_blog/backend/internal/model"
+	"tano_blog/backend/internal/utils"
 )
 
 // EmailProvider defines the interface for sending emails
@@ -269,7 +269,7 @@ func (s *EmailService) SendNewCommentNotify(nickname, content, postTitle, postSl
 	html := renderNewCommentEmail(siteTitle, nickname, content, postTitle, postSlug, siteURL)
 
 	if err := s.Send(admin.Email, subject, html); err != nil {
-		log.Printf("[Email] Failed to send new comment notification: %v", err)
+		utils.LogError("Failed to send new comment notification", "error", err)
 	}
 }
 
@@ -293,7 +293,7 @@ func (s *EmailService) SendCommentApprovedNotify(toEmail, nickname, postTitle, p
 	html := renderCommentApprovedEmail(siteTitle, nickname, postTitle, postSlug, siteURL)
 
 	if err := s.Send(toEmail, subject, html); err != nil {
-		log.Printf("[Email] Failed to send comment approved notification: %v", err)
+		utils.LogError("Failed to send comment approved notification", "error", err)
 	}
 }
 
@@ -318,7 +318,7 @@ func (s *EmailService) SendReplyNotify(parentEmail, parentNickname, replyNicknam
 	html := renderReplyEmail(siteTitle, parentNickname, replyNickname, replyContent, postTitle, postSlug, siteURL)
 
 	if err := s.Send(parentEmail, subject, html); err != nil {
-		log.Printf("[Email] Failed to send reply notification: %v", err)
+		utils.LogError("Failed to send reply notification", "error", err)
 	}
 }
 
@@ -340,7 +340,7 @@ func (s *EmailService) SendPasswordResetEmail(toEmail, resetLink string) {
 
 	// Send direct (bypass email_enabled check so forgot password always works)
 	if err := s.sendDirect(toEmail, subject, html); err != nil {
-		log.Printf("[Email] Failed to send password reset email: %v", err)
+		utils.LogError("Failed to send password reset email", "error", err)
 	}
 }
 
@@ -381,7 +381,7 @@ func (s *EmailService) SendLoginNotifyEmail(toEmail, username, ip, loginTime str
 	html := renderLoginAlertEmail(siteTitle, username, ip, loginTime)
 
 	if err := s.Send(toEmail, subject, html); err != nil {
-		log.Printf("[Email] Failed to send login notification: %v", err)
+		utils.LogError("Failed to send login notification", "error", err)
 	}
 }
 

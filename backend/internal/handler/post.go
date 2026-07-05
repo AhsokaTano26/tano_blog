@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -121,8 +120,6 @@ func (h *PostHandler) GetBySlug(c *gin.Context) {
 		return
 	}
 
-	log.Printf("[password debug] post=%q PasswordHash=%q (len=%d)", slug, post.PasswordHash, len(post.PasswordHash))
-	log.Printf("[password debug] user_id=%q", c.GetString("user_id"))
 
 	// Only return published posts for public API
 	if c.GetString("user_id") == "" && post.Status != "published" {
