@@ -288,27 +288,27 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
   const [mediaUploading, setMediaUploading] = useState(false);
   const editorScrollRef = useRef<HTMLDivElement>(null);
   const previewScrollRef = useRef<HTMLDivElement>(null);
-  const [syncingScroll, setSyncingScroll] = useState<'editor' | 'preview' | null>(null);
+  const syncingRef = useRef<'editor' | 'preview' | null>(null);
 
   const handleEditorScroll = useCallback(() => {
-    if (!editorScrollRef.current || !previewScrollRef.current || syncingScroll === 'preview') return;
-    setSyncingScroll('editor');
+    if (!editorScrollRef.current || !previewScrollRef.current || syncingRef.current === 'preview') return;
+    syncingRef.current = 'editor';
     const editor = editorScrollRef.current;
     const preview = previewScrollRef.current;
-    const ratio = editor.scrollTop / (editor.scrollHeight - editor.clientHeight);
+    const ratio = editor.scrollHeight > editor.clientHeight ? editor.scrollTop / (editor.scrollHeight - editor.clientHeight) : 0;
     preview.scrollTop = ratio * (preview.scrollHeight - preview.clientHeight);
-    setTimeout(() => setSyncingScroll(null), 20);
-  }, [syncingScroll]);
+    setTimeout(() => { syncingRef.current = null; }, 30);
+  }, []);
 
   const handlePreviewScroll = useCallback(() => {
-    if (!previewScrollRef.current || !editorScrollRef.current || syncingScroll === 'editor') return;
-    setSyncingScroll('preview');
+    if (!previewScrollRef.current || !editorScrollRef.current || syncingRef.current === 'editor') return;
+    syncingRef.current = 'preview';
     const preview = previewScrollRef.current;
     const editor = editorScrollRef.current;
-    const ratio = preview.scrollTop / (preview.scrollHeight - preview.clientHeight);
+    const ratio = preview.scrollHeight > preview.clientHeight ? preview.scrollTop / (preview.scrollHeight - preview.clientHeight) : 0;
     editor.scrollTop = ratio * (editor.scrollHeight - editor.clientHeight);
-    setTimeout(() => setSyncingScroll(null), 20);
-  }, [syncingScroll]);
+    setTimeout(() => { syncingRef.current = null; }, 30);
+  }, []);
 
   function generateSlug() {
     return crypto.randomUUID().slice(0, 8);
