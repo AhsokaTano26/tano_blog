@@ -163,18 +163,19 @@ export default function AdminProfile() {
 
   async function handleRegisterPasskey() {
     try {
-      const options = await api.passkeyRegisterOptions();
+      const res = await api.passkeyRegisterOptions();
+      const pk = res.publicKey || res;
       const credential = await navigator.credentials.create({
         publicKey: {
-          challenge: base64urlToBuffer(options.challenge),
-          rp: options.rp,
+          challenge: base64urlToBuffer(pk.challenge),
+          rp: pk.rp,
           user: {
-            id: base64urlToBuffer(options.user.id),
-            name: options.user.name,
-            displayName: options.user.displayName,
+            id: base64urlToBuffer(pk.user.id),
+            name: pk.user.name,
+            displayName: pk.user.displayName,
           },
-          pubKeyCredParams: options.pubKeyCredParams,
-          timeout: options.timeout,
+          pubKeyCredParams: pk.pubKeyCredParams,
+          timeout: pk.timeout,
         },
       }) as PublicKeyCredential;
       const attestation = credential as any;

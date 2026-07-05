@@ -155,7 +155,7 @@ export const api = {
 
   // Passkey
   passkeyLoginOptions: () =>
-    request<{ challenge: string; timeout: number; rpId: string }>('/api/v1/auth/passkey/login/options', { method: 'POST' }),
+    request<any>('/api/v1/auth/passkey/login/options', { method: 'POST' }),
   passkeyLoginVerify: (data: any) =>
     request<{ token: string; user: any }>('/api/v1/auth/passkey/login/verify', { method: 'POST', body: JSON.stringify(data) }),
   passkeyRegisterOptions: () =>

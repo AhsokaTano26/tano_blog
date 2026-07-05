@@ -67,12 +67,13 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
     try {
-      const options = await api.passkeyLoginOptions();
+      const res = await api.passkeyLoginOptions();
+      const pk = res.publicKey || res;
       const credential = await navigator.credentials.get({
         publicKey: {
-          challenge: base64urlToBuffer(options.challenge),
-          timeout: options.timeout,
-          rpId: options.rpId,
+          challenge: base64urlToBuffer(pk.challenge),
+          timeout: pk.timeout,
+          rpId: pk.rpId,
           userVerification: 'preferred',
         },
       }) as PublicKeyCredential;
