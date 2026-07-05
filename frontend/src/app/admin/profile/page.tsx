@@ -181,9 +181,12 @@ export default function AdminProfile() {
       const attestation = credential as any;
       await api.passkeyRegisterVerify({
         id: attestation.id,
+        rawId: attestation.id,
+        type: 'public-key',
         response: {
           clientDataJSON: bufferToBase64url(attestation.response.clientDataJSON),
           attestationObject: bufferToBase64url(attestation.response.attestationObject),
+          transports: attestation.response.getTransports ? attestation.response.getTransports() : ['internal'],
         },
       });
       setMessage('通行密钥已添加');

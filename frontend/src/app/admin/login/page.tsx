@@ -80,7 +80,14 @@ export default function LoginPage() {
       const assertion = credential as any;
       await api.passkeyLoginVerify({
         id: assertion.id,
-        response: { clientDataJSON: bufferToBase64url(assertion.response.clientDataJSON) },
+        rawId: assertion.id,
+        type: 'public-key',
+        response: {
+          clientDataJSON: bufferToBase64url(assertion.response.clientDataJSON),
+          authenticatorData: bufferToBase64url(assertion.response.authenticatorData),
+          signature: bufferToBase64url(assertion.response.signature),
+          userHandle: assertion.response.userHandle ? bufferToBase64url(assertion.response.userHandle) : null,
+        },
       });
       window.location.href = '/admin';
     } catch (err: any) {

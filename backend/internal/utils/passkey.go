@@ -23,13 +23,34 @@ var (
 	sessionDataStore  sync.Map
 )
 
-func getWebAuthn() *webauthn.WebAuthn {
+func getWebAuthn(db *gorm.DB) *webauthn.WebAuthn {
 	webAuthnOnce.Do(func() {
 		rpID := os.Getenv("WEBAUTHN_RP_ID")
 		rpOrigin := os.Getenv("WEBAUTHN_ORIGIN")
 		rpDisplayName := os.Getenv("WEBAUTHN_DISPLAY_NAME")
 
-		// Derive from SITE_URL if not explicitly set
+		// Try database site config if env vars not set
+		if (rpID == "" || rpOrigin == "") && db != nil {
+			var siteURL string
+			db.Model(&model.SiteConfig{}).Where("key = ?", "site_url").Select("value").First(&siteURL)
+			if siteURL != "" {
+				if u, err := url.Parse(siteURL); err == nil {
+					if rpID == "" {
+						rpID = u.Hostname()
+					}
+					if rpOrigin == "" {
+						origin := fmt.Sprintf("%s://%s", u.Scheme, u.Host)
+						// Default port for the scheme
+						if u.Port() != "" {
+							origin = fmt.Sprintf("%s://%s:%s", u.Scheme, u.Hostname(), u.Port())
+						}
+						rpOrigin = origin
+					}
+				}
+			}
+		}
+
+		// Fall back to SITE_URL env var
 		if rpID == "" || rpOrigin == "" {
 			if siteURL := os.Getenv("SITE_URL"); siteURL != "" {
 				if u, err := url.Parse(siteURL); err == nil {
@@ -37,7 +58,11 @@ func getWebAuthn() *webauthn.WebAuthn {
 						rpID = u.Hostname()
 					}
 					if rpOrigin == "" {
-						rpOrigin = fmt.Sprintf("%s://%s", u.Scheme, u.Host)
+						origin := fmt.Sprintf("%s://%s", u.Scheme, u.Host)
+						if u.Port() != "" {
+							origin = fmt.Sprintf("%s://%s:%s", u.Scheme, u.Hostname(), u.Port())
+						}
+						rpOrigin = origin
 					}
 				}
 			}
@@ -117,7 +142,7 @@ func makeWebAuthnUser(user model.User, credentials []webauthn.Credential) *webau
 
 // BeginPasskeyRegistration starts the WebAuthn credential registration ceremony
 func BeginPasskeyRegistration(db *gorm.DB, userID uuid.UUID) (*protocol.CredentialCreation, error) {
-	wa := getWebAuthn()
+	wa := getWebAuthn(db)
 
 	var user model.User
 	if err := db.First(&user, userID).Error; err != nil {
@@ -139,7 +164,7 @@ func BeginPasskeyRegistration(db *gorm.DB, userID uuid.UUID) (*protocol.Credenti
 
 // VerifyPasskeyRegistration completes the WebAuthn credential registration ceremony
 func VerifyPasskeyRegistration(db *gorm.DB, userID uuid.UUID, rawBody []byte) error {
-	wa := getWebAuthn()
+	wa := getWebAuthn(db)
 
 	var user model.User
 	if err := db.First(&user, userID).Error; err != nil {
@@ -189,7 +214,7 @@ func VerifyPasskeyRegistration(db *gorm.DB, userID uuid.UUID, rawBody []byte) er
 
 // BeginPasskeyLogin starts the WebAuthn assertion ceremony
 func BeginPasskeyLogin(db *gorm.DB) (*protocol.CredentialAssertion, error) {
-	wa := getWebAuthn()
+	wa := getWebAuthn(db)
 
 	options, session, err := wa.BeginDiscoverableLogin()
 	if err != nil {
@@ -204,7 +229,7 @@ func BeginPasskeyLogin(db *gorm.DB) (*protocol.CredentialAssertion, error) {
 
 // VerifyPasskeyLogin completes the WebAuthn assertion ceremony
 func VerifyPasskeyLogin(db *gorm.DB, rawBody []byte) (uuid.UUID, error) {
-	wa := getWebAuthn()
+	wa := getWebAuthn(db)
 
 	// Parse the assertion response first to get the credential ID
 	parsed, err := protocol.ParseCredentialRequestResponseBody(bytes.NewReader(rawBody))
