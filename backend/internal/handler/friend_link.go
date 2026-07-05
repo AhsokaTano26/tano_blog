@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -61,11 +62,11 @@ func (h *FriendLinkHandler) Apply(c *gin.Context) {
 
 	link := &model.FriendLink{
 		ID:          uuid.New(),
-		Name:        input.Name,
-		URL:         input.URL,
-		Description: input.Description,
-		Avatar:      input.Avatar,
-		Email:       input.Email,
+		Name:        strings.ToValidUTF8(input.Name, ""),
+		URL:         strings.ToValidUTF8(input.URL, ""),
+		Description: strings.ToValidUTF8(input.Description, ""),
+		Avatar:      strings.ToValidUTF8(input.Avatar, ""),
+		Email:       strings.ToValidUTF8(input.Email, ""),
 		Status:      "pending",
 	}
 
@@ -113,11 +114,11 @@ func (h *FriendLinkHandler) AdminCreate(c *gin.Context) {
 
 	link := &model.FriendLink{
 		ID:          uuid.New(),
-		Name:        input.Name,
-		URL:         input.URL,
-		Description: input.Description,
-		Avatar:      input.Avatar,
-		Email:       input.Email,
+		Name:        strings.ToValidUTF8(input.Name, ""),
+		URL:         strings.ToValidUTF8(input.URL, ""),
+		Description: strings.ToValidUTF8(input.Description, ""),
+		Avatar:      strings.ToValidUTF8(input.Avatar, ""),
+		Email:       strings.ToValidUTF8(input.Email, ""),
 		Status:      status,
 		SortOrder:   input.SortOrder,
 	}

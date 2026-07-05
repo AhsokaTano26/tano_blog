@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/mail"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -182,10 +183,10 @@ func (h *CommentHandler) Create(c *gin.Context) {
 	comment := &model.Comment{
 		ID:        uuid.New(),
 		PostID:    post.ID,
-		Nickname:  input.Nickname,
-		Email:     input.Email,
-		Website:   input.Website,
-		Content:   input.Content,
+		Nickname:  strings.ToValidUTF8(input.Nickname, ""),
+		Email:     strings.ToValidUTF8(input.Email, ""),
+		Website:   strings.ToValidUTF8(input.Website, ""),
+		Content:   strings.ToValidUTF8(input.Content, ""),
 		Status:    "pending",
 		IPAddress: c.ClientIP(),
 		UserAgent: c.GetHeader("User-Agent"),
