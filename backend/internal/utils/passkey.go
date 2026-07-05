@@ -271,6 +271,11 @@ func VerifyPasskeyLogin(db *gorm.DB, rawBody []byte) (uuid.UUID, error) {
 
 	wu := makeWebAuthnUser(user, []webauthn.Credential{cred})
 
+	// Log session/user details for debugging ID mismatch
+	log.Printf("[passkey debug] session.UserID=%q (len=%d)", session.UserID, len(session.UserID))
+	log.Printf("[passkey debug] user.WebAuthnID()=%q (len=%d)", wu.WebAuthnID(), len(wu.WebAuthnID()))
+	log.Printf("[passkey debug] parsed.Response.UserHandle=%q (len=%d)", parsed.Response.UserHandle, len(parsed.Response.UserHandle))
+
 	// Verify the assertion
 	_, err = wa.ValidateLogin(wu, *session, parsed)
 	if err != nil {
