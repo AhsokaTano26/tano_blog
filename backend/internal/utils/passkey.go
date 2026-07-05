@@ -2,6 +2,7 @@ package utils
 
 import (
 	"bytes"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -201,7 +202,7 @@ func VerifyPasskeyRegistration(db *gorm.DB, userID uuid.UUID, rawBody []byte) er
 	// Store the credential in the database
 	passkey := &model.Passkey{
 		UserID:         userID,
-		CredentialID:   string(cred.ID),
+		CredentialID:   hex.EncodeToString(cred.ID),
 		PublicKey:      cred.PublicKey,
 		CredentialData: string(credJSON),
 		SignCount:      int64(cred.Authenticator.SignCount),
@@ -238,7 +239,7 @@ func VerifyPasskeyLogin(db *gorm.DB, rawBody []byte) (uuid.UUID, error) {
 	}
 
 	// Find the corresponding passkey by credential ID
-	credID := string(parsed.RawID)
+	credID := hex.EncodeToString(parsed.RawID)
 	var passkey model.Passkey
 	if err := db.Where("credential_id = ?", credID).First(&passkey).Error; err != nil {
 		return uuid.Nil, fmt.Errorf("passkey not found")
