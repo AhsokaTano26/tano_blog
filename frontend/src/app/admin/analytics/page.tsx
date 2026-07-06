@@ -126,19 +126,21 @@ export default function AnalyticsPage() {
 
                     {/* Daily trend chart */}
                     {timeRangeStats && timeRangeStats.daily_counts.length > 0 && (
-                        <div className="glass-card rounded-xl p-4">
-                            <h2 className="text-lg font-medium mb-4">每日趋势</h2>
-                            <div className="flex items-end gap-1 h-32">
+                        <div className="glass-card rounded-xl p-5">
+                            <h2 className="text-sm font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>每日趋势（近7天）</h2>
+                            <div className="flex items-end gap-1" style={{ height: '160px' }}>
                                 {timeRangeStats.daily_counts.map(d => {
                                     const maxDaily = Math.max(...timeRangeStats!.daily_counts.map(x => x.count), 1);
+                                    const barH = Math.max(4, Math.round((d.count / maxDaily) * 140));
                                     return (
                                         <div key={d.date} className="flex-1 flex flex-col items-center gap-1">
-                                            <div className="text-xs text-gray-400">{d.count}</div>
-                                            <div className="w-full bg-blue-500/50 rounded-t transition-all"
-                                                style={{ height: `${(d.count / maxDaily) * 100}%` }} />
-                                            <div className="text-xs text-gray-500 -rotate-45 origin-left">
-                                                {d.date.slice(5)}
-                                            </div>
+                                            <div className="text-xs" style={{ color: 'var(--text-secondary)' }}>{d.count}</div>
+                                            <div className="w-full rounded-t-md transition-all"
+                                                style={{
+                                                    height: `${barH}px`,
+                                                    background: `linear-gradient(to top, var(--primary), color-mix(in srgb, var(--primary) 60%, white))`,
+                                                }} />
+                                            <div className="text-xs" style={{ color: 'var(--text-info)' }}>{d.date.slice(5)}</div>
                                         </div>
                                     );
                                 })}
@@ -208,19 +210,24 @@ export default function AnalyticsPage() {
 
                     {/* Hourly distribution */}
                     {byHour.length > 0 && (
-                        <div className="glass-card rounded-xl p-4">
-                            <h2 className="text-lg font-medium mb-4">时段分布</h2>
-                            <div className="flex items-end gap-1 h-24">
+                        <div className="glass-card rounded-xl p-5">
+                            <h2 className="text-sm font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>时段分布</h2>
+                            <div className="flex items-end gap-1" style={{ height: '120px' }}>
                                 {Array.from({ length: 24 }).map((_, h) => {
                                     const hourData = byHour.find(i => i.hour === h);
                                     const count = hourData?.count || 0;
                                     const maxHour = Math.max(...byHour.map(i => i.count), 1);
+                                    const barH = Math.max(4, Math.round((count / maxHour) * 100));
                                     return (
-                                        <div key={h} className="flex-1 flex flex-col items-center gap-0.5">
-                                            <div className="text-xs text-gray-400">{count || ''}</div>
-                                            <div className="w-full bg-cyan-500/40 rounded-t transition-all"
-                                                style={{ height: `${(count / maxHour) * 100}%` }} />
-                                            <div className="text-xs text-gray-500">{h}</div>
+                                        <div key={h} className="flex-1 flex flex-col items-center justify-end gap-0.5" title={`${h}时: ${count}次`}>
+                                            <div className="text-[10px]" style={{ color: 'var(--text-secondary)' }}>{count || ''}</div>
+                                            <div className="w-full rounded-t-sm transition-all"
+                                                style={{
+                                                    height: `${barH}px`,
+                                                    background: 'var(--primary)',
+                                                    opacity: 0.4 + (count / maxHour) * 0.6,
+                                                }} />
+                                            <div className="text-[10px]" style={{ color: 'var(--text-info)' }}>{h}</div>
                                         </div>
                                     );
                                 })}

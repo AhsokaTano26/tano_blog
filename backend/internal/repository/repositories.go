@@ -207,7 +207,7 @@ func (r *AccessLogRepo) StatsTimeRange(start, end string) (*TimeRangeStats, erro
 	query.Where("status_code >= 400").Count(&stats.TotalErrors)
 	query.Select("COALESCE(AVG(response_time), 0)").Scan(&stats.AvgResponseMs)
 
-	rows, err := query.Select("DATE(created_at) as date, COUNT(*) as count").
+	rows, err := query.Select("to_char(DATE(created_at), 'YYYY-MM-DD') as date, COUNT(*) as count").
 		Group("DATE(created_at)").Order("date ASC").Rows()
 	if err != nil {
 		return &stats, nil

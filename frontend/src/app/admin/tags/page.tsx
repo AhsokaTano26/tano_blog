@@ -82,7 +82,7 @@ export default function AdminTags() {
             </thead>
             <tbody>
               {items.map((item) => (
-                <tr key={item.id} className="transition-colors" style={{ borderBottom: '1px solid var(--glass-border)' }}>
+                <tr key={item.id} className="transition-colors" style={{ borderBottom: '1px solid var(--glass-border)', background: 'var(--card-bg)' }}>
                   <td className="px-4 py-3 text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{item.name}</td>
                   <td className="px-4 py-3 text-sm font-mono" style={{ color: 'var(--text-secondary)' }}>{item.slug}</td>
                   <td className="px-4 py-3 text-right">

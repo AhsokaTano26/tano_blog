@@ -38,7 +38,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
           style={{ background: 'rgba(0,0,0,0.5)' }}
           onClick={(e) => { if (e.target === e.currentTarget) handleCancel(); }}>
           <div className="w-full max-w-sm rounded-2xl p-6 shadow-2xl"
-            style={{ background: 'var(--card-bg)', border: '1px solid var(--glass-border)' }}>
+            style={{ background: 'var(--card-bg)', border: '1px solid var(--glass-border)', backdropFilter: 'blur(24px)' }}>
             <p className="text-sm mb-6" style={{ color: 'var(--text-primary)' }}>{state.message}</p>
             <div className="flex justify-end gap-2">
               <button onClick={handleCancel}

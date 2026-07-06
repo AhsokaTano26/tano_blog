@@ -161,6 +161,7 @@ export function MediaPickerModal({ onSelect, onClose, onUpload }: { onSelect: (u
           background: 'var(--card-bg)',
           border: '1px solid var(--glass-border)',
           maxHeight: '75vh',
+          backdropFilter: 'blur(24px)',
         }}
       >
         <div className="flex items-center justify-between mb-2">
@@ -218,7 +219,7 @@ export function MediaPickerModal({ onSelect, onClose, onUpload }: { onSelect: (u
               key={item.id}
               onClick={() => onSelect(item.url)}
               className="cursor-pointer rounded-xl overflow-hidden hover:opacity-80 transition-opacity"
-              style={{ background: 'var(--btn-card-bg)' }}
+              style={{ background: 'var(--card-bg)', border: '1px solid var(--glass-border)' }}
               title={item.original_name || item.filename || ''}
             >
               {item.mime_type?.startsWith('image/') ? (
@@ -229,11 +230,11 @@ export function MediaPickerModal({ onSelect, onClose, onUpload }: { onSelect: (u
                   onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                 />
               ) : (
-                <div className="w-full h-16 flex items-center justify-center text-xs" style={{ color: 'var(--text-info)' }}>
+                <div className="w-full h-16 flex items-center justify-center text-xs font-medium" style={{ color: 'var(--text-secondary)', background: 'var(--surface-bg)' }}>
                   {item.original_name?.split('.').pop()?.toUpperCase() || 'FILE'}
                 </div>
               )}
-              <div className="px-1 pb-1 pt-0.5 truncate text-[10px] text-center" style={{ color: 'var(--text-secondary)' }}>
+              <div className="px-1.5 pb-1.5 pt-1 text-[11px] truncate text-center font-medium" style={{ color: 'var(--text-primary)' }}>
                 {item.original_name || item.filename || ''}
               </div>
             </div>
