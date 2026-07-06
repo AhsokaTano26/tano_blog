@@ -80,8 +80,8 @@ export const api = {
     request<{ tag: any; posts: any[]; total: number; page: number; size: number }>(`/api/v1/tags/${slug}`, { params }),
 
   // Comments
-  getComments: (postId: string) =>
-    request<{ items: any[] }>(`/api/v1/posts/${postId}/comments`),
+  getComments: (postId: string, sort?: string) =>
+    request<{ items: any[] }>(`/api/v1/posts/${postId}/comments`, { params: sort ? { sort } : undefined }),
   createComment: (postId: string, data: any) =>
     request(`/api/v1/posts/${postId}/comments`, {
       method: 'POST',
@@ -186,6 +186,10 @@ export const api = {
         request(`/api/v1/admin/posts/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
       toggleTop: (id: string, isTop: boolean) =>
         request(`/api/v1/admin/posts/${id}/top`, { method: 'PATCH', body: JSON.stringify({ is_top: isTop }) }),
+      batchUpdateStatus: (ids: string[], status: string) =>
+        request('/api/v1/admin/posts/batch-status', { method: 'POST', body: JSON.stringify({ ids, status }) }),
+      batchDelete: (ids: string[]) =>
+        request('/api/v1/admin/posts/batch-delete', { method: 'POST', body: JSON.stringify({ ids }) }),
       revisions: {
         list: (postId: string) =>
           request<{ items: any[] }>(`/api/v1/admin/posts/${postId}/revisions`),
@@ -270,6 +274,10 @@ export const api = {
         request<{ items: any[]; total: number; page: number; size: number }>('/api/v1/admin/access-logs', { params }),
       stats: () =>
         request<{ total_requests: number; unique_ips: number; total_errors: number; avg_response_ms: number; daily_counts: { date: string; count: number }[] }>('/api/v1/admin/access-logs/stats'),
+      statsByDevice: () => request<{ items: { name: string; count: number }[] }>('/api/v1/admin/access-logs/stats/device'),
+      statsByBrowser: () => request<{ items: { name: string; count: number }[] }>('/api/v1/admin/access-logs/stats/browser'),
+      statsByOS: () => request<{ items: { name: string; count: number }[] }>('/api/v1/admin/access-logs/stats/os'),
+      statsByHour: () => request<{ items: { hour: number; count: number }[] }>('/api/v1/admin/access-logs/stats/hour'),
       export: (params?: Record<string, string>) => {
         const searchParams = params ? '?' + new URLSearchParams(params).toString() : '';
         window.open(`${API_BASE}/api/v1/admin/access-logs/export${searchParams}`, '_blank');

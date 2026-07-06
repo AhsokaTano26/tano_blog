@@ -41,7 +41,7 @@ func (h *CommentHandler) ListByPost(c *gin.Context) {
 		return
 	}
 
-	comments, err := h.repo.ListByPost(post.ID)
+	comments, err := h.repo.ListByPost(post.ID, c.DefaultQuery("sort", "oldest"))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取评论失败"})
 		return

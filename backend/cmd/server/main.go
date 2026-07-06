@@ -179,6 +179,8 @@ func main() {
 			admin.Use(middleware.RoleRequired("admin"))
 			{
 				admin.GET("/posts", postHandler.AdminList)
+				admin.POST("/posts/batch-status", postHandler.BatchUpdateStatus)
+				admin.POST("/posts/batch-delete", postHandler.BatchDelete)
 				admin.GET("/posts/:id", postHandler.AdminGet)
 				admin.POST("/posts", postHandler.Create)
 				admin.PUT("/posts/:id", postHandler.Update)
@@ -226,6 +228,10 @@ func main() {
 
 				admin.GET("/access-logs", accessLogHandler.List)
 				admin.GET("/access-logs/stats", accessLogHandler.Stats)
+				admin.GET("/access-logs/stats/device", accessLogHandler.StatsByDevice)
+				admin.GET("/access-logs/stats/browser", accessLogHandler.StatsByBrowser)
+				admin.GET("/access-logs/stats/os", accessLogHandler.StatsByOS)
+				admin.GET("/access-logs/stats/hour", accessLogHandler.StatsByHour)
 				admin.GET("/access-logs/export", accessLogHandler.Export)
 				admin.DELETE("/access-logs/:id", accessLogHandler.Delete)
 				admin.POST("/access-logs/clear", accessLogHandler.Clear)

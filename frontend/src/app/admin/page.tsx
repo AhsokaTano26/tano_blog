@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { api } from '@/lib/api';
-import { FileText, MessageSquare, Image, Eye, Activity, PenSquare, MessageCircle, Upload, Settings, TrendingUp } from 'lucide-react';
+import { FileText, MessageSquare, Image, Eye, Activity, PenSquare, MessageCircle, Upload, Settings, BarChart3, LineChart } from 'lucide-react';
 import { Loading } from '@/components/Loading';
 
 export default function AdminDashboard() {
@@ -13,7 +13,11 @@ export default function AdminDashboard() {
   const [pendingLinks, setPendingLinks] = useState(0);
   const [categoriesCount, setCategoriesCount] = useState(0);
   const [tagsCount, setTagsCount] = useState(0);
+  const [chartType, setChartType] = useState<'bar' | 'line'>('bar');
   const [loading, setLoading] = useState(true);
+  const [chartWidth, setChartWidth] = useState(600);
+  const chartRef = useRef<HTMLDivElement>(null);
+  const [analytics, setAnalytics] = useState<{ device: any[]; browser: any[]; os: any[]; hour: any[] } | null>(null);
 
   useEffect(() => {
     Promise.all([
@@ -26,7 +30,11 @@ export default function AdminDashboard() {
       api.admin.links.list().catch(() => ({ items: [] })),
       api.getCategories().catch(() => ({ items: [] })),
       api.getTags().catch(() => ({ items: [] })),
-    ]).then(([statRes, postsRes, commentsRes, mediaRes, topViewedRes, pendingCommentsRes, linksRes, categoriesRes, tagsRes]) => {
+      api.admin.accessLogs.statsByDevice().catch(() => ({ items: [] })),
+      api.admin.accessLogs.statsByBrowser().catch(() => ({ items: [] })),
+      api.admin.accessLogs.statsByOS().catch(() => ({ items: [] })),
+      api.admin.accessLogs.statsByHour().catch(() => ({ items: [] })),
+    ]).then(([statRes, postsRes, commentsRes, mediaRes, topViewedRes, pendingCommentsRes, linksRes, categoriesRes, tagsRes, deviceRes, browserRes, osRes, hourRes]) => {
       setStats(statRes);
       setCounts({
         posts: postsRes?.total || 0,
@@ -39,8 +47,23 @@ export default function AdminDashboard() {
       setPendingLinks(pending);
       setCategoriesCount(categoriesRes?.items?.length || 0);
       setTagsCount(tagsRes?.items?.length || 0);
+      setAnalytics({
+        device: deviceRes?.items || [],
+        browser: browserRes?.items || [],
+        os: osRes?.items || [],
+        hour: hourRes?.items || [],
+      });
     }).finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    const el = chartRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([entry]) => setChartWidth(entry.contentRect.width));
+    ro.observe(el);
+    setChartWidth(el.offsetWidth);
+    return () => ro.disconnect();
+  }, [stats?.daily_counts]);
 
   if (loading) {
     return <Loading />;
@@ -126,26 +149,101 @@ export default function AdminDashboard() {
       {/* Visit trend chart */}
       {stats?.daily_counts && stats.daily_counts.length > 0 && (
         <div className="glass-card rounded-xl p-5 mt-6">
-          <h2 className="text-sm font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>访问趋势（近7天）</h2>
-          <div className="flex items-end gap-2" style={{ height: '160px' }}>
-            {stats.daily_counts.slice(-7).map((day: any, i: number) => {
-              const maxCount = Math.max(...stats.daily_counts.slice(-7).map((d: any) => d.count), 1);
-              const h = Math.max(4, Math.round((day.count / maxCount) * 140));
-              return (
-                <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                  <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{day.count}</span>
-                  <div
-                    className="w-full rounded-t-md transition-all duration-500"
-                    style={{
-                      height: `${h}px`,
-                      background: `linear-gradient(to top, var(--primary), color-mix(in srgb, var(--primary) 60%, white))`,
-                    }}
-                  />
-                  <span className="text-xs truncate w-full text-center" style={{ color: 'var(--text-info)' }}>{day.date?.slice(5) || ''}</span>
-                </div>
-              );
-            })}
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>访问趋势（近7天）</h2>
+            <div className="flex gap-1 p-0.5 rounded-lg" style={{ background: 'var(--btn-card-bg)' }}>
+              <button onClick={() => setChartType('bar')}
+                className="px-2.5 py-1 rounded-md text-xs transition-all"
+                style={{
+                  background: chartType === 'bar' ? 'var(--primary)' : 'transparent',
+                  color: chartType === 'bar' ? '#fff' : 'var(--text-secondary)',
+                }}>
+                <BarChart3 className="w-3.5 h-3.5 inline mr-1" />柱状图
+              </button>
+              <button onClick={() => setChartType('line')}
+                className="px-2.5 py-1 rounded-md text-xs transition-all"
+                style={{
+                  background: chartType === 'line' ? 'var(--primary)' : 'transparent',
+                  color: chartType === 'line' ? '#fff' : 'var(--text-secondary)',
+                }}>
+                <LineChart className="w-3.5 h-3.5 inline mr-1" />折线图
+              </button>
+            </div>
           </div>
+          {chartType === 'bar' ? (
+            <div className="flex items-end gap-2" style={{ height: '160px' }}>
+              {stats.daily_counts.map((day: any, i: number) => {
+                const maxCount = Math.max(...stats.daily_counts.map((d: any) => d.count), 1);
+                const h = Math.max(4, Math.round((day.count / maxCount) * 140));
+                return (
+                  <div key={i} className="flex-1 flex flex-col items-center gap-1">
+                    <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{day.count}</span>
+                    <div
+                      className="w-full rounded-t-md transition-all duration-500"
+                      style={{
+                        height: `${h}px`,
+                        background: `linear-gradient(to top, var(--primary), color-mix(in srgb, var(--primary) 60%, white))`,
+                      }}
+                    />
+                    <span className="text-xs truncate w-full text-center" style={{ color: 'var(--text-info)' }}>{day.date?.slice(5) || ''}</span>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div ref={chartRef} style={{ height: '160px', position: 'relative' }}>
+              <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="none" viewBox={`0 0 ${chartWidth} 160`} style={{ pointerEvents: 'none' }}>
+                <defs>
+                  <linearGradient id="lineAreaGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="var(--primary)" stopOpacity="0.2" />
+                    <stop offset="100%" stopColor="var(--primary)" stopOpacity="0.02" />
+                  </linearGradient>
+                </defs>
+                {(() => {
+                  const data = stats.daily_counts;
+                  const maxV = Math.max(...data.map((d: any) => d.count), 1);
+                  const padBottom = 24;
+                  const padTop = 24;
+                  const plotH = 160 - padTop - padBottom;
+                  const pts = data.map((d: any, i: number) => {
+                    const x = (i / (data.length - 1)) * chartWidth;
+                    const y = padTop + plotH - (d.count / maxV) * plotH;
+                    return `${x},${y}`;
+                  });
+                  const baseY = 160 - padBottom;
+                  return (
+                    <>
+                      <polygon fill="url(#lineAreaGrad)" points={`0,${baseY} ${pts.join(' ')} ${chartWidth},${baseY}`} />
+                      <polyline fill="none" stroke="var(--primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" points={pts.join(' ')} />
+                    </>
+                  );
+                })()}
+              </svg>
+              {stats.daily_counts.map((d: any, i: number) => {
+                const maxV = Math.max(...stats.daily_counts.map((x: any) => x.count), 1);
+                const padBottom = 24;
+                const padTop = 24;
+                const plotH = 160 - padTop - padBottom;
+                const left = (i / (stats.daily_counts.length - 1)) * 100;
+                const cy = padBottom + (d.count / maxV) * plotH;
+                return (
+                  <div key={i} className="absolute" style={{ left: `${left}%`, bottom: `${cy}px`, transform: 'translateX(-50%) translateY(-4px)' }}>
+                    <div className="flex flex-col items-center">
+                      <span className="text-xs leading-none mb-1.5" style={{ color: 'var(--text-secondary)' }}>{d.count}</span>
+                      <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--color-bg)', border: '2.5px solid', borderColor: 'var(--primary)' }} />
+                    </div>
+                  </div>
+                );
+              })}
+              <div className="absolute bottom-0 left-0 right-0" style={{ paddingBottom: '2px', height: '20px' }}>
+                {stats.daily_counts.map((d: any, i: number) => (
+                  <div key={i} className="absolute" style={{ left: `${(i / (stats.daily_counts.length - 1)) * 100}%`, transform: 'translateX(-50%)' }}>
+                    <span className="text-xs" style={{ color: 'var(--text-info)' }}>{d.date?.slice(5)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -171,6 +269,94 @@ export default function AdminDashboard() {
           </div>
         </div>
       </div>
+
+      {/* Analytics breakdowns */}
+      {analytics && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+          {/* Device breakdown */}
+          <div className="glass-card rounded-xl p-5">
+            <h2 className="text-sm font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>设备分布</h2>
+            <div className="space-y-2">
+              {analytics.device.slice(0, 6).map((d: any) => {
+                const total = analytics.device.reduce((s: number, x: any) => s + x.count, 0);
+                const pct = total > 0 ? Math.round((d.count / total) * 100) : 0;
+                return (
+                  <div key={d.name} className="flex items-center gap-3">
+                    <span className="text-xs w-16 truncate flex-shrink-0" style={{ color: 'var(--text-secondary)' }}>{d.name}</span>
+                    <div className="flex-1 h-4 rounded-full" style={{ background: 'var(--btn-card-bg)' }}>
+                      <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: 'var(--primary)' }} />
+                    </div>
+                    <span className="text-xs w-12 text-right" style={{ color: 'var(--text-info)' }}>{pct}%</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Browser breakdown */}
+          <div className="glass-card rounded-xl p-5">
+            <h2 className="text-sm font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>浏览器分布</h2>
+            <div className="space-y-2">
+              {analytics.browser.slice(0, 6).map((d: any) => {
+                const total = analytics.browser.reduce((s: number, x: any) => s + x.count, 0);
+                const pct = total > 0 ? Math.round((d.count / total) * 100) : 0;
+                return (
+                  <div key={d.name} className="flex items-center gap-3">
+                    <span className="text-xs w-20 truncate flex-shrink-0" style={{ color: 'var(--text-secondary)' }}>{d.name}</span>
+                    <div className="flex-1 h-4 rounded-full" style={{ background: 'var(--btn-card-bg)' }}>
+                      <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: 'var(--primary)' }} />
+                    </div>
+                    <span className="text-xs w-12 text-right" style={{ color: 'var(--text-info)' }}>{pct}%</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* OS breakdown */}
+          <div className="glass-card rounded-xl p-5">
+            <h2 className="text-sm font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>操作系统分布</h2>
+            <div className="space-y-2">
+              {analytics.os.slice(0, 6).map((d: any) => {
+                const total = analytics.os.reduce((s: number, x: any) => s + x.count, 0);
+                const pct = total > 0 ? Math.round((d.count / total) * 100) : 0;
+                return (
+                  <div key={d.name} className="flex items-center gap-3">
+                    <span className="text-xs w-20 truncate flex-shrink-0" style={{ color: 'var(--text-secondary)' }}>{d.name}</span>
+                    <div className="flex-1 h-4 rounded-full" style={{ background: 'var(--btn-card-bg)' }}>
+                      <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: 'var(--primary)' }} />
+                    </div>
+                    <span className="text-xs w-12 text-right" style={{ color: 'var(--text-info)' }}>{pct}%</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Hourly distribution */}
+          <div className="glass-card rounded-xl p-5">
+            <h2 className="text-sm font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>热门时段</h2>
+            <div className="flex items-end gap-1" style={{ height: '100px' }}>
+              {Array.from({ length: 24 }, (_, h) => {
+                const found = analytics.hour.find((x: any) => x.hour === h);
+                const count = found?.count || 0;
+                const maxCount = Math.max(...analytics.hour.map((x: any) => x.count), 1);
+                const barH = Math.max(4, Math.round((count / maxCount) * 80));
+                return (
+                  <div key={h} className="flex-1 flex flex-col items-center justify-end gap-0.5" title={`${h}时: ${count}次`}>
+                    <div className="w-full rounded-t-sm transition-all" style={{ height: `${barH}px`, background: 'var(--primary)', opacity: 0.4 + (count / maxCount) * 0.6 }} />
+                  </div>
+                );
+              })}
+            </div>
+            <div className="flex mt-1">
+              <span className="text-[10px]" style={{ color: 'var(--text-info)' }}>0时</span>
+              <span className="flex-1 text-center text-[10px]" style={{ color: 'var(--text-info)' }}>12时</span>
+              <span className="text-[10px]" style={{ color: 'var(--text-info)' }}>24时</span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Popular posts */}
       {topViewed.length > 0 && (

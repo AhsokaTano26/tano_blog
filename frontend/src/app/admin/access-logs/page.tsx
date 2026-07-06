@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { api } from '@/lib/api';
-import { ScrollText, Search, Download, Trash2, X, Activity, Globe, AlertTriangle, Clock } from 'lucide-react';
+import { ScrollText, Search, Download, Trash2, X, Activity, Globe, AlertTriangle, Clock, BarChart3, LineChart } from 'lucide-react';
 import { Loading } from '@/components/Loading';
 import { useConfirm, Select } from '@/components/ConfirmDialog';
 
@@ -60,6 +60,9 @@ export default function AdminAccessLogs() {
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<Stats | null>(null);
+  const [chartType, setChartType] = useState<'bar' | 'line'>('bar');
+  const [chartWidth, setChartWidth] = useState(600);
+  const chartRef = useRef<HTMLDivElement>(null);
   const [detailLog, setDetailLog] = useState<AccessLog | null>(null);
 
   // Filters
@@ -98,6 +101,15 @@ export default function AdminAccessLogs() {
 
   useEffect(() => { load(); }, [page]);
   useEffect(() => { loadStats(); }, []);
+
+  useEffect(() => {
+    const el = chartRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([entry]) => setChartWidth(entry.contentRect.width));
+    ro.observe(el);
+    setChartWidth(el.offsetWidth);
+    return () => ro.disconnect();
+  }, [stats?.daily_counts]);
 
   function handleFilter() {
     setPage(1);
@@ -201,20 +213,94 @@ export default function AdminAccessLogs() {
       {/* Daily chart */}
       {stats && stats.daily_counts.length > 0 && (
         <div className="glass-card rounded-xl p-4 mb-5">
-          <div className="text-xs mb-3" style={{ color: 'var(--text-info)' }}>近7日请求趋势</div>
-          <div className="flex items-end gap-2" style={{ height: '80px' }}>
-            {stats.daily_counts.map(d => {
-              const max = Math.max(...stats.daily_counts.map(x => x.count), 1);
-              const h = Math.max(4, Math.round((d.count / max) * 64));
-              return (
-                <div key={d.date} className="flex-1 flex flex-col items-center gap-1">
-                  <span className="text-[10px] font-mono" style={{ color: 'var(--text-secondary)' }}>{d.count}</span>
-                  <div className="w-full rounded-t" style={{ height: `${h}px`, background: 'var(--primary)' }} />
-                  <span className="text-[10px]" style={{ color: 'var(--text-info)' }}>{d.date.slice(5)}</span>
-                </div>
-              );
-            })}
+          <div className="flex items-center justify-between mb-3">
+            <div className="text-xs" style={{ color: 'var(--text-info)' }}>近7日请求趋势</div>
+            <div className="flex gap-1 p-0.5 rounded-lg" style={{ background: 'var(--btn-card-bg)' }}>
+              <button onClick={() => setChartType('bar')}
+                className="px-2 py-0.5 rounded text-xs transition-all"
+                style={{
+                  background: chartType === 'bar' ? 'var(--primary)' : 'transparent',
+                  color: chartType === 'bar' ? '#fff' : 'var(--text-secondary)',
+                }}>
+                <BarChart3 className="w-3 h-3 inline mr-0.5" />柱状图
+              </button>
+              <button onClick={() => setChartType('line')}
+                className="px-2 py-0.5 rounded text-xs transition-all"
+                style={{
+                  background: chartType === 'line' ? 'var(--primary)' : 'transparent',
+                  color: chartType === 'line' ? '#fff' : 'var(--text-secondary)',
+                }}>
+                <LineChart className="w-3 h-3 inline mr-0.5" />折线图
+              </button>
+            </div>
           </div>
+          {chartType === 'bar' ? (
+            <div className="flex items-end gap-2" style={{ height: '80px' }}>
+              {stats.daily_counts.map(d => {
+                const max = Math.max(...stats.daily_counts.map(x => x.count), 1);
+                const h = Math.max(4, Math.round((d.count / max) * 64));
+                return (
+                  <div key={d.date} className="flex-1 flex flex-col items-center gap-1">
+                    <span className="text-[10px] font-mono" style={{ color: 'var(--text-secondary)' }}>{d.count}</span>
+                    <div className="w-full rounded-t" style={{ height: `${h}px`, background: 'var(--primary)' }} />
+                    <span className="text-[10px]" style={{ color: 'var(--text-info)' }}>{d.date.slice(5)}</span>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div ref={chartRef} style={{ height: '80px', position: 'relative' }}>
+              <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="none" viewBox={`0 0 ${chartWidth} 80`} style={{ pointerEvents: 'none' }}>
+                <defs>
+                  <linearGradient id="logLineGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="var(--primary)" stopOpacity="0.2" />
+                    <stop offset="100%" stopColor="var(--primary)" stopOpacity="0.02" />
+                  </linearGradient>
+                </defs>
+                {(() => {
+                  const data = stats.daily_counts;
+                  const maxV = Math.max(...data.map((d: any) => d.count), 1);
+                  const padBottom = 18;
+                  const padTop = 16;
+                  const plotH = 80 - padTop - padBottom;
+                  const pts = data.map((d: any, i: number) => {
+                    const x = (i / (data.length - 1)) * chartWidth;
+                    const y = padTop + plotH - (d.count / maxV) * plotH;
+                    return `${x},${y}`;
+                  });
+                  return (
+                    <>
+                      <polygon fill="url(#logLineGrad)" points={`0,${80 - padBottom} ${pts.join(' ')} ${chartWidth},${80 - padBottom}`} />
+                      <polyline fill="none" stroke="var(--primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" points={pts.join(' ')} />
+                    </>
+                  );
+                })()}
+              </svg>
+              {stats.daily_counts.map((d: any, i: number) => {
+                const maxV = Math.max(...stats.daily_counts.map((x: any) => x.count), 1);
+                const padBottom = 18;
+                const padTop = 16;
+                const plotH = 80 - padTop - padBottom;
+                const left = (i / (stats.daily_counts.length - 1)) * 100;
+                const cy = padBottom + (d.count / maxV) * plotH;
+                return (
+                  <div key={i} className="absolute" style={{ left: `${left}%`, bottom: `${cy}px`, transform: 'translateX(-50%) translateY(-3px)' }}>
+                    <div className="flex flex-col items-center">
+                      <span className="text-[10px] leading-none mb-1" style={{ color: 'var(--text-secondary)' }}>{d.count}</span>
+                      <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--color-bg)', border: '2px solid', borderColor: 'var(--primary)' }} />
+                    </div>
+                  </div>
+                );
+              })}
+              <div className="absolute bottom-0 left-0 right-0" style={{ height: '16px' }}>
+                {stats.daily_counts.map((d: any, i: number) => (
+                  <div key={i} className="absolute" style={{ left: `${(i / (stats.daily_counts.length - 1)) * 100}%`, transform: 'translateX(-50%)' }}>
+                    <span className="text-[10px]" style={{ color: 'var(--text-info)' }}>{d.date.slice(5)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

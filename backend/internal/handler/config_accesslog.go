@@ -172,6 +172,42 @@ func (h *AccessLogHandler) Stats(c *gin.Context) {
 	c.JSON(http.StatusOK, stats)
 }
 
+func (h *AccessLogHandler) StatsByDevice(c *gin.Context) {
+	data, err := h.repo.StatsByDevice()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取设备统计失败"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": data})
+}
+
+func (h *AccessLogHandler) StatsByBrowser(c *gin.Context) {
+	data, err := h.repo.StatsByBrowser()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取浏览器统计失败"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": data})
+}
+
+func (h *AccessLogHandler) StatsByOS(c *gin.Context) {
+	data, err := h.repo.StatsByOS()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取操作系统统计失败"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": data})
+}
+
+func (h *AccessLogHandler) StatsByHour(c *gin.Context) {
+	data, err := h.repo.StatsByHour()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取时段统计失败"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": data})
+}
+
 func (h *AccessLogHandler) Export(c *gin.Context) {
 	filters := map[string]string{
 		"path":        c.Query("path"),

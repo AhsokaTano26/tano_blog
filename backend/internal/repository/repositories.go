@@ -73,13 +73,24 @@ func (r *AccessLogRepo) Stats() (map[string]interface{}, error) {
 		Date  string `json:"date"`
 		Count int64  `json:"count"`
 	}
-	var dailyCounts []DailyCount
+	var dbCounts []DailyCount
 	r.db.Model(&model.AccessLog{}).
 		Select("DATE(created_at) as date, COUNT(*) as count").
-		Where("created_at >= NOW() - INTERVAL '7 days'").
+		Where("created_at >= NOW() - INTERVAL '6 days'").
 		Group("DATE(created_at)").
 		Order("date").
-		Scan(&dailyCounts)
+		Scan(&dbCounts)
+
+	countMap := make(map[string]int64)
+	for _, d := range dbCounts {
+		countMap[d.Date] = d.Count
+	}
+
+	var dailyCounts []DailyCount
+	for i := 6; i >= 0; i-- {
+		date := time.Now().AddDate(0, 0, -i).Format("2006-01-02")
+		dailyCounts = append(dailyCounts, DailyCount{Date: date, Count: countMap[date]})
+	}
 
 	return map[string]interface{}{
 		"total_requests":   totalRequests,
@@ -88,6 +99,46 @@ func (r *AccessLogRepo) Stats() (map[string]interface{}, error) {
 		"avg_response_ms":  avgResponseTime,
 		"daily_counts":     dailyCounts,
 	}, nil
+}
+
+func (r *AccessLogRepo) StatsByDevice() ([]map[string]interface{}, error) {
+	var results []map[string]interface{}
+	err := r.db.Model(&model.AccessLog{}).
+		Select("COALESCE(NULLIF(device_type, ''), 'unknown') as name, COUNT(*) as count").
+		Group("device_type").
+		Order("count DESC").
+		Find(&results).Error
+	return results, err
+}
+
+func (r *AccessLogRepo) StatsByBrowser() ([]map[string]interface{}, error) {
+	var results []map[string]interface{}
+	err := r.db.Model(&model.AccessLog{}).
+		Select("COALESCE(NULLIF(browser, ''), 'unknown') as name, COUNT(*) as count").
+		Group("browser").
+		Order("count DESC").
+		Find(&results).Error
+	return results, err
+}
+
+func (r *AccessLogRepo) StatsByOS() ([]map[string]interface{}, error) {
+	var results []map[string]interface{}
+	err := r.db.Model(&model.AccessLog{}).
+		Select("COALESCE(NULLIF(os, ''), 'unknown') as name, COUNT(*) as count").
+		Group("os").
+		Order("count DESC").
+		Find(&results).Error
+	return results, err
+}
+
+func (r *AccessLogRepo) StatsByHour() ([]map[string]interface{}, error) {
+	var results []map[string]interface{}
+	err := r.db.Model(&model.AccessLog{}).
+		Select("EXTRACT(HOUR FROM created_at)::int as hour, COUNT(*) as count").
+		Group("hour").
+		Order("hour ASC").
+		Find(&results).Error
+	return results, err
 }
 
 type PostRepo struct {
@@ -125,7 +176,7 @@ func (r *PostRepo) ListPublic(page, pageSize int, category, tag, search string) 
 
 func (r *PostRepo) GetBySlug(slug string) (*model.Post, error) {
 	var post model.Post
-	err := r.db.Where("slug = ?", slug).Preload("Category").Preload("Tags").Preload("Author").First(&post).Error
+	err := r.db.Where("slug = ?", slug).Preload("Category").Preload("Tags").Preload("Author").Preload("Series").First(&post).Error
 	if err != nil {
 		return nil, err
 	}
@@ -268,6 +319,10 @@ func (r *PostRepo) Create(post *model.Post) error {
 
 func (r *PostRepo) Update(id uuid.UUID, updates map[string]interface{}) error {
 	return r.db.Model(&model.Post{}).Where("id = ?", id).Updates(updates).Error
+}
+
+func (r *PostRepo) BatchUpdate(ids []uuid.UUID, updates map[string]interface{}) error {
+	return r.db.Model(&model.Post{}).Where("id IN ?", ids).Updates(updates).Error
 }
 
 func (r *PostRepo) Delete(id uuid.UUID) error {
@@ -477,11 +532,18 @@ func NewCommentRepo(db *gorm.DB) *CommentRepo {
 	return &CommentRepo{db: db}
 }
 
-func (r *CommentRepo) ListByPost(postID uuid.UUID) ([]model.Comment, error) {
+func (r *CommentRepo) ListByPost(postID uuid.UUID, sort string) ([]model.Comment, error) {
 	var comments []model.Comment
+	orderClause := "created_at ASC"
+	switch sort {
+	case "newest":
+		orderClause = "created_at DESC"
+	case "reactions":
+		orderClause = "(SELECT COUNT(*) FROM comment_reactions WHERE comment_reactions.comment_id = comments.id) DESC, created_at ASC"
+	}
 	err := r.db.Where("post_id = ? AND status = ? AND parent_id IS NULL", postID, "approved").
 		Preload("Children", "status = ?", "approved").
-		Order("created_at ASC").Find(&comments).Error
+		Order(orderClause).Find(&comments).Error
 	return comments, err
 }
 

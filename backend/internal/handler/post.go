@@ -641,6 +641,36 @@ func (h *PostHandler) Delete(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "已删除"})
 }
 
+// BatchDelete deletes multiple posts
+func (h *PostHandler) BatchDelete(c *gin.Context) {
+	var input struct {
+		IDs []string `json:"ids" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
+		return
+	}
+
+	ids := make([]uuid.UUID, 0, len(input.IDs))
+	for _, idStr := range input.IDs {
+		id, err := uuid.Parse(idStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "无效的ID: " + idStr})
+			return
+		}
+		ids = append(ids, id)
+	}
+
+	for _, id := range ids {
+		if err := h.repo.Delete(id); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "批量删除失败"})
+			return
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "批量删除成功"})
+}
+
 // UpdateStatus updates post status (publish/draft)
 func (h *PostHandler) UpdateStatus(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
@@ -674,6 +704,46 @@ func (h *PostHandler) UpdateStatus(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "状态已更新"})
+}
+
+// BatchUpdateStatus batch updates post statuses
+func (h *PostHandler) BatchUpdateStatus(c *gin.Context) {
+	var input struct {
+		IDs    []string `json:"ids" binding:"required"`
+		Status string   `json:"status" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
+		return
+	}
+
+	if input.Status != "draft" && input.Status != "published" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的状态值"})
+		return
+	}
+
+	ids := make([]uuid.UUID, 0, len(input.IDs))
+	for _, idStr := range input.IDs {
+		id, err := uuid.Parse(idStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "无效的ID: " + idStr})
+			return
+		}
+		ids = append(ids, id)
+	}
+
+	updates := map[string]interface{}{"status": input.Status}
+	if input.Status == "published" {
+		now := time.Now()
+		updates["published_at"] = now
+	}
+
+	if err := h.repo.BatchUpdate(ids, updates); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "批量更新失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "批量状态已更新"})
 }
 
 // ToggleTop toggles the top/pinned status

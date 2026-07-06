@@ -34,6 +34,48 @@ export default function AdminPosts() {
   const [categories, setCategories] = useState<any[]>([]);
   const [tags, setTags] = useState<any[]>([]);
   const [seriesList, setSeriesList] = useState<any[]>([]);
+  const [selectedPosts, setSelectedPosts] = useState<Set<string>>(new Set());
+
+  function toggleSelectPost(id: string) {
+    setSelectedPosts(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    if (selectedPosts.size === posts.length) {
+      setSelectedPosts(new Set());
+    } else {
+      setSelectedPosts(new Set(posts.map(p => p.id)));
+    }
+  }
+
+  async function handleBatchStatus(status: string) {
+    const ids = Array.from(selectedPosts);
+    if (ids.length === 0) return;
+    try {
+      await api.admin.posts.batchUpdateStatus(ids, status);
+      setSelectedPosts(new Set());
+      load();
+    } catch (e: any) {
+      alert(e.message || '批量操作失败');
+    }
+  }
+
+  async function handleBatchDelete() {
+    const ids = Array.from(selectedPosts);
+    if (ids.length === 0) return;
+    if (!await confirm(`确定删除选中的 ${ids.length} 篇文章？`)) return;
+    try {
+      await api.admin.posts.batchDelete(ids);
+      setSelectedPosts(new Set());
+      load();
+    } catch (e: any) {
+      alert(e.message || '批量删除失败');
+    }
+  }
 
   async function load() {
     setLoading(true);
@@ -113,6 +155,28 @@ export default function AdminPosts() {
           </div>
         </div>
 
+        {/* Batch actions */}
+        {selectedPosts.size > 0 && (
+          <div className="glass-card rounded-2xl mb-4 p-3 flex items-center gap-3">
+            <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>已选 {selectedPosts.size} 篇</span>
+            <button onClick={() => handleBatchStatus('published')}
+              className="px-3 py-1.5 rounded-lg text-xs font-medium text-white transition-all hover:opacity-90"
+              style={{ background: 'var(--primary)' }}>
+              批量发布
+            </button>
+            <button onClick={() => handleBatchStatus('draft')}
+              className="px-3 py-1.5 rounded-lg text-xs font-medium btn-glass transition-all"
+              style={{ color: 'var(--text-secondary)' }}>
+              批量下架
+            </button>
+            <button onClick={handleBatchDelete}
+              className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all ml-auto"
+              style={{ color: 'var(--color-error)' }}>
+              批量删除
+            </button>
+          </div>
+        )}
+
         {loading ? (
           <Loading />
         ) : posts.length === 0 ? (
@@ -127,7 +191,11 @@ export default function AdminPosts() {
             <table className="w-full">
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--glass-border)' }}>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider w-12" style={{ color: 'var(--text-info)' }}></th>
+                  <th className="px-4 py-3 text-left w-10">
+                    <input type="checkbox" checked={selectedPosts.size === posts.length && posts.length > 0}
+                      onChange={toggleSelectAll}
+                      className="w-4 h-4 rounded cursor-pointer" />
+                  </th>
                   <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-info)' }}>标题</th>
                   <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-info)' }}>作者</th>
                   <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-info)' }}>编辑者</th>
@@ -143,21 +211,26 @@ export default function AdminPosts() {
                 {posts.map((post, index) => (
                   <tr key={post.id || post.slug || index} className="transition-colors" style={{ borderBottom: '1px solid var(--glass-border)' }}>
                     <td className="px-4 py-3">
-                      {post.cover_image ? (
-                        <img src={post.cover_image} alt={post.title} className="w-10 h-10 rounded-lg object-cover" />
-                      ) : (
-                        <div className="w-10 h-10 rounded-lg flex items-center justify-center glass-card">
-                          <FileText className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
-                        </div>
-                      )}
+                      <input type="checkbox" checked={selectedPosts.has(post.id)}
+                        onChange={() => toggleSelectPost(post.id)}
+                        className="w-4 h-4 rounded cursor-pointer" />
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium line-clamp-1" style={{ color: 'var(--text-primary)' }}>{post.title}</span>
-                        {post.is_top && (
-                          <span className="px-1.5 py-0.5 text-xs rounded flex-shrink-0"
-                            style={{ background: 'var(--primary-sub)', color: 'var(--primary)' }}>置顶</span>
+                      <div className="flex items-center gap-3">
+                        {post.cover_image ? (
+                          <img src={post.cover_image} alt={post.title} className="w-10 h-10 rounded-lg object-cover flex-shrink-0" />
+                        ) : (
+                          <div className="w-10 h-10 rounded-lg flex items-center justify-center glass-card flex-shrink-0">
+                            <FileText className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
+                          </div>
                         )}
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>{post.title}</span>
+                          {post.is_top && (
+                            <span className="px-1.5 py-0.5 text-xs rounded flex-shrink-0"
+                              style={{ background: 'var(--primary-sub)', color: 'var(--primary)' }}>置顶</span>
+                          )}
+                        </div>
                       </div>
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
@@ -399,8 +472,8 @@ function PostDetailDialog({ post, categories, tags, seriesList, onSave, onClose 
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.5)' }}>
-      <div className="rounded-2xl w-full max-w-xl max-h-[85vh] flex flex-col overflow-hidden" style={{ background: 'var(--color-bg)', border: '1px solid var(--glass-border)' }}>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 transition-opacity duration-200" style={{ background: 'rgba(0,0,0,0.5)' }}>
+      <div className="rounded-2xl w-full max-w-xl max-h-[85vh] flex flex-col overflow-hidden pe-animate-in" style={{ background: 'var(--color-bg)', border: '1px solid var(--glass-border)' }}>
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 flex-shrink-0" style={{ borderBottom: '1px solid var(--glass-border)' }}>
           <h2 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
@@ -863,6 +936,63 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
     }
   }
 
+  // Image paste from clipboard
+  async function handleEditorPaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of Array.from(items)) {
+      if (item.type.startsWith('image/')) {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (!file) continue;
+        setMediaUploading(true);
+        try {
+          const res = await api.admin.media.upload(file);
+          if (res.media?.url) insertMedia(res.media.url, 'image');
+        } catch (err) {
+          console.error('Paste upload failed', err);
+        } finally {
+          setMediaUploading(false);
+        }
+        return;
+      }
+    }
+  }
+
+  // Drag-and-drop image upload
+  const [dragOver, setDragOver] = useState(false);
+  function handleEditorDragOver(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(true);
+  }
+  function handleEditorDragLeave(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(false);
+  }
+  async function handleEditorDrop(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(false);
+    const files = e.dataTransfer?.files;
+    if (!files) return;
+    for (const file of Array.from(files)) {
+      if (file.type.startsWith('image/')) {
+        setMediaUploading(true);
+        try {
+          const res = await api.admin.media.upload(file);
+          if (res.media?.url) insertMedia(res.media.url, 'image');
+        } catch (err) {
+          console.error('Drop upload failed', err);
+        } finally {
+          setMediaUploading(false);
+        }
+        return;
+      }
+    }
+  }
+
   const headings = content.split('\n').filter((line: string) => /^#{1,3}\s/.test(line)).map((line: string, i: number) => {
     const match = line.match(/^(#{1,3})\s+(.+)/);
     return { level: match?.[1].length || 1, text: match?.[2] || '', index: i };
@@ -936,6 +1066,18 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col" style={{ background: 'var(--color-bg)' }}>
+      <style>{`
+        @keyframes fade-scale-in {
+          from { opacity: 0; transform: scale(0.95) translateY(-6px); }
+          to   { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        @keyframes slide-down {
+          from { opacity: 0; transform: translateY(-12px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        .pe-animate-in { animation: fade-scale-in 0.2s ease-out both; }
+        .pe-slide-down { animation: slide-down 0.25s ease-out both; }
+      `}</style>
       {/* Top bar */}
       <header className="h-14 flex items-center justify-between px-4 flex-shrink-0 glass-card"
         style={{ borderBottom: '1px solid var(--glass-border)' }}>
@@ -987,20 +1129,20 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
           <button onClick={() => handleSave()} disabled={saving}
             className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm btn-glass disabled:opacity-50 transition-all"
             style={{ color: 'var(--text-primary)' }}>
-            <Save className="w-4 h-4" />
-            保存
+            <Save className={`w-4 h-4${saving ? ' animate-spin' : ''}`} />
+            {saving ? '保存中...' : '保存'}
           </button>
           <button onClick={() => handleSave('published')} disabled={saving}
             className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium text-white transition-all hover:opacity-90 disabled:opacity-50"
             style={{ background: 'var(--primary)', boxShadow: '0 0 16px var(--primary-glow)' }}>
-            发布
+            {saving ? '发布中...' : '发布'}
           </button>
         </div>
       </header>
 
       {/* Error */}
       {error && (
-        <div className="mx-4 mt-3 px-4 py-2.5 rounded-xl text-sm flex-shrink-0 glass-card"
+        <div className="mx-4 mt-3 px-4 py-2.5 rounded-xl text-sm flex-shrink-0 glass-card pe-slide-down"
           style={{ color: 'var(--color-error)' }}>
           {error}
         </div>
@@ -1008,7 +1150,7 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
 
       {/* Auto-save restore banner */}
       {showRestoreBanner && (
-        <div className="mx-4 mt-3 px-4 py-2.5 rounded-xl text-sm flex-shrink-0 flex items-center justify-between glass-card"
+        <div className="mx-4 mt-3 px-4 py-2.5 rounded-xl text-sm flex-shrink-0 flex items-center justify-between glass-card pe-slide-down"
           style={{ color: 'var(--text-primary)', borderLeft: '3px solid var(--primary)' }}>
           <span>检测到未保存的草稿，是否恢复？</span>
           <div className="flex gap-2">
@@ -1027,7 +1169,7 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
         {/* Editor + Preview container (takes remaining space) */}
         <div className="flex-1 flex overflow-hidden">
           {/* Editor */}
-          <div style={{ display: viewMode === 'preview' ? 'none' : '', flex: viewMode === 'split' ? '0 0 50%' : '1 1 0%' }} className="flex flex-col overflow-hidden">
+          <div style={{ opacity: viewMode === 'preview' ? 0 : 1, flex: viewMode === 'preview' ? '0 1 0%' : (viewMode === 'split' ? '0 0 50%' : '1 1 0%'), pointerEvents: viewMode === 'preview' ? 'none' : undefined }} className="flex flex-col overflow-hidden transition-all duration-300 ease-in-out">
             {/* Fixed header: title, slug, toolbar */}
             <div className="max-w-5xl mx-auto w-full pt-8 px-6 flex-shrink-0">
               <input
@@ -1056,7 +1198,7 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
                   const Icon = btn.icon!;
                   return (
                     <button key={i} onClick={btn.action} title={btn.title}
-                      className="p-1.5 rounded-lg transition-colors btn-glass" style={{ color: 'var(--text-secondary)' }}>
+                      className="p-1.5 rounded-lg transition-all duration-150 btn-glass hover:scale-110" style={{ color: 'var(--text-secondary)' }}>
                       <Icon className="w-4 h-4" />
                     </button>
                   );
@@ -1077,7 +1219,10 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
             </div>
 
             {/* Scrollable textarea */}
-            <div className="flex-1 min-h-0 max-w-5xl mx-auto w-full px-6 pb-8">
+            <div className="flex-1 min-h-0 max-w-5xl mx-auto w-full px-6 pb-8 relative"
+              onDragOver={handleEditorDragOver}
+              onDragLeave={handleEditorDragLeave}
+              onDrop={handleEditorDrop}>
               <textarea
                 ref={textareaRef}
                 placeholder="输入 Markdown 内容..."
@@ -1085,14 +1230,22 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
                 onChange={e => setContent(e.target.value)}
                 onKeyDown={handleKeyDown}
                 onScroll={handleEditorScroll}
+                onPaste={handleEditorPaste}
                 className="w-full h-full outline-none border-0 bg-transparent resize-none leading-relaxed"
                 style={{ color: 'var(--text-primary)', overflowY: 'auto' }}
               />
+              {/* Drag overlay */}
+              {dragOver && (
+                <div className="absolute inset-0 rounded-2xl flex items-center justify-center z-10"
+                  style={{ background: 'var(--primary-sub)', border: '2px dashed var(--primary)' }}>
+                  <p className="text-sm font-medium" style={{ color: 'var(--primary)' }}>释放以上传图片</p>
+                </div>
+              )}
             </div>
           </div>
 
           {/* Live preview */}
-          <div ref={previewScrollRef} className="overflow-y-auto" style={{ display: viewMode === 'edit' ? 'none' : '', flex: viewMode === 'split' ? '0 0 50%' : '1 1 0%', borderLeft: viewMode === 'split' ? '1px solid var(--glass-border)' : '' }} onScroll={handlePreviewScroll}>
+          <div ref={previewScrollRef} style={{ opacity: viewMode === 'edit' ? 0 : 1, flex: viewMode === 'edit' ? '0 1 0%' : (viewMode === 'split' ? '0 0 50%' : '1 1 0%'), borderLeft: viewMode === 'split' ? '1px solid var(--glass-border)' : '1px solid transparent', pointerEvents: viewMode === 'edit' ? 'none' : undefined }} className="overflow-y-auto transition-all duration-300 ease-in-out" onScroll={handlePreviewScroll}>
             <div className="max-w-5xl mx-auto py-8 px-6">
               <div className="prose prose-sm max-w-none" style={{ color: 'var(--text-primary)' }}>
                 {content ? (
@@ -1126,8 +1279,7 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
         </div>
 
         {/* Right sidebar */}
-        {showRightPanel && (
-          <div className="w-64 flex-shrink-0 flex flex-col overflow-hidden" style={{ borderLeft: '1px solid var(--glass-border)' }}>
+        <div className="flex-shrink-0 flex flex-col overflow-hidden transition-all duration-300 ease-in-out" style={{ width: showRightPanel ? '16rem' : '0px', borderLeft: showRightPanel ? '1px solid var(--glass-border)' : '1px solid transparent', opacity: showRightPanel ? 1 : 0 }}>
             <div className="flex" style={{ borderBottom: '1px solid var(--glass-border)' }}>
               <button onClick={() => setRightTab('outline')}
                 className="flex-1 px-4 py-2.5 text-sm font-medium transition-colors relative"
@@ -1187,7 +1339,6 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
               )}
             </div>
           </div>
-        )}
       </div>
 
       {showDetailDialog && (

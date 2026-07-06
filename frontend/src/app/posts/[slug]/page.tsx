@@ -216,11 +216,13 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
   const [reactions, setReactions] = useState<Record<string, {counts: Record<string, number>, user: string[]}>>({});
   const [showPreview, setShowPreview] = useState(false);
   const [adjacentPosts, setAdjacentPosts] = useState<{ prev: any; next: any } | null>(null);
+  const [seriesProgress, setSeriesProgress] = useState<{ position: number; total: number } | null>(null);
   const [postReactions, setPostReactions] = useState<Record<string, number>>({});
   const [postUserEmojis, setPostUserEmojis] = useState<string[]>([]);
   const [passwordInput, setPasswordInput] = useState('');
   const [passwordError, setPasswordError] = useState('');
   const [passwordVerifying, setPasswordVerifying] = useState(false);
+  const [commentSort, setCommentSort] = useState('oldest');
   const contentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -230,7 +232,7 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
         setPost(res.post);
         if (res.reactions) setPostReactions(res.reactions);
         if (res.user_emojis) setPostUserEmojis(res.user_emojis);
-        loadComments(slug);
+        loadComments(slug, 'oldest');
         // Load adjacent and related posts in parallel
         api.getAdjacentPosts(slug).then(adj => {
           setAdjacentPosts(adj);
@@ -238,6 +240,17 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
         api.getRelatedPosts(slug).then(rel => {
           setRelatedPosts(rel.items || []);
         }).catch(() => {});
+        // Load series progress
+        if (res.post?.series?.length > 0) {
+          api.getSeriesBySlug(res.post.series[0].slug).then(seriesRes => {
+            if (seriesRes?.series?.posts) {
+              const idx = seriesRes.series.posts.findIndex((p: any) => p.slug === slug);
+              if (idx !== -1) {
+                setSeriesProgress({ position: idx + 1, total: seriesRes.series.posts.length });
+              }
+            }
+          }).catch(() => {});
+        }
       } catch (e) {
         console.error(e);
       }
@@ -266,9 +279,9 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
     setPasswordVerifying(false);
   }
 
-  async function loadComments(postId: string) {
+  async function loadComments(postId: string, sort?: string) {
     try {
-      const res = await api.getComments(postId);
+      const res = await api.getComments(postId, sort || commentSort);
       setComments(res.items);
       // Initialize reactions state
       const reactionsMap: Record<string, {counts: Record<string, number>, user: string[]}> = {};
@@ -282,6 +295,11 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
       setReactions(reactionsMap);
     } catch (e) { /* comments may be disabled */ }
   }
+
+  // Re-fetch comments on sort change
+  useEffect(() => {
+    if (post) loadComments(slug, commentSort);
+  }, [commentSort]);
 
   async function handleComment(e: React.FormEvent) {
     e.preventDefault();
@@ -607,13 +625,19 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
             ))}
           </div>
 
-          {/* Series badge */}
+          {/* Series badge with progress */}
           {post.series?.length > 0 && (
             <Link href={`/series/${post.series[0].slug}`}
-              className="flex items-center gap-1 text-sm mb-6"
+              className="flex items-center gap-1.5 text-sm mb-6"
               style={{ color: 'var(--primary)' }}>
-              <Bookmark className="w-3.5 h-3.5" />
-              {post.series[0].name}
+              <Bookmark className="w-3.5 h-3.5 flex-shrink-0" />
+              <span>{post.series[0].name}</span>
+              {seriesProgress && (
+                <span className="text-xs px-1.5 py-0.5 rounded-md"
+                  style={{ color: 'var(--text-info)', background: 'var(--btn-card-bg)' }}>
+                  第 {seriesProgress.position} 篇 / 共 {seriesProgress.total} 篇
+                </span>
+              )}
             </Link>
           )}
 
@@ -801,10 +825,24 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
         {/* Comments */}
         <ScrollReveal margin="-40px">
         <section className="border-t pt-8" style={{ borderColor: 'var(--glass-border)' }}>
-          <h2 className="text-xl font-bold mb-6" style={{ color: 'var(--text-primary)' }}>
+          <h2 className="text-xl font-bold mb-4" style={{ color: 'var(--text-primary)' }}>
             评论
             {comments.length > 0 && <span className="font-normal" style={{ color: 'var(--text-info)' }}> ({comments.length})</span>}
           </h2>
+
+          {/* Sort buttons */}
+          <div className="flex gap-2 mb-4">
+            {[{ key: 'oldest', label: '最早' }, { key: 'newest', label: '最新' }, { key: 'reactions', label: '最多点赞' }].map(opt => (
+              <button key={opt.key} onClick={() => setCommentSort(opt.key)}
+                className="px-2.5 py-1 rounded-lg text-xs transition-all"
+                style={{
+                  background: commentSort === opt.key ? 'var(--primary)' : 'var(--btn-card-bg)',
+                  color: commentSort === opt.key ? '#fff' : 'var(--text-secondary)',
+                }}>
+                {opt.label}
+              </button>
+            ))}
+          </div>
 
           {/* Comment list */}
           <div className="space-y-3 mb-8">

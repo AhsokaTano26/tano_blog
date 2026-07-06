@@ -41,6 +41,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [collapsed, setCollapsed] = useState(false);
+  const [pendingCounts, setPendingCounts] = useState<Record<string, number>>({});
   const pathname = usePathname();
   const { theme, setTheme } = useTheme();
 
@@ -51,6 +52,20 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       }
     }).finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    Promise.all([
+      api.admin.comments.list({ page: '1', page_size: '1', status: 'pending' }).catch(() => ({ total: 0 })),
+      api.admin.links.list().catch(() => ({ items: [] })),
+    ]).then(([commentsRes, linksRes]) => {
+      const pendingLinks = linksRes?.items?.filter((i: any) => i.status === 'pending').length || 0;
+      setPendingCounts({
+        comments: commentsRes?.total || 0,
+        links: pendingLinks,
+      });
+    });
+  }, [user]);
 
   if (loading) {
     return (
@@ -124,15 +139,29 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 const isActive = item.href === '/admin'
                   ? pathname === '/admin'
                   : pathname.startsWith(item.href);
+                const badgeCount = item.href === '/admin/comments' ? pendingCounts.comments
+                  : item.href === '/admin/links' ? pendingCounts.links : 0;
                 return (
                   <a key={item.href} href={item.href}
-                    className="flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-all mb-0.5"
+                    className={`flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-all mb-0.5 ${collapsed && badgeCount > 0 ? 'relative' : ''}`}
                     style={{
                       background: isActive ? 'var(--primary-sub)' : 'transparent',
                       color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
                     }}>
                     <item.icon className="w-4 h-4 flex-shrink-0" />
-                    {!collapsed && <span>{item.label}</span>}
+                    {!collapsed && (
+                      <span className="flex-1 truncate">{item.label}</span>
+                    )}
+                    {!collapsed && badgeCount > 0 && (
+                      <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full"
+                        style={{ background: 'var(--color-error)', color: '#fff' }}>
+                        {badgeCount > 99 ? '99+' : badgeCount}
+                      </span>
+                    )}
+                    {collapsed && badgeCount > 0 && (
+                      <span className="absolute top-1 right-1 w-2 h-2 rounded-full"
+                        style={{ background: 'var(--color-error)' }} />
+                    )}
                   </a>
                 );
               })}

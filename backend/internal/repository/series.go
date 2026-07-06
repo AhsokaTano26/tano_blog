@@ -42,7 +42,34 @@ func (r *SeriesRepo) GetBySlug(slug string) (*model.Series, error) {
 	err := r.db.Where("slug = ?", slug).Preload("Posts", "status = ?", "published").
 		Preload("Posts.Category").Preload("Posts.Tags").
 		First(&s).Error
-	return &s, err
+	if err != nil {
+		return nil, err
+	}
+	// Order posts by PostSeries.SortOrder
+	var postSeries []model.PostSeries
+	r.db.Where("series_id = ?", s.ID).Order("sort_order ASC").Find(&postSeries)
+	postMap := make(map[string]model.Post, len(s.Posts))
+	for _, p := range s.Posts {
+		postMap[p.ID.String()] = p
+	}
+	ordered := make([]model.Post, 0, len(s.Posts))
+	for _, ps := range postSeries {
+		if p, ok := postMap[ps.PostID.String()]; ok {
+			ordered = append(ordered, p)
+		}
+	}
+	// Append any posts not in the join table ordering (safety net)
+	seen := make(map[string]bool)
+	for _, p := range ordered {
+		seen[p.ID.String()] = true
+	}
+	for _, p := range s.Posts {
+		if !seen[p.ID.String()] {
+			ordered = append(ordered, p)
+		}
+	}
+	s.Posts = ordered
+	return &s, nil
 }
 
 func (r *SeriesRepo) Create(s *model.Series) error {
