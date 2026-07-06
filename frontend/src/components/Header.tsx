@@ -25,9 +25,12 @@ export function Header() {
   useEffect(() => {
     api.getNavLinks().then(res => {
       const items = res.items || [];
-      if (items.length > 0) {
-        setNavLinks(items.map((item: any) => ({ href: item.url, label: item.title })));
-      }
+      // Merge with defaults: always keep default nav links, append custom ones
+      // Deduplicate by href so admin-added links that match defaults don't duplicate
+      const customLinks = items.map((item: any) => ({ href: item.url, label: item.title }));
+      const existingHrefs = new Set(defaultNavLinks.map(l => l.href));
+      const merged = [...defaultNavLinks, ...customLinks.filter(l => !existingHrefs.has(l.href))];
+      setNavLinks(merged);
     }).catch(() => {});
   }, []);
 

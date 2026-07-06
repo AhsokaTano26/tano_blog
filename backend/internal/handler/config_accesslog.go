@@ -11,6 +11,7 @@ import (
 
 	"tano_blog/backend/internal/repository"
 	"tano_blog/backend/internal/service"
+	"tano_blog/backend/internal/utils"
 )
 
 type SiteConfigHandler struct {
@@ -90,7 +91,9 @@ func (h *SiteConfigHandler) Update(c *gin.Context) {
 		if !allowedKeys[key] {
 			continue
 		}
-		h.repo.Upsert(key, value, "string")
+		if err := h.repo.Upsert(key, value, "string"); err != nil {
+			utils.LogWarn("failed to update config", "key", key, "error", err)
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "配置已更新"})

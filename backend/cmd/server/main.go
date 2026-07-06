@@ -140,6 +140,7 @@ func main() {
 		api.GET("/posts/:slug/related", postHandler.RelatedPosts)
 		api.POST("/posts/:slug/verify-password", middleware.RateLimit(5, 60*time.Second), postHandler.VerifyPassword)
 		api.GET("/posts/preview", postHandler.GetByPreviewToken)
+		api.GET("/posts/calendar", postHandler.CalendarPostsPublic)
 
 		// Password reset (public, with rate limiting)
 		api.POST("/auth/forgot-password", middleware.RateLimit(3, 60*time.Second), authHandler.ForgotPassword)

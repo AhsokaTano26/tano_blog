@@ -7,6 +7,7 @@ import { Eye, Mail, ChevronRight, Calendar, BookOpen, Tag, MessageSquare, Globe,
 import { FooterInjection } from '@/components/HtmlInjection';
 import { Loading } from '@/components/Loading';
 import { TagCloud } from '@/components/TagCloud';
+import { CalendarSidebar } from '@/components/CalendarSidebar';
 import { ScrollReveal } from '@/components/ScrollReveal';
 
 export default function Home() {
@@ -229,6 +230,10 @@ export default function Home() {
                     </div>
                   </div>
                 )}
+                </ScrollReveal>
+
+                <ScrollReveal margin="-100px">
+                <CalendarSidebar />
                 </ScrollReveal>
 
                 <ScrollReveal margin="-100px">

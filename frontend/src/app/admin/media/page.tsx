@@ -568,7 +568,7 @@ export default function AdminMedia() {
                       <div className="w-full h-full flex items-center justify-center"
                         style={{ background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)' }}>
                         <audio src={item.url} controls preload="none"
-                          className="w-4/5"
+                          className="w-full"
                           onClick={e => e.stopPropagation()} />
                       </div>
                     ) : (
@@ -652,7 +652,7 @@ export default function AdminMedia() {
                             className="w-32 h-16 object-contain rounded bg-black/20"
                             onClick={e => e.stopPropagation()} />
                         ) : item.mime_type?.startsWith('audio/') ? (
-                          <div className="w-32 h-12 rounded flex items-center justify-center px-2"
+                          <div className="w-48 h-12 rounded flex items-center justify-center px-2"
                             style={{ background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)' }}>
                             <audio src={item.url} controls preload="none"
                               className="w-full"

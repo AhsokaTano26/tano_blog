@@ -51,6 +51,9 @@ export default function AdminSettings() {
     setMessage('');
     try {
       await api.admin.config.update(config);
+      // Re-fetch config to ensure UI is in sync with server
+      const res = await api.admin.config.get();
+      setConfig(res.config);
       setMessage('设置已保存');
       setTimeout(() => setMessage(''), 3000);
     } catch (e) { setMessage('保存失败'); }

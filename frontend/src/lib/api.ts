@@ -102,6 +102,10 @@ export const api = {
       body: JSON.stringify({ emoji }),
     }),
 
+  // Post calendar (public)
+  getPostCalendar: (params: { year: string; month: string }) =>
+    request<{ items: any[] }>('/api/v1/posts/calendar', { params }),
+
   // Series
   getSeries: () =>
     request<{ items: any[] }>('/api/v1/series'),

@@ -232,6 +232,9 @@ export function MediaPickerModal({ onSelect, onClose, onUpload }: { onSelect: (u
                   {item.original_name?.split('.').pop()?.toUpperCase() || 'FILE'}
                 </div>
               )}
+              <div className="px-1 pb-1 pt-0.5 truncate text-[10px] text-center" style={{ color: 'var(--text-secondary)' }}>
+                {item.original_name || item.filename || ''}
+              </div>
             </div>
           ))}
         </div>

@@ -12,7 +12,7 @@ export default function AdminNavLinks() {
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<any>(null);
   const [showModal, setShowModal] = useState(false);
-  const [form, setForm] = useState({ title: '', url: '', sort_order: 0 });
+  const [form, setForm] = useState({ title: '', url: '', sort_order: '0' });
   const dragItem = useRef<number | null>(null);
   const dragOverItem = useRef<number | null>(null);
 
@@ -29,22 +29,23 @@ export default function AdminNavLinks() {
 
   function openCreate() {
     setEditing(null);
-    setForm({ title: '', url: '', sort_order: items.length });
+    setForm({ title: '', url: '', sort_order: String(items.length) });
     setShowModal(true);
   }
 
   function openEdit(item: any) {
     setEditing(item);
-    setForm({ title: item.title, url: item.url, sort_order: item.sort_order });
+    setForm({ title: item.title, url: item.url, sort_order: String(item.sort_order) });
     setShowModal(true);
   }
 
   async function handleSave() {
+    const payload = { title: form.title, url: form.url, sort_order: parseInt(form.sort_order) || 0 };
     try {
       if (editing) {
-        await api.admin.navLinks.update(editing.id, form);
+        await api.admin.navLinks.update(editing.id, payload);
       } else {
-        await api.admin.navLinks.create(form);
+        await api.admin.navLinks.create(payload);
       }
       setShowModal(false);
       load();
@@ -173,7 +174,7 @@ export default function AdminNavLinks() {
               </div>
               <div>
                 <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>排序</label>
-                <input type="number" value={form.sort_order} onChange={e => setForm(f => ({ ...f, sort_order: parseInt(e.target.value) || 0 }))}
+                <input type="number" value={form.sort_order} onChange={e => setForm(f => ({ ...f, sort_order: e.target.value }))}
                   className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
                   style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
               </div>

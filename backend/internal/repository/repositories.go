@@ -552,6 +552,16 @@ func (r *PostRepo) CalendarPosts(year, month string) ([]model.Post, error) {
 	return posts, err
 }
 
+func (r *PostRepo) CalendarPostsPublic(year, month string) ([]model.Post, error) {
+	var posts []model.Post
+	err := r.db.Where(
+		"EXTRACT(YEAR FROM published_at) = ? AND EXTRACT(MONTH FROM published_at) = ? AND status = 'published'", year, month,
+	).Select("id, title, slug, published_at").
+		Order("published_at ASC").
+		Find(&posts).Error
+	return posts, err
+}
+
 type CategoryRepo struct {
 	db *gorm.DB
 }
