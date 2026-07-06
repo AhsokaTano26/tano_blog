@@ -836,6 +836,49 @@ func (h *PostHandler) RestoreRevision(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"post": post})
 }
 
+// CalendarPosts returns posts grouped by date for the calendar view
+func (h *PostHandler) CalendarPosts(c *gin.Context) {
+	year := c.Query("year")
+	month := c.Query("month")
+	if year == "" {
+		year = time.Now().Format("2006")
+	}
+	if month == "" {
+		month = time.Now().Format("01")
+	}
+
+	posts, err := h.repo.CalendarPosts(year, month)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取日历数据失败"})
+		return
+	}
+
+	type CalendarPost struct {
+		ID     string `json:"id"`
+		Title  string `json:"title"`
+		Slug   string `json:"slug"`
+		Status string `json:"status"`
+		Date   string `json:"date"`
+	}
+
+	result := make([]CalendarPost, 0)
+	for _, p := range posts {
+		date := p.CreatedAt.Format("2006-01-02")
+		if p.PublishedAt != nil {
+			date = p.PublishedAt.Format("2006-01-02")
+		}
+		result = append(result, CalendarPost{
+			ID:     p.ID.String(),
+			Title:  p.Title,
+			Slug:   p.Slug,
+			Status: p.Status,
+			Date:   date,
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{"items": result})
+}
+
 // Export exports all posts as JSON for backup
 func (h *PostHandler) Export(c *gin.Context) {
 	posts, err := h.repo.ExportAll()

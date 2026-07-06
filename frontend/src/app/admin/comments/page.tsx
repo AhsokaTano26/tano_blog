@@ -30,9 +30,39 @@ function parseUA(ua: string) {
   return { browser, os, device };
 }
 
-function CommentDetail({ comment, onClose }: { comment: any; onClose: () => void }) {
+function CommentDetail({ comment, onClose, onReload }: { comment: any; onClose: () => void; onReload: () => void }) {
   const { browser, os, device } = parseUA(comment.user_agent || '');
   const DeviceIcon = device === 'mobile' ? Smartphone : device === 'tablet' ? Monitor : Monitor;
+  const [isEditing, setIsEditing] = useState(false);
+  const [editContent, setEditContent] = useState(comment.content);
+  const [revisions, setRevisions] = useState<any[]>([]);
+  const [showRevisions, setShowRevisions] = useState(false);
+  const [loadingRevisions, setLoadingRevisions] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      await api.admin.comments.update(comment.id, { content: editContent });
+      setIsEditing(false);
+      onReload();
+    } catch (e) { /* empty */ }
+    setSaving(false);
+  }
+
+  async function handleLoadRevisions() {
+    if (revisions.length > 0) {
+      setShowRevisions(!showRevisions);
+      return;
+    }
+    setLoadingRevisions(true);
+    try {
+      const res = await api.admin.comments.revisions(comment.id);
+      setRevisions(res.items);
+      setShowRevisions(true);
+    } catch (e) { /* empty */ }
+    setLoadingRevisions(false);
+  }
 
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.5)' }}
@@ -62,9 +92,69 @@ function CommentDetail({ comment, onClose }: { comment: any; onClose: () => void
             </div>
           </div>
 
-          <div>
-            <p className="text-sm whitespace-pre-wrap" style={{ color: 'var(--text-secondary)' }}>{comment.content}</p>
+          {isEditing ? (
+            <div>
+              <textarea value={editContent} onChange={e => setEditContent(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg text-sm resize-y min-h-[100px]"
+                style={{ background: 'var(--card-bg)', color: 'var(--text-primary)', border: '1px solid var(--glass-border)' }} />
+            </div>
+          ) : (
+            <div>
+              <p className="text-sm whitespace-pre-wrap" style={{ color: 'var(--text-secondary)' }}>{comment.content}</p>
+            </div>
+          )}
+
+          {/* Edited indicator */}
+          {comment.edited_count > 0 && (
+            <div className="text-xs" style={{ color: 'var(--text-info)' }}>
+              已编辑 {comment.edited_count} 次{comment.edited_at ? ' · ' + new Date(comment.edited_at).toLocaleString('zh-CN') : ''}
+            </div>
+          )}
+
+          {/* Action buttons */}
+          <div className="flex items-center gap-2 pt-1">
+            <button onClick={() => { setIsEditing(!isEditing); setEditContent(comment.content); }}
+              className="btn-glass px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer"
+              style={{ color: 'var(--primary)' }}>
+              {isEditing ? '取消' : '编辑'}
+            </button>
+            {isEditing && (
+              <button onClick={handleSave} disabled={saving}
+                className="btn-glass px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer"
+                style={{ color: 'hsl(142, 60%, 50%)' }}>
+                {saving ? '保存中...' : '保存'}
+              </button>
+            )}
+            <button onClick={handleLoadRevisions}
+              className="btn-glass px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer"
+              style={{ color: 'var(--primary)' }}>
+              历史版本
+            </button>
           </div>
+
+          {/* Revisions panel */}
+          {showRevisions && (
+            <div className="pt-2" style={{ borderTop: '1px solid var(--glass-border)' }}>
+              <h3 className="text-sm font-medium mb-2" style={{ color: 'var(--text-primary)' }}>历史版本</h3>
+              {loadingRevisions ? (
+                <Loading />
+              ) : revisions.length === 0 ? (
+                <p className="text-xs" style={{ color: 'var(--text-info)' }}>暂无历史版本</p>
+              ) : (
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {revisions.map((rev, idx) => (
+                    <div key={rev.id} className="p-2 rounded-lg text-xs" style={{ background: 'var(--card-bg)', border: '1px solid var(--glass-border)' }}>
+                      <div className="flex items-center justify-between mb-1">
+                        <span style={{ color: 'var(--text-info)' }}>版本 {revisions.length - idx}</span>
+                        <span style={{ color: 'var(--text-info)' }}>{new Date(rev.edited_at).toLocaleString('zh-CN')}</span>
+                      </div>
+                      <p className="whitespace-pre-wrap" style={{ color: 'var(--text-secondary)' }}>{rev.content}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-3 pt-3" style={{ borderTop: '1px solid var(--glass-border)' }}>
             <DetailField label="IP 地址" value={comment.ip_address || '-'} />
@@ -117,20 +207,49 @@ export default function AdminComments() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [detailComment, setDetailComment] = useState<any>(null);
 
+  // Commenter search & blocked state
+  const [commenterEmail, setCommenterEmail] = useState('');
+  const [commenterIP, setCommenterIP] = useState('');
+  const [commenterSearchKey, setCommenterSearchKey] = useState(0);
+  const [commenterResults, setCommenterResults] = useState<any[]>([]);
+  const [commenterTotal, setCommenterTotal] = useState(0);
+  const [commenterPage, setCommenterPage] = useState(1);
+
+  const [blockedItems, setBlockedItems] = useState<any[]>([]);
+  const [blockedTotal, setBlockedTotal] = useState(0);
+  const [blockedPage, setBlockedPage] = useState(1);
+
   async function load() {
     setLoading(true);
     try {
-      const params: Record<string, string> = { page: String(page), page_size: '20' };
-      if (filter) params.status = filter;
-      const res = await api.admin.comments.list(params);
-      setItems(res.items);
-      setTotal(res.total);
-      setSelected(new Set());
+      if (filter === 'commenter') {
+        if (commenterSearchKey === 0) {
+          setCommenterResults([]);
+          setCommenterTotal(0);
+          setLoading(false);
+          return;
+        }
+        const res = await api.admin.commenters.listComments({ email: commenterEmail || undefined, ip_address: commenterIP || undefined, page: commenterPage, page_size: 20 });
+        setCommenterResults(res.items);
+        setCommenterTotal(res.total);
+      } else if (filter === 'blocked') {
+        const params: Record<string, string> = { page: String(blockedPage), page_size: '20' };
+        const res = await api.admin.commenters.list(params);
+        setBlockedItems(res.items);
+        setBlockedTotal(res.total);
+      } else {
+        const params: Record<string, string> = { page: String(page), page_size: '20' };
+        if (filter) params.status = filter;
+        const res = await api.admin.comments.list(params);
+        setItems(res.items);
+        setTotal(res.total);
+        setSelected(new Set());
+      }
     } catch (e) { /* empty */ }
     setLoading(false);
   }
 
-  useEffect(() => { load(); }, [page, filter]);
+  useEffect(() => { load(); }, [page, filter, commenterPage, blockedPage, commenterSearchKey]);
 
   async function handleStatus(id: string, status: string) {
     try {
@@ -172,25 +291,48 @@ export default function AdminComments() {
     } catch (e) { /* empty */ }
   }
 
+  const handleExport = () => {
+    const params = new URLSearchParams();
+    if (filter) params.set('status', filter);
+    window.open(`${process.env.NEXT_PUBLIC_API_URL || ''}/api/v1/admin/comments/export?${params.toString()}`, '_blank');
+  };
+
   const tabs = [
     { key: '', label: '全部' },
     { key: 'pending', label: '待审核' },
     { key: 'approved', label: '已批准' },
     { key: 'rejected', label: '已拒绝' },
     { key: 'spam', label: '垃圾' },
+    { key: 'commenter', label: '评论者' },
+    { key: 'blocked', label: '封禁列表' },
   ];
 
-  const totalPages = Math.ceil(total / 20);
+  const totalPages = filter === 'commenter' ? Math.ceil(commenterTotal / 20) : filter === 'blocked' ? Math.ceil(blockedTotal / 20) : Math.ceil(total / 20);
+  const isCommentTab = !['commenter', 'blocked'].includes(filter);
+
+  const handleCommenterSearch = () => {
+    setCommenterSearchKey(k => k + 1);
+    setCommenterPage(1);
+  };
 
   return (
     <div>
       <div className="flex items-center justify-between mb-5">
         <h1 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>评论</h1>
-        <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>共 {total} 条</span>
+        <div className="flex items-center gap-2">
+          <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>共 {filter === 'commenter' ? commenterTotal : filter === 'blocked' ? blockedTotal : total} 条</span>
+          {isCommentTab && (
+            <button onClick={handleExport}
+              className="btn-glass px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer"
+              style={{ color: 'var(--primary)' }}>
+              导出 CSV
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Batch actions */}
-      {selected.size > 0 && (
+      {/* Batch actions - only for comment tabs */}
+      {isCommentTab && selected.size > 0 && (
         <div className="glass-card rounded-xl mb-4 px-4 py-3 flex items-center gap-3">
           <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>已选 {selected.size} 条</span>
           <button onClick={() => handleBatchStatus('approved')}
@@ -210,7 +352,7 @@ export default function AdminComments() {
       <div className="glass-card rounded-xl mb-4">
         <div className="flex" style={{ borderBottom: '1px solid var(--glass-border)' }}>
           {tabs.map(tab => (
-            <button key={tab.key} onClick={() => { setFilter(tab.key); setPage(1); }}
+            <button key={tab.key} onClick={() => { setFilter(tab.key); setPage(1); setCommenterPage(1); setBlockedPage(1); setCommenterSearchKey(0); }}
               className={`px-5 py-3 text-sm font-medium transition-colors relative ${
                 filter === tab.key ? '' : ''
               }`}
@@ -223,7 +365,144 @@ export default function AdminComments() {
           ))}
         </div>
 
-        {loading ? (
+        {filter === 'commenter' ? (
+          <div className="p-5">
+            {/* Search form */}
+            <div className="flex items-end gap-3 mb-4">
+              <div className="flex-1">
+                <label className="text-xs mb-1 block" style={{ color: 'var(--text-info)' }}>邮箱</label>
+                <input type="text" value={commenterEmail} onChange={e => setCommenterEmail(e.target.value)}
+                  placeholder="输入邮箱搜索" className="w-full px-3 py-2 rounded-lg text-sm"
+                  style={{ background: 'var(--card-bg)', color: 'var(--text-primary)', border: '1px solid var(--glass-border)' }} />
+              </div>
+              <div className="flex-1">
+                <label className="text-xs mb-1 block" style={{ color: 'var(--text-info)' }}>IP 地址</label>
+                <input type="text" value={commenterIP} onChange={e => setCommenterIP(e.target.value)}
+                  placeholder="输入IP地址搜索" className="w-full px-3 py-2 rounded-lg text-sm"
+                  style={{ background: 'var(--card-bg)', color: 'var(--text-primary)', border: '1px solid var(--glass-border)' }} />
+              </div>
+              <button onClick={handleCommenterSearch}
+                className="btn-glass px-4 py-2 rounded-lg text-sm font-medium cursor-pointer"
+                style={{ color: 'var(--primary)' }}>
+                搜索
+              </button>
+            </div>
+
+            {/* Results */}
+            {loading ? (
+              <Loading />
+            ) : commenterResults.length === 0 ? (
+              <div className="text-center py-16" style={{ color: 'var(--text-secondary)' }}>
+                <User className="w-12 h-12 mx-auto mb-3" style={{ color: 'var(--text-info)' }} />
+                <p>{commenterSearchKey === 0 ? '请搜索邮箱或IP地址' : '未找到评论'}</p>
+              </div>
+            ) : (
+              <div>
+                {commenterResults.map((item) => (
+                  <div key={item.id} className="py-3 transition-colors" style={{ borderBottom: '1px solid var(--glass-border)' }}>
+                    <div className="flex items-start gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="font-medium text-sm" style={{ color: 'var(--text-primary)' }}>{item.nickname}</span>
+                          <span className="px-1.5 py-0.5 rounded text-xs font-medium"
+                            style={{
+                              background: item.status === 'spam' ? 'hsla(280, 60%, 50%, 0.1)' :
+                                item.status === 'approved' ? 'hsla(142, 60%, 50%, 0.1)' :
+                                item.status === 'rejected' ? 'hsla(0, 60%, 50%, 0.1)' :
+                                'hsla(45, 60%, 50%, 0.1)',
+                              color: item.status === 'spam' ? 'hsl(280, 60%, 50%)' :
+                                item.status === 'approved' ? 'hsl(142, 60%, 50%)' :
+                                item.status === 'rejected' ? 'hsl(0, 60%, 50%)' :
+                                'hsl(45, 60%, 50%)',
+                            }}>
+                            {item.status === 'spam' ? '垃圾' : item.status === 'approved' ? '已批准' : item.status === 'rejected' ? '已拒绝' : '待审核'}
+                          </span>
+                          <span className="text-xs" style={{ color: 'var(--text-info)' }}>{new Date(item.created_at).toLocaleString('zh-CN')}</span>
+                        </div>
+                        {item.post && (
+                          <div className="text-xs mb-1" style={{ color: 'var(--primary)' }}>
+                            回复于：{item.post.title}
+                          </div>
+                        )}
+                        <p className="text-sm whitespace-pre-wrap line-clamp-2 mb-1" style={{ color: 'var(--text-secondary)' }}>{item.content}</p>
+                        <div className="flex items-center gap-3 text-xs" style={{ color: 'var(--text-info)' }}>
+                          <span>邮箱: {item.email || '-'}</span>
+                          <span>IP: {item.ip_address || '-'}</span>
+                        </div>
+                      </div>
+                      <button onClick={async () => {
+                        try {
+                          await api.admin.commenters.block({ email: item.email, ip_address: item.ip_address, reason: '管理员封禁' });
+                          load();
+                        } catch (e) { /* empty */ }
+                      }}
+                        className="btn-glass px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer flex-shrink-0"
+                        style={{ color: 'hsl(0, 60%, 50%)' }}>
+                        封禁
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {/* Commenter pagination */}
+            {commenterTotal > 20 && (
+              <div className="flex items-center justify-between text-sm mt-4">
+                <span style={{ color: 'var(--text-secondary)' }}>共 {commenterTotal} 条</span>
+                <div className="flex gap-1">
+                  <button onClick={() => setCommenterPage(Math.max(1, commenterPage - 1))} disabled={commenterPage === 1}
+                    className="btn-glass px-3 py-1.5 rounded disabled:opacity-40 transition-colors" style={{ color: 'var(--text-secondary)' }}>上一页</button>
+                  <span className="px-3 py-1.5 text-sm" style={{ color: 'var(--text-secondary)' }}>{commenterPage} / {Math.ceil(commenterTotal / 20)}</span>
+                  <button onClick={() => setCommenterPage(Math.min(Math.ceil(commenterTotal / 20), commenterPage + 1))} disabled={commenterPage === Math.ceil(commenterTotal / 20)}
+                    className="btn-glass px-3 py-1.5 rounded disabled:opacity-40 transition-colors" style={{ color: 'var(--text-secondary)' }}>下一页</button>
+                </div>
+              </div>
+            )}
+          </div>
+        ) : filter === 'blocked' ? (
+          <div>
+            {loading ? (
+              <Loading />
+            ) : blockedItems.length === 0 ? (
+              <div className="text-center py-20" style={{ color: 'var(--text-secondary)' }}>
+                <MessageSquare className="w-12 h-12 mx-auto mb-3" style={{ color: 'var(--text-info)' }} />
+                <p>暂无封禁记录</p>
+              </div>
+            ) : (
+              <div>
+                {blockedItems.map((item) => (
+                  <div key={item.id} className="px-5 py-4 transition-colors" style={{ borderBottom: '1px solid var(--glass-border)' }}>
+                    <div className="flex items-start gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="font-medium text-sm" style={{ color: 'var(--text-primary)' }}>{item.email || item.ip_address || '-'}</span>
+                          <span className="text-xs" style={{ color: 'var(--text-info)' }}>{new Date(item.created_at).toLocaleString('zh-CN')}</span>
+                        </div>
+                        <div className="flex items-center gap-3 text-xs" style={{ color: 'var(--text-info)' }}>
+                          {item.email && <span>邮箱: {item.email}</span>}
+                          {item.ip_address && <span>IP: {item.ip_address}</span>}
+                        </div>
+                        {item.reason && (
+                          <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>原因: {item.reason}</p>
+                        )}
+                      </div>
+                      <button onClick={async () => {
+                        try {
+                          await api.admin.commenters.unblock(item.id);
+                          load();
+                        } catch (e) { /* empty */ }
+                      }}
+                        className="btn-glass px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer flex-shrink-0"
+                        style={{ color: 'var(--primary)' }}>
+                        解封
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : loading ? (
           <Loading />
         ) : items.length === 0 ? (
           <div className="text-center py-20" style={{ color: 'var(--text-secondary)' }}>
@@ -317,7 +596,7 @@ export default function AdminComments() {
       </div>
 
       {/* Pagination */}
-      {totalPages > 1 && (
+      {isCommentTab && totalPages > 1 && (
         <div className="flex items-center justify-between text-sm">
           <span style={{ color: 'var(--text-secondary)' }}>共 {total} 条</span>
           <div className="flex gap-1">
@@ -342,7 +621,7 @@ export default function AdminComments() {
       )}
 
       {detailComment && (
-        <CommentDetail comment={detailComment} onClose={() => setDetailComment(null)} />
+        <CommentDetail comment={detailComment} onClose={() => setDetailComment(null)} onReload={load} />
       )}
     </div>
   );

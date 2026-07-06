@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/csv"
 	"net/http"
 	"strings"
 
@@ -8,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 	"tano_blog/backend/internal/model"
+	"tano_blog/backend/internal/repository"
 )
 
 type FriendLinkHandler struct {
@@ -73,6 +75,21 @@ func (h *FriendLinkHandler) Apply(c *gin.Context) {
 	if err := h.db.Create(link).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "提交失败"})
 		return
+	}
+
+	// Notify admin
+	var adminUser model.User
+	h.db.Where("role = ?", "admin").First(&adminUser)
+	if adminUser.ID != uuid.Nil {
+		notifRepo := repository.NewNotificationRepo(h.db)
+		notif := &model.Notification{
+			UserID:  adminUser.ID,
+			Type:    "link_apply",
+			Title:   "新友链申请：" + link.Name,
+			Content: link.Description,
+			Link:    "/admin/links",
+		}
+		go notifRepo.Create(notif)
 	}
 
 	c.JSON(http.StatusCreated, gin.H{"message": "申请已提交，请等待审核"})
@@ -222,4 +239,27 @@ func (h *FriendLinkHandler) AdminDelete(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "已删除"})
+}
+
+func (h *FriendLinkHandler) ExportCSV(c *gin.Context) {
+	var items []model.FriendLink
+	h.db.Find(&items)
+
+	c.Header("Content-Type", "text/csv; charset=utf-8")
+	c.Header("Content-Disposition", "attachment; filename=friend_links.csv")
+	c.Writer.Write([]byte{0xEF, 0xBB, 0xBF})
+
+	w := csv.NewWriter(c.Writer)
+	w.Write([]string{"时间", "名称", "URL", "描述", "邮箱", "状态"})
+	for _, item := range items {
+		w.Write([]string{
+			item.CreatedAt.Format("2006-01-02 15:04:05"),
+			item.Name,
+			item.URL,
+			item.Description,
+			item.Email,
+			item.Status,
+		})
+	}
+	w.Flush()
 }

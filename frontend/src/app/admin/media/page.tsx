@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { api } from '@/lib/api';
 import { Image, Upload, Trash2, Copy, Check, Grid, List, Search, X, FileText, Video, Music, File, Tag, Plus, Settings } from 'lucide-react';
 import { Loading } from '@/components/Loading';
-import { useConfirm } from '@/components/ConfirmDialog';
+import { useConfirm, Checkbox } from '@/components/ConfirmDialog';
 
 const SITE_URL = typeof window !== 'undefined' ? window.location.origin : 'https://tano.asia';
 
@@ -94,6 +94,7 @@ export default function AdminMedia() {
   const [items, setItems] = useState<MediaItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
   const [copiedKey, setCopiedKey] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [typeFilter, setTypeFilter] = useState('');
@@ -114,7 +115,13 @@ export default function AdminMedia() {
   const [newTagName, setNewTagName] = useState('');
   const [uploadTagIds, setUploadTagIds] = useState<string[]>([]);
 
+  const [selectedIds, setSelectedIds] = useState(new Set<string>());
+  const [showBatchTag, setShowBatchTag] = useState(false);
+  const [pendingBatchTagIds, setPendingBatchTagIds] = useState<string[]>([]);
+  const batchTagBtnRef = useRef<HTMLButtonElement>(null);
+
   const load = useCallback(async () => {
+    setSelectedIds(new Set());
     setLoading(true);
     try {
       const params: Record<string, string> = { page: '1', page_size: '100' };
@@ -140,10 +147,13 @@ export default function AdminMedia() {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploading(true);
+    setUploadError('');
     try {
       await api.admin.media.upload(file, uploadTagIds.length > 0 ? uploadTagIds : undefined);
       load();
-    } catch { /* empty */ }
+    } catch (err: any) {
+      setUploadError(err.message || '上传失败');
+    }
     setUploading(false);
     e.target.value = '';
   }
@@ -170,6 +180,30 @@ export default function AdminMedia() {
     : items;
 
   function handleSearch() { load(); }
+
+  function toggleSelect(id: string) {
+    const next = new Set(selectedIds);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setSelectedIds(next);
+  }
+
+  function toggleSelectAll() {
+    if (selectedIds.size === filtered.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filtered.map(i => i.id)));
+    }
+  }
+
+  async function handleBatchDelete() {
+    if (!await confirm(`确定删除选中的 ${selectedIds.size} 个文件？`)) return;
+    try {
+      await api.admin.media.batchDelete(Array.from(selectedIds));
+      setSelectedIds(new Set());
+      load();
+    } catch { /* empty */ }
+  }
 
   // Tag management
   async function handleCreateTag() {
@@ -349,6 +383,15 @@ export default function AdminMedia() {
         </div>
       </div>
 
+      {/* Upload error */}
+      {uploadError && (
+        <div className="mb-4 px-4 py-2.5 rounded-lg text-sm flex items-center justify-between" style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.2)' }}>
+          <span>{uploadError}</span>
+          <button onClick={() => setUploadError('')} className="ml-3 p-0.5 rounded hover:bg-white/10" aria-label="关闭">
+            <X className="w-4 h-4" />
+          </button>
+        </div>)}
+
       {/* Upload tag selector */}
       {mediaTags.length > 0 && (
         <div className="glass-card rounded-xl mb-4 p-3">
@@ -472,6 +515,34 @@ export default function AdminMedia() {
           </div>
         )}
 
+        {selectedIds.size > 0 && (
+          <div className="flex items-center justify-between px-4 py-2.5"
+            style={{ borderBottom: '1px solid var(--glass-border)', background: 'var(--primary-sub)' }}>
+            <span className="text-sm font-medium" style={{ color: 'var(--primary)' }}>
+              已选择 {selectedIds.size} 项
+            </span>
+            <div className="flex items-center gap-2">
+              <button ref={batchTagBtnRef} onClick={() => setShowBatchTag(true)}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium btn-glass"
+                style={{ color: 'var(--text-secondary)' }}>
+                <Tag className="w-3.5 h-3.5" />
+                批量打标签
+              </button>
+              <button onClick={handleBatchDelete}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-white"
+                style={{ background: '#ef4444' }}>
+                <Trash2 className="w-3.5 h-3.5" />
+                批量删除
+              </button>
+              <button onClick={() => setSelectedIds(new Set())}
+                className="px-3 py-1.5 rounded-lg text-xs btn-glass"
+                style={{ color: 'var(--text-info)' }}>
+                取消选择
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Content */}
         {loading ? (
           <Loading />
@@ -490,18 +561,24 @@ export default function AdminMedia() {
                     {item.mime_type?.startsWith('image/') ? (
                       <img src={item.url} alt={item.original_name || item.filename} className="w-full h-full object-cover" />
                     ) : item.mime_type?.startsWith('video/') ? (
-                      <div className="w-full h-full flex items-center justify-center">
-                        <Video className="w-10 h-10" style={{ color: 'var(--text-info)' }} />
-                      </div>
+                      <video src={item.url} controls preload="metadata"
+                        className="w-full h-full object-contain bg-black/20"
+                        onClick={e => e.stopPropagation()} />
                     ) : item.mime_type?.startsWith('audio/') ? (
-                      <div className="w-full h-full flex items-center justify-center">
-                        <Music className="w-10 h-10" style={{ color: 'var(--text-info)' }} />
+                      <div className="w-full h-full flex items-center justify-center"
+                        style={{ background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)' }}>
+                        <audio src={item.url} controls preload="none"
+                          className="w-4/5"
+                          onClick={e => e.stopPropagation()} />
                       </div>
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">
                         <FileText className="w-10 h-10" style={{ color: 'var(--text-info)' }} />
                       </div>
                     )}
+                    <div className="absolute top-2 left-2 z-10">
+                      <Checkbox checked={selectedIds.has(item.id)} onChange={() => toggleSelect(item.id)} />
+                    </div>
                     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100">
                       <button onClick={(e) => {
                         if (openLinksId === item.id) { setOpenLinksId(null); setOpenLinksEl(null); }
@@ -548,6 +625,9 @@ export default function AdminMedia() {
             <table className="w-full">
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--glass-border)' }}>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider w-10" style={{ color: 'var(--text-secondary)' }}>
+                    <Checkbox checked={selectedIds.size === filtered.length && filtered.length > 0} onChange={toggleSelectAll} />
+                  </th>
                   <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider w-12" style={{ color: 'var(--text-secondary)' }}></th>
                   <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>文件名</th>
                   <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider w-32" style={{ color: 'var(--text-secondary)' }}>类型</th>
@@ -562,8 +642,22 @@ export default function AdminMedia() {
                   return (
                     <tr key={item.id} className="transition-colors" style={{ borderBottom: '1px solid var(--glass-border)' }}>
                       <td className="px-4 py-3">
+                        <Checkbox checked={selectedIds.has(item.id)} onChange={() => toggleSelect(item.id)} />
+                      </td>
+                      <td className="px-4 py-3">
                         {item.mime_type?.startsWith('image/') ? (
                           <img src={item.url} alt={item.original_name || item.filename} className="w-8 h-8 rounded object-cover" />
+                        ) : item.mime_type?.startsWith('video/') ? (
+                          <video src={item.url} controls preload="metadata"
+                            className="w-32 h-16 object-contain rounded bg-black/20"
+                            onClick={e => e.stopPropagation()} />
+                        ) : item.mime_type?.startsWith('audio/') ? (
+                          <div className="w-32 h-12 rounded flex items-center justify-center px-2"
+                            style={{ background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)' }}>
+                            <audio src={item.url} controls preload="none"
+                              className="w-full"
+                              onClick={e => e.stopPropagation()} />
+                          </div>
                         ) : (
                           <div className="w-8 h-8 rounded flex items-center justify-center" style={{ background: 'var(--surface-bg)' }}>
                             <Icon className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
@@ -642,6 +736,53 @@ export default function AdminMedia() {
           <FloatingPopover anchorRef={tagsAnchorRef} width={240}
             onClose={() => { setEditingTagsId(null); setEditingTagsEl(null); }}>
             <TagEditorContent item={item} />
+          </FloatingPopover>
+        );
+      })()}
+      {showBatchTag && (() => {
+        return (
+          <FloatingPopover anchorRef={batchTagBtnRef} width={240}
+            onClose={() => { setShowBatchTag(false); setPendingBatchTagIds([]); }}>
+            <div className="p-3">
+              <div className="text-xs font-medium mb-2" style={{ color: 'var(--text-info)' }}>批量添加标签</div>
+              {mediaTags.length === 0 ? (
+                <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>暂无标签</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {mediaTags.map(tag => {
+                    const active = pendingBatchTagIds.includes(tag.id);
+                    return (
+                      <button key={tag.id} onClick={() => setPendingBatchTagIds(prev => prev.includes(tag.id) ? prev.filter(id => id !== tag.id) : [...prev, tag.id])}
+                        className="flex items-center gap-2 w-full px-2 py-1.5 rounded-lg text-xs transition-colors text-left"
+                        style={{
+                          background: active ? 'var(--primary-sub)' : 'transparent',
+                          color: active ? 'var(--primary)' : 'var(--text-secondary)',
+                        }}>
+                        <div className="w-3.5 h-3.5 rounded border flex items-center justify-center flex-shrink-0"
+                          style={{ borderColor: active ? 'var(--primary)' : 'var(--border-color)', background: active ? 'var(--primary)' : 'transparent' }}>
+                          {active && <Check className="w-2.5 h-2.5 text-white" />}
+                        </div>
+                        {tag.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              <div className="flex justify-end gap-2 mt-3 pt-2" style={{ borderTop: '1px solid var(--glass-border)' }}>
+                <button onClick={() => { setShowBatchTag(false); setPendingBatchTagIds([]); }}
+                  className="px-3 py-1.5 rounded-lg text-xs btn-glass" style={{ color: 'var(--text-secondary)' }}>取消</button>
+                <button onClick={async () => {
+                  try {
+                    await api.admin.media.batchUpdateTags(Array.from(selectedIds), pendingBatchTagIds);
+                    setSelectedIds(new Set());
+                    setShowBatchTag(false);
+                    setPendingBatchTagIds([]);
+                    load();
+                  } catch { /* empty */ }
+                }}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium text-white" style={{ background: 'var(--primary)' }}>确认</button>
+              </div>
+            </div>
           </FloatingPopover>
         );
       })()}

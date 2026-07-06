@@ -126,6 +126,16 @@ export const api = {
   verifyPostPassword: (slug: string, password: string) =>
     request<{ verified: boolean }>(`/api/v1/posts/${slug}/verify-password`, { method: 'POST', body: JSON.stringify({ password }) }),
 
+  // Notifications
+  getNotifications: (params?: Record<string, string>) =>
+    request<{ items: any[]; total: number; page: number; size: number }>('/api/v1/notifications', { params }),
+  getUnreadCount: () =>
+    request<{ count: number }>('/api/v1/notifications/unread-count'),
+  markNotificationRead: (id: string) =>
+    request(`/api/v1/notifications/${id}/read`, { method: 'PATCH' }),
+  markAllNotificationsRead: () =>
+    request('/api/v1/notifications/read-all', { method: 'PATCH' }),
+
   // Auth
   login: (data: { username: string; password: string; remember_me?: boolean }) =>
     request<{ token: string; user: any; totp_required?: boolean; user_id?: string }>('/api/v1/auth/login', {
@@ -201,6 +211,8 @@ export const api = {
       export: () => {
         window.open(`${API_BASE}/api/v1/admin/posts/export`, '_blank');
       },
+      calendar: (params: { year: string; month: string }) =>
+        request<{ items: any[] }>('/api/v1/admin/posts/calendar', { params }),
     },
     categories: {
       list: () => request('/api/v1/admin/categories'),
@@ -221,18 +233,30 @@ export const api = {
     comments: {
       list: (params?: Record<string, string>) =>
         request<{ items: any[]; total: number; page: number; size: number }>('/api/v1/admin/comments', { params }),
+      update: (id: string, data: { content: string }) =>
+        request(`/api/v1/admin/comments/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+      revisions: (id: string) =>
+        request<{ items: any[] }>(`/api/v1/admin/comments/${id}/revisions`),
       updateStatus: (id: string, status: string) =>
         request(`/api/v1/admin/comments/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
       batchUpdateStatus: (ids: string[], status: string) =>
         request('/api/v1/admin/comments/batch-status', { method: 'PATCH', body: JSON.stringify({ ids, status }) }),
       delete: (id: string) =>
         request(`/api/v1/admin/comments/${id}`, { method: 'DELETE' }),
+      exportComments: (params?: Record<string, string>) => {
+        const searchParams = params ? '?' + new URLSearchParams(params).toString() : '';
+        window.open(`${API_BASE}/api/v1/admin/comments/export${searchParams}`, '_blank');
+      },
     },
     media: {
       list: (params?: Record<string, string>) =>
         request<{ items: any[]; total: number; page: number; size: number }>('/api/v1/admin/media', { params }),
       delete: (id: string) =>
         request(`/api/v1/admin/media/${id}`, { method: 'DELETE' }),
+      batchDelete: (ids: string[]) =>
+        request('/api/v1/admin/media/batch-delete', { method: 'POST', body: JSON.stringify({ ids }) }),
+      batchUpdateTags: (ids: string[], tagIds: string[]) =>
+        request('/api/v1/admin/media/batch-tag', { method: 'POST', body: JSON.stringify({ ids, tag_ids: tagIds }) }),
       upload: async (file: File, tagIds?: string[]) => {
         const form = new FormData();
         form.append('file', file);
@@ -243,7 +267,10 @@ export const api = {
           headers: { 'X-CSRF-Token': getCSRFToken() },
           body: form,
         });
-        if (!res.ok) throw new Error('上传失败');
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body.error || `上传失败 (${res.status})`);
+        }
         return res.json();
       },
       updateTags: (id: string, tagIds: string[]) =>
@@ -278,6 +305,16 @@ export const api = {
       statsByBrowser: () => request<{ items: { name: string; count: number }[] }>('/api/v1/admin/access-logs/stats/browser'),
       statsByOS: () => request<{ items: { name: string; count: number }[] }>('/api/v1/admin/access-logs/stats/os'),
       statsByHour: () => request<{ items: { hour: number; count: number }[] }>('/api/v1/admin/access-logs/stats/hour'),
+      statsByCountry: (params?: Record<string, string>) =>
+        request<{ items: { name: string; count: number }[] }>('/api/v1/admin/access-logs/stats/country', { params }),
+      statsByReferrer: (params?: Record<string, string>) =>
+        request<{ items: { name: string; count: number }[] }>('/api/v1/admin/access-logs/stats/referrer', { params }),
+      statsByPath: (params?: Record<string, string>) =>
+        request<{ items: { name: string; count: number }[] }>('/api/v1/admin/access-logs/stats/path', { params }),
+      statsByStatusCode: (params?: Record<string, string>) =>
+        request<{ items: { name: string; count: number }[] }>('/api/v1/admin/access-logs/stats/status-code', { params }),
+      statsTimeRange: (params: { start: string; end: string }) =>
+        request<{ total_requests: number; unique_ips: number; total_errors: number; avg_response_ms: number; daily_counts: { date: string; count: number }[] }>('/api/v1/admin/access-logs/stats/time-range', { params }),
       export: (params?: Record<string, string>) => {
         const searchParams = params ? '?' + new URLSearchParams(params).toString() : '';
         window.open(`${API_BASE}/api/v1/admin/access-logs/export${searchParams}`, '_blank');
@@ -337,6 +374,22 @@ export const api = {
       reorder: (ids: string[]) =>
         request('/api/v1/admin/nav-links/reorder', { method: 'PUT', body: JSON.stringify({ ids }) }),
     },
+    commenters: {
+      list: (params?: Record<string, string>) =>
+        request<{ items: any[]; total: number; page: number; size: number }>('/api/v1/admin/commenters', { params }),
+      block: (data: { email?: string; ip_address?: string; reason?: string }) =>
+        request('/api/v1/admin/commenters', { method: 'POST', body: JSON.stringify(data) }),
+      unblock: (id: string) =>
+        request(`/api/v1/admin/commenters/${id}`, { method: 'DELETE' }),
+      listComments: (params: { email?: string; ip_address?: string; page?: number; page_size?: number }) => {
+        const query: Record<string, string> = {};
+        if (params.email) query.email = params.email;
+        if (params.ip_address) query.ip_address = params.ip_address;
+        if (params.page) query.page = String(params.page);
+        if (params.page_size) query.page_size = String(params.page_size);
+        return request<{ items: any[]; total: number; page: number; size: number }>('/api/v1/admin/commenters/comments', { params: query });
+      },
+    },
     links: {
       list: () =>
         request<{ items: any[] }>('/api/v1/admin/links'),
@@ -348,6 +401,10 @@ export const api = {
         request(`/api/v1/admin/links/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
       delete: (id: string) =>
         request(`/api/v1/admin/links/${id}`, { method: 'DELETE' }),
+      exportLinks: (params?: Record<string, string>) => {
+        const searchParams = params ? '?' + new URLSearchParams(params).toString() : '';
+        window.open(`${API_BASE}/api/v1/admin/links/export${searchParams}`, '_blank');
+      },
     },
   },
 };

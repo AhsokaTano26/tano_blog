@@ -65,6 +65,9 @@ func main() {
 		utils.LogWarn("failed to create content trigram index", "error", err)
 	}
 
+	// Initialize GeoIP
+	utils.InitGeoIP()
+
 	// Seed default admin user if not exists
 	seedAdmin(db, cfg.AdminPassword)
 
@@ -94,6 +97,8 @@ func main() {
 	feedHandler := handler.NewFeedHandler(db)
 	friendLinkHandler := handler.NewFriendLinkHandler(db)
 	navLinkHandler := handler.NewNavLinkHandler(db)
+	commenterHandler := handler.NewCommenterHandler(db)
+	notifHandler := handler.NewNotificationHandler(db)
 
 	// Setup router
 	r := gin.New()
@@ -146,8 +151,8 @@ func main() {
 		api.GET("/links", friendLinkHandler.ListPublic)
 		api.POST("/links/apply", middleware.RateLimit(5, 60*time.Second), friendLinkHandler.Apply)
 
-			// Nav links (public)
-			api.GET("/nav-links", navLinkHandler.ListPublic)
+		// Nav links (public)
+		api.GET("/nav-links", navLinkHandler.ListPublic)
 
 		api.GET("/categories", categoryHandler.List)
 		api.GET("/categories/:slug", categoryHandler.GetBySlug)
@@ -181,6 +186,12 @@ func main() {
 			authRequired.DELETE("/auth/passkey/:id", authHandler.DeletePasskey)
 			authRequired.PUT("/auth/passkey/:id/rename", authHandler.RenamePasskey)
 
+			// Notifications
+			authRequired.GET("/notifications", notifHandler.List)
+			authRequired.GET("/notifications/unread-count", notifHandler.UnreadCount)
+			authRequired.PATCH("/notifications/:id/read", notifHandler.MarkRead)
+			authRequired.PATCH("/notifications/read-all", notifHandler.MarkAllRead)
+
 			// Admin: posts
 			admin := authRequired.Group("/admin")
 			admin.Use(middleware.RoleRequired("admin"))
@@ -197,6 +208,7 @@ func main() {
 				admin.GET("/posts/:id/revisions", postHandler.ListRevisions)
 				admin.POST("/posts/:id/revisions/:revId/restore", postHandler.RestoreRevision)
 				admin.POST("/posts/:id/preview-token", postHandler.GeneratePreviewToken)
+				admin.GET("/posts/calendar", postHandler.CalendarPosts)
 				admin.GET("/posts/export", postHandler.Export)
 
 				admin.GET("/categories", categoryHandler.List)
@@ -213,6 +225,14 @@ func main() {
 				admin.PATCH("/comments/:id/status", commentHandler.UpdateStatus)
 				admin.PATCH("/comments/batch-status", commentHandler.BatchUpdateStatus)
 				admin.DELETE("/comments/:id", commentHandler.Delete)
+				admin.GET("/comments/export", commentHandler.ExportCSV)
+				admin.PUT("/comments/:id", commentHandler.AdminUpdate)
+				admin.GET("/comments/:id/revisions", commentHandler.ListRevisions)
+
+				admin.GET("/commenters", commenterHandler.ListBlocks)
+				admin.POST("/commenters", commenterHandler.Block)
+				admin.DELETE("/commenters/:id", commenterHandler.Unblock)
+				admin.GET("/commenters/comments", commenterHandler.ListCommenterComments)
 
 				admin.POST("/upload", mediaHandler.Upload)
 				admin.GET("/media", mediaHandler.List)
@@ -221,6 +241,8 @@ func main() {
 				admin.GET("/media/tags", mediaHandler.ListTags)
 				admin.POST("/media/tags", mediaHandler.CreateTag)
 				admin.DELETE("/media/tags/:id", mediaHandler.DeleteTag)
+				admin.POST("/media/batch-delete", mediaHandler.BatchDelete)
+				admin.POST("/media/batch-tag", mediaHandler.BatchUpdateTags)
 
 				admin.GET("/series", seriesHandler.AdminList)
 				admin.POST("/series", seriesHandler.AdminCreate)
@@ -241,6 +263,11 @@ func main() {
 				admin.GET("/access-logs/stats/browser", accessLogHandler.StatsByBrowser)
 				admin.GET("/access-logs/stats/os", accessLogHandler.StatsByOS)
 				admin.GET("/access-logs/stats/hour", accessLogHandler.StatsByHour)
+				admin.GET("/access-logs/stats/country", accessLogHandler.StatsByCountry)
+				admin.GET("/access-logs/stats/referrer", accessLogHandler.StatsByReferrer)
+				admin.GET("/access-logs/stats/path", accessLogHandler.StatsByPath)
+				admin.GET("/access-logs/stats/status-code", accessLogHandler.StatsByStatusCode)
+				admin.GET("/access-logs/stats/time-range", accessLogHandler.StatsTimeRange)
 				admin.GET("/access-logs/export", accessLogHandler.Export)
 				admin.DELETE("/access-logs/:id", accessLogHandler.Delete)
 				admin.POST("/access-logs/clear", accessLogHandler.Clear)
@@ -262,13 +289,14 @@ func main() {
 				admin.PUT("/links/:id", friendLinkHandler.AdminUpdate)
 				admin.PATCH("/links/:id/status", friendLinkHandler.AdminUpdateStatus)
 				admin.DELETE("/links/:id", friendLinkHandler.AdminDelete)
+				admin.GET("/links/export", friendLinkHandler.ExportCSV)
 
-					// Nav links
-					admin.GET("/nav-links", navLinkHandler.AdminList)
-					admin.POST("/nav-links", navLinkHandler.AdminCreate)
-					admin.PUT("/nav-links/:id", navLinkHandler.AdminUpdate)
-					admin.DELETE("/nav-links/:id", navLinkHandler.AdminDelete)
-					admin.PUT("/nav-links/reorder", navLinkHandler.AdminReorder)
+				// Nav links
+				admin.GET("/nav-links", navLinkHandler.AdminList)
+				admin.POST("/nav-links", navLinkHandler.AdminCreate)
+				admin.PUT("/nav-links/:id", navLinkHandler.AdminUpdate)
+				admin.DELETE("/nav-links/:id", navLinkHandler.AdminDelete)
+				admin.PUT("/nav-links/reorder", navLinkHandler.AdminReorder)
 			}
 		}
 	}
@@ -345,6 +373,8 @@ func main() {
 		log.Fatalf("Server forced to shutdown: %v", err)
 	}
 	utils.LogInfo("Server exited")
+
+	utils.CloseGeoIP()
 }
 
 func seedAdmin(db *gorm.DB, password string) {

@@ -208,6 +208,53 @@ func (h *AccessLogHandler) StatsByHour(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"items": data})
 }
 
+func (h *AccessLogHandler) StatsByCountry(c *gin.Context) {
+	data, err := h.repo.StatsByCountry()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取统计失败"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": data})
+}
+
+func (h *AccessLogHandler) StatsByReferrer(c *gin.Context) {
+	data, err := h.repo.StatsByReferrer()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取统计失败"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": data})
+}
+
+func (h *AccessLogHandler) StatsByPath(c *gin.Context) {
+	data, err := h.repo.StatsByPath()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取统计失败"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": data})
+}
+
+func (h *AccessLogHandler) StatsByStatusCode(c *gin.Context) {
+	data, err := h.repo.StatsByStatusCode()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取统计失败"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": data})
+}
+
+func (h *AccessLogHandler) StatsTimeRange(c *gin.Context) {
+	start := c.Query("start")
+	end := c.Query("end")
+	data, err := h.repo.StatsTimeRange(start, end)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取统计失败"})
+		return
+	}
+	c.JSON(http.StatusOK, data)
+}
+
 func (h *AccessLogHandler) Export(c *gin.Context) {
 	filters := map[string]string{
 		"path":        c.Query("path"),

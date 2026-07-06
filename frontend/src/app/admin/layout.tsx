@@ -6,7 +6,7 @@ import { useTheme } from '@/lib/theme';
 import {
   FileText, FolderTree, Tags, MessageSquare, Image, Settings, ScrollText,
   LogOut, Home, Sun, Moon, Monitor, UserCircle, Database, LayoutDashboard,
-  Bookmark, Link, Menu
+  Bookmark, Link, Menu, Calendar, BarChart3, Bell
 } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import NavLink from 'next/link';
@@ -18,6 +18,7 @@ const navSections = [
     title: '内容',
     items: [
       { href: '/admin/posts', label: '文章', icon: FileText },
+      { href: '/admin/calendar', label: '日历', icon: Calendar },
       { href: '/admin/categories', label: '分类', icon: FolderTree },
       { href: '/admin/tags', label: '标签', icon: Tags },
       { href: '/admin/comments', label: '评论', icon: MessageSquare },
@@ -32,6 +33,7 @@ const navSections = [
       { href: '/admin/profile', label: '个人信息', icon: UserCircle },
       { href: '/admin/settings', label: '设置', icon: Settings },
       { href: '/admin/access-logs', label: '日志', icon: ScrollText },
+      { href: '/admin/analytics', label: '统计', icon: BarChart3 },
       { href: '/admin/backup', label: '备份', icon: Database },
 	      { href: '/admin/nav-links', label: '导航', icon: Menu },
     ],
@@ -43,6 +45,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [loading, setLoading] = useState(true);
   const [collapsed, setCollapsed] = useState(false);
   const [pendingCounts, setPendingCounts] = useState<Record<string, number>>({});
+  const [notifCount, setNotifCount] = useState(0);
   const pathname = usePathname();
   const { theme, setTheme } = useTheme();
 
@@ -66,6 +69,22 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         links: pendingLinks,
       });
     });
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+    const fetchNotifCount = async () => {
+      try {
+        const res = await fetch('/api/v1/notifications/unread-count', { credentials: 'include' });
+        if (res.ok) {
+          const data = await res.json();
+          setNotifCount(data.count);
+        }
+      } catch {}
+    };
+    fetchNotifCount();
+    const interval = setInterval(fetchNotifCount, 30000);
+    return () => clearInterval(interval);
   }, [user]);
 
   if (loading) {
@@ -172,6 +191,20 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
         {/* User profile */}
         <div className="p-3 flex-shrink-0" style={{ borderTop: '1px solid var(--glass-border)' }}>
+          {/* Notification bell */}
+          <NavLink href="/admin/notifications"
+            className={`flex items-center ${collapsed ? 'justify-center' : 'px-1'} mb-2 relative group`}>
+            <div className="relative p-2 hover:bg-white/10 rounded-lg transition-colors">
+              <Bell className="w-5 h-5" style={{ color: 'var(--text-info)' }} />
+              {notifCount > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] flex items-center justify-center text-[10px] font-bold text-white bg-red-500 rounded-full px-1">
+                  {notifCount > 99 ? '99+' : notifCount}
+                </span>
+              )}
+            </div>
+            {!collapsed && <span className="text-sm" style={{ color: 'var(--text-info)' }}>通知</span>}
+          </NavLink>
+
           {/* Theme switcher */}
           <div className={`flex items-center gap-1 mb-2 ${collapsed ? 'justify-center' : 'px-1'}`}>
             {([

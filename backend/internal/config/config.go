@@ -67,7 +67,7 @@ func Load() *Config {
 		},
 		Upload: UploadConfig{
 			Dir:   getEnv("UPLOAD_DIR", "./uploads"),
-			MaxMB: getEnvInt64("UPLOAD_MAX_MB", 10),
+			MaxMB: getEnvInt64("UPLOAD_MAX_MB", 100),
 		},
 		BackupDir:     getEnv("BACKUP_DIR", "./backups"),
 		AdminPassword: adminPassword,

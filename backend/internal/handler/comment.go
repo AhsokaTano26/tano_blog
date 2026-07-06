@@ -1,10 +1,13 @@
 package handler
 
 import (
+	"encoding/csv"
+	"fmt"
 	"net/http"
 	"net/mail"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -149,6 +152,13 @@ func (h *CommentHandler) Create(c *gin.Context) {
 		return
 	}
 
+	// Check blocklist
+	blockRepo := repository.NewCommenterBlockRepo(h.db)
+	if blockRepo.IsBlocked(input.Email, c.ClientIP()) {
+		c.JSON(http.StatusOK, gin.H{"comment": gin.H{"id": "", "content": input.Content, "nickname": input.Nickname, "created_at": time.Now().Format(time.RFC3339)}})
+		return
+	}
+
 	if len(input.Nickname) == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "昵称不能为空"})
 		return
@@ -234,6 +244,34 @@ func (h *CommentHandler) Create(c *gin.Context) {
 			}()
 			h.emailService.SendReplyNotify(parent.Email, parent.Nickname, comment.Nickname, comment.Content, post.Title, post.Slug)
 		}()
+	}
+
+	// Create notification for admin
+	var adminUser model.User
+	h.db.Where("role = ?", "admin").First(&adminUser)
+	if adminUser.ID != uuid.Nil {
+		notifRepo := repository.NewNotificationRepo(h.db)
+		notif := &model.Notification{
+			UserID:  adminUser.ID,
+			Type:    "new_comment",
+			Title:   "新评论：" + comment.Nickname,
+			Content: truncateStr(comment.Content, 100),
+			Link:    "/admin/comments",
+		}
+		go notifRepo.Create(notif)
+	}
+
+	// Reply notification for parent commenter
+	if comment.ParentID != nil && parent.Email != "" {
+		notifRepo := repository.NewNotificationRepo(h.db)
+		notif := &model.Notification{
+			UserID:  adminUser.ID,
+			Type:    "reply",
+			Title:   comment.Nickname + " 回复了你的评论",
+			Content: truncateStr(comment.Content, 100),
+			Link:    fmt.Sprintf("/posts/%s#comment-%s", post.Slug, comment.ID),
+		}
+		go notifRepo.Create(notif)
 	}
 
 	c.JSON(http.StatusCreated, gin.H{"comment": comment})
@@ -390,4 +428,95 @@ func (h *CommentHandler) ToggleReaction(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"active": active, "emoji": input.Emoji})
+}
+
+func (h *CommentHandler) ExportCSV(c *gin.Context) {
+	status := c.Query("status")
+	items, _, err := h.repo.AdminList(1, 10000, status)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "导出失败"})
+		return
+	}
+
+	c.Header("Content-Type", "text/csv; charset=utf-8")
+	c.Header("Content-Disposition", "attachment; filename=comments.csv")
+	c.Writer.Write([]byte{0xEF, 0xBB, 0xBF}) // UTF-8 BOM
+
+	w := csv.NewWriter(c.Writer)
+	w.Write([]string{"时间", "昵称", "邮箱", "网站", "内容", "状态", "IP地址", "文章ID", "父评论ID", "UserAgent"})
+	for _, item := range items {
+		w.Write([]string{
+			item.CreatedAt.Format("2006-01-02 15:04:05"),
+			item.Nickname,
+			item.Email,
+			item.Website,
+			item.Content,
+			item.Status,
+			item.IPAddress,
+			item.PostID.String(),
+			nullUUIDString(item.ParentID),
+			item.UserAgent,
+		})
+	}
+	w.Flush()
+}
+
+func (h *CommentHandler) AdminUpdate(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
+		return
+	}
+
+	var input struct {
+		Content string `json:"content" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请输入评论内容"})
+		return
+	}
+
+	// Get original comment to save as revision
+	var comment model.Comment
+	if err := h.db.First(&comment, id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "评论不存在"})
+		return
+	}
+
+	// Only save revision if content actually changed
+	if comment.Content != input.Content {
+		h.repo.SaveRevision(comment.ID, comment.Content)
+		h.repo.UpdateContent(comment.ID, input.Content)
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "已更新"})
+}
+
+func (h *CommentHandler) ListRevisions(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
+		return
+	}
+	revisions, err := h.repo.ListRevisions(id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取失败"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": revisions})
+}
+
+func nullUUIDString(id *uuid.UUID) string {
+	if id == nil {
+		return ""
+	}
+	return id.String()
+}
+
+func truncateStr(s string, maxLen int) string {
+	runes := []rune(s)
+	if len(runes) <= maxLen {
+		return s
+	}
+	return string(runes[:maxLen]) + "..."
 }

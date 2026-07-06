@@ -41,6 +41,8 @@ func AccessLogger(db *gorm.DB) gin.HandlerFunc {
 			sid = s
 		}
 
+		country, city := utils.LookupIP(c.ClientIP())
+
 		log := model.AccessLog{
 			IPAddress:    c.ClientIP(),
 			UserAgent:    ua,
@@ -50,6 +52,8 @@ func AccessLogger(db *gorm.DB) gin.HandlerFunc {
 			StatusCode:   c.Writer.Status(),
 			ResponseTime: int(elapsed.Milliseconds()),
 			Referer:      c.GetHeader("Referer"),
+			Country:      country,
+			City:         city,
 			DeviceType:   device,
 			Browser:      browser,
 			OS:           osName,

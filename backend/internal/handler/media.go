@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -33,7 +34,7 @@ func (h *MediaHandler) Upload(c *gin.Context) {
 	}
 
 	if file.Size > h.cfg.MaxMB*1024*1024 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "文件大小超过限制"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("文件大小超过限制（最大%dMB）", h.cfg.MaxMB)})
 		return
 	}
 
@@ -41,14 +42,15 @@ func (h *MediaHandler) Upload(c *gin.Context) {
 	ext := strings.ToLower(filepath.Ext(file.Filename))
 	allowedExts := map[string]bool{
 		".jpg": true, ".jpeg": true, ".png": true, ".gif": true,
-		".webp": true, ".ico": true, ".bmp": true,
+		".webp": true, ".ico": true, ".bmp": true, ".svg": true,
 		".pdf": true, ".doc": true, ".docx": true,
-		".mp3": true, ".mp4": true, ".webm": true, ".ogg": true,
+		".mp3": true, ".wav": true, ".flac": true, ".aac": true, ".m4a": true, ".ogg": true,
+		".mp4": true, ".webm": true, ".mov": true, ".avi": true, ".mkv": true,
 		".zip": true, ".tar": true, ".gz": true,
 		".txt": true, ".md": true, ".json": true, ".xml": true,
 	}
 	if !allowedExts[ext] {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "不支持的文件类型"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "不支持的文件类型: " + ext})
 		return
 	}
 
@@ -237,4 +239,67 @@ func (h *MediaHandler) DeleteTag(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "已删除"})
+}
+
+func (h *MediaHandler) BatchDelete(c *gin.Context) {
+	var input struct {
+		IDs []string `json:"ids"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil || len(input.IDs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
+		return
+	}
+
+	ids := make([]uuid.UUID, len(input.IDs))
+	for i, id := range input.IDs {
+		uid, err := uuid.Parse(id)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
+			return
+		}
+		ids[i] = uid
+	}
+
+	if err := h.repo.BatchDelete(ids); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "删除失败"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "已删除"})
+}
+
+func (h *MediaHandler) BatchUpdateTags(c *gin.Context) {
+	var input struct {
+		IDs    []string `json:"ids"`
+		TagIDs []string `json:"tag_ids"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil || len(input.IDs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
+		return
+	}
+
+	ids := make([]uuid.UUID, len(input.IDs))
+	for i, id := range input.IDs {
+		uid, err := uuid.Parse(id)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
+			return
+		}
+		ids[i] = uid
+	}
+
+	tagIDs := make([]uuid.UUID, len(input.TagIDs))
+	for i, t := range input.TagIDs {
+		uid, err := uuid.Parse(t)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
+			return
+		}
+		tagIDs[i] = uid
+	}
+
+	if err := h.repo.BatchUpdateTags(ids, tagIDs); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "操作失败"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "已更新"})
 }

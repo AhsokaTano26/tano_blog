@@ -110,8 +110,17 @@ type Comment struct {
 	City        string     `gorm:"size:100" json:"city"`
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
+	EditedCount int        `gorm:"default:0" json:"edited_count,omitempty"`
+	EditedAt    *time.Time `json:"edited_at,omitempty"`
 	Post        Post       `gorm:"foreignKey:PostID" json:"-"`
 	Children    []Comment  `gorm:"foreignKey:ParentID" json:"children,omitempty"`
+}
+
+type CommentRevision struct {
+	ID        uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	CommentID uuid.UUID `gorm:"type:uuid;index;not null" json:"comment_id"`
+	Content   string    `gorm:"type:text;not null" json:"content"`
+	EditedAt  time.Time `json:"edited_at"`
 }
 
 type MediaTag struct {
@@ -220,6 +229,26 @@ type NavLink struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+type CommenterBlock struct {
+	ID        uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	Email     string    `gorm:"size:255;index" json:"email,omitempty"`
+	IPAddress string    `gorm:"size:45;index" json:"ip_address,omitempty"`
+	Reason    string    `gorm:"size:500" json:"reason"`
+	CreatedBy uuid.UUID `gorm:"type:uuid" json:"created_by"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+type Notification struct {
+	ID        uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	UserID    uuid.UUID `gorm:"type:uuid;index;not null" json:"user_id"`
+	Type      string    `gorm:"size:50;not null;index" json:"type"`
+	Title     string    `gorm:"size:500;not null" json:"title"`
+	Content   string    `gorm:"type:text" json:"content"`
+	Link      string    `gorm:"size:1000" json:"link"`
+	IsRead    bool      `gorm:"default:false;index" json:"is_read"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 type FriendLink struct {
 	ID          uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
 	Name        string    `gorm:"size:100;not null" json:"name"`
@@ -250,8 +279,11 @@ func AutoMigrate(db *gorm.DB) error {
 		&Series{},
 		&PostSeries{},
 		&CommentReaction{},
+		&CommentRevision{},
 		&PostReaction{},
 		&FriendLink{},
 		&NavLink{},
+		&CommenterBlock{},
+		&Notification{},
 	)
 }

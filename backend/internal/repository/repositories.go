@@ -2,6 +2,7 @@ package repository
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -9,6 +10,16 @@ import (
 	"gorm.io/gorm"
 	"tano_blog/backend/internal/model"
 )
+
+type NameCount struct {
+	Name  string `json:"name"`
+	Count int64  `json:"count"`
+}
+
+type DailyCount struct {
+	Date  string `json:"date"`
+	Count int64  `json:"count"`
+}
 
 type AccessLogRepo struct {
 	db *gorm.DB
@@ -75,7 +86,7 @@ func (r *AccessLogRepo) Stats() (map[string]interface{}, error) {
 	}
 	var dbCounts []DailyCount
 	r.db.Model(&model.AccessLog{}).
-		Select("DATE(created_at) as date, COUNT(*) as count").
+		Select("to_char(DATE(created_at), 'YYYY-MM-DD') as date, COUNT(*) as count").
 		Where("created_at >= NOW() - INTERVAL '6 days'").
 		Group("DATE(created_at)").
 		Order("date").
@@ -139,6 +150,75 @@ func (r *AccessLogRepo) StatsByHour() ([]map[string]interface{}, error) {
 		Order("hour ASC").
 		Find(&results).Error
 	return results, err
+}
+
+func (r *AccessLogRepo) StatsByCountry() ([]NameCount, error) {
+	var items []NameCount
+	err := r.db.Model(&model.AccessLog{}).
+		Select("COALESCE(NULLIF(country, ''), '未知') as name, COUNT(*) as count").
+		Group("name").Order("count DESC").Limit(20).Find(&items).Error
+	return items, err
+}
+
+func (r *AccessLogRepo) StatsByReferrer() ([]NameCount, error) {
+	var items []NameCount
+	err := r.db.Model(&model.AccessLog{}).
+		Select("COALESCE(NULLIF(referer, ''), '直接访问') as name, COUNT(*) as count").
+		Group("name").Order("count DESC").Limit(20).Find(&items).Error
+	return items, err
+}
+
+func (r *AccessLogRepo) StatsByPath() ([]NameCount, error) {
+	var items []NameCount
+	err := r.db.Model(&model.AccessLog{}).
+		Select("path as name, COUNT(*) as count").
+		Group("path").Order("count DESC").Limit(20).Find(&items).Error
+	return items, err
+}
+
+func (r *AccessLogRepo) StatsByStatusCode() ([]NameCount, error) {
+	var items []NameCount
+	err := r.db.Model(&model.AccessLog{}).
+		Select("CAST(status_code AS TEXT) as name, COUNT(*) as count").
+		Group("name").Order("count DESC").Find(&items).Error
+	return items, err
+}
+
+type TimeRangeStats struct {
+	TotalRequests int64        `json:"total_requests"`
+	UniqueIPs     int64        `json:"unique_ips"`
+	TotalErrors   int64        `json:"total_errors"`
+	AvgResponseMs float64      `json:"avg_response_ms"`
+	DailyCounts   []DailyCount `json:"daily_counts"`
+}
+
+func (r *AccessLogRepo) StatsTimeRange(start, end string) (*TimeRangeStats, error) {
+	query := r.db.Model(&model.AccessLog{})
+	if start != "" {
+		query = query.Where("created_at >= ?", start+" 00:00:00")
+	}
+	if end != "" {
+		query = query.Where("created_at <= ?", end+" 23:59:59")
+	}
+
+	var stats TimeRangeStats
+	query.Count(&stats.TotalRequests)
+	query.Select("COUNT(DISTINCT ip_address)").Scan(&stats.UniqueIPs)
+	query.Where("status_code >= 400").Count(&stats.TotalErrors)
+	query.Select("COALESCE(AVG(response_time), 0)").Scan(&stats.AvgResponseMs)
+
+	rows, err := query.Select("DATE(created_at) as date, COUNT(*) as count").
+		Group("DATE(created_at)").Order("date ASC").Rows()
+	if err != nil {
+		return &stats, nil
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var dc DailyCount
+		rows.Scan(&dc.Date, &dc.Count)
+		stats.DailyCounts = append(stats.DailyCounts, dc)
+	}
+	return &stats, nil
 }
 
 type PostRepo struct {
@@ -460,6 +540,18 @@ func (r *PostRepo) GetUserReactions(postIDs []uuid.UUID, ipAddress string) (map[
 	return result, nil
 }
 
+func (r *PostRepo) CalendarPosts(year, month string) ([]model.Post, error) {
+	var posts []model.Post
+	err := r.db.Where(
+		"EXTRACT(YEAR FROM published_at) = ? AND EXTRACT(MONTH FROM published_at) = ?", year, month,
+	).Or(
+		"EXTRACT(YEAR FROM created_at) = ? AND EXTRACT(MONTH FROM created_at) = ? AND status = 'draft' AND published_at IS NULL", year, month,
+	).Select("id, title, slug, status, published_at, created_at").
+		Order("COALESCE(published_at, created_at) ASC").
+		Find(&posts).Error
+	return posts, err
+}
+
 type CategoryRepo struct {
 	db *gorm.DB
 }
@@ -640,6 +732,29 @@ func (r *CommentRepo) GetUserReactions(commentIDs []uuid.UUID, ipAddress string)
 	return result, nil
 }
 
+func (r *CommentRepo) SaveRevision(commentID uuid.UUID, content string) error {
+	return r.db.Create(&model.CommentRevision{
+		CommentID: commentID,
+		Content:   content,
+		EditedAt:  time.Now(),
+	}).Error
+}
+
+func (r *CommentRepo) ListRevisions(commentID uuid.UUID) ([]model.CommentRevision, error) {
+	var items []model.CommentRevision
+	err := r.db.Where("comment_id = ?", commentID).Order("edited_at DESC").Find(&items).Error
+	return items, err
+}
+
+func (r *CommentRepo) UpdateContent(commentID uuid.UUID, content string) error {
+	return r.db.Model(&model.Comment{}).Where("id = ?", commentID).
+		Updates(map[string]interface{}{
+			"content":      content,
+			"edited_count": gorm.Expr("edited_count + 1"),
+			"edited_at":    time.Now(),
+		}).Error
+}
+
 type MediaRepo struct {
 	db *gorm.DB
 }
@@ -699,6 +814,30 @@ func (r *MediaRepo) UpdateTags(mediaID uuid.UUID, tagIDs []uuid.UUID) error {
 	return r.db.Model(&m).Association("Tags").Replace(tags)
 }
 
+func (r *MediaRepo) BatchDelete(ids []uuid.UUID) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	var items []model.Media
+	r.db.Where("id IN ?", ids).Find(&items)
+	for _, item := range items {
+		os.Remove(item.URL)
+	}
+	return r.db.Where("id IN ?", ids).Delete(&model.Media{}).Error
+}
+
+func (r *MediaRepo) BatchUpdateTags(ids []uuid.UUID, tagIDs []uuid.UUID) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	var items []model.Media
+	r.db.Where("id IN ?", ids).Find(&items)
+	for _, item := range items {
+		r.db.Model(&item).Association("Tags").Replace(tagIDs)
+	}
+	return nil
+}
+
 func (r *MediaRepo) ListTags() ([]model.MediaTag, error) {
 	var tags []model.MediaTag
 	err := r.db.Order("name").Find(&tags).Error
@@ -740,6 +879,58 @@ func (r *SiteConfigRepo) GetByKeys(keys []string) ([]model.SiteConfig, error) {
 	var configs []model.SiteConfig
 	err := r.db.Where("key IN ?", keys).Find(&configs).Error
 	return configs, err
+}
+
+type CommenterBlockRepo struct {
+	db *gorm.DB
+}
+
+func NewCommenterBlockRepo(db *gorm.DB) *CommenterBlockRepo {
+	return &CommenterBlockRepo{db: db}
+}
+
+func (r *CommenterBlockRepo) Create(block *model.CommenterBlock) error {
+	return r.db.Create(block).Error
+}
+
+func (r *CommenterBlockRepo) Delete(id uuid.UUID) error {
+	return r.db.Delete(&model.CommenterBlock{}, id).Error
+}
+
+func (r *CommenterBlockRepo) List(page, pageSize int) ([]model.CommenterBlock, int64, error) {
+	var items []model.CommenterBlock
+	var total int64
+	r.db.Model(&model.CommenterBlock{}).Count(&total)
+	err := r.db.Order("created_at DESC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&items).Error
+	return items, total, err
+}
+
+func (r *CommenterBlockRepo) IsBlocked(email, ip string) bool {
+	query := r.db.Model(&model.CommenterBlock{})
+	if email != "" {
+		query = query.Where("email = ?", email)
+	}
+	if ip != "" {
+		query = query.Where("ip_address = ?", ip)
+	}
+	var count int64
+	query.Count(&count)
+	return count > 0
+}
+
+func (r *CommenterBlockRepo) ListCommentsByEmailOrIP(email, ip string, page, pageSize int) ([]model.Comment, int64, error) {
+	var items []model.Comment
+	var total int64
+	q := r.db.Model(&model.Comment{}).Preload("Post")
+	if email != "" {
+		q = q.Where("email = ?", email)
+	}
+	if ip != "" {
+		q = q.Where("ip_address = ?", ip)
+	}
+	q.Count(&total)
+	err := q.Order("created_at DESC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&items).Error
+	return items, total, err
 }
 
 func (r *SiteConfigRepo) Upsert(key, value, valueType string) error {

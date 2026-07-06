@@ -109,11 +109,18 @@ export default function AdminLinks() {
     <div>
       <div className="flex items-center justify-between mb-5">
         <h1 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>友链管理</h1>
-        <button onClick={openCreate}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors cursor-pointer"
-          style={{ background: 'var(--primary)' }}>
-          <Plus className="w-4 h-4" />添加友链
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => window.open(`${process.env.NEXT_PUBLIC_API_URL || ''}/api/v1/admin/links/export`, '_blank')}
+            className="btn-glass px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer"
+            style={{ color: 'var(--primary)' }}>
+            导出 CSV
+          </button>
+          <button onClick={openCreate}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors cursor-pointer"
+            style={{ background: 'var(--primary)' }}>
+            <Plus className="w-4 h-4" />添加友链
+          </button>
+        </div>
       </div>
 
       {/* Tabs */}
