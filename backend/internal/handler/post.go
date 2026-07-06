@@ -54,7 +54,7 @@ func (h *PostHandler) ListPublic(c *gin.Context) {
 		Author      map[string]interface{} `json:"author,omitempty"`
 		Category    map[string]interface{} `json:"category,omitempty"`
 		Tags        []map[string]interface{} `json:"tags,omitempty"`
-			Series      []map[string]interface{} `json:"series,omitempty"`
+		Series      []map[string]interface{} `json:"series,omitempty"`
 	}
 
 	items := make([]PostItem, 0, len(posts))
@@ -119,7 +119,6 @@ func (h *PostHandler) GetBySlug(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "文章不存在"})
 		return
 	}
-
 
 	// Only return published posts for public API
 	if c.GetString("user_id") == "" && post.Status != "published" {
@@ -605,14 +604,14 @@ func (h *PostHandler) Update(c *gin.Context) {
 		if len(tagUUIDs) > 0 {
 			h.repo.SetTags(id, tagUUIDs)
 		}
+	}
 
-		// Handle series
-		if input.SeriesID != nil {
-			if *input.SeriesID == "" {
-				h.repo.ClearSeries(id)
-			} else if sid, err := uuid.Parse(*input.SeriesID); err == nil {
-				h.repo.SetSeries(id, sid)
-			}
+	// Handle series (independent of tags)
+	if input.SeriesID != nil {
+		if *input.SeriesID == "" {
+			h.repo.ClearSeries(id)
+		} else if sid, err := uuid.Parse(*input.SeriesID); err == nil {
+			h.repo.SetSeries(id, sid)
 		}
 	}
 

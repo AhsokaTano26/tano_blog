@@ -18,6 +18,22 @@ import (
 	"gorm.io/gorm"
 )
 
+var restoreSafeColumns = map[string][]string{
+	"users":           {"id", "username", "email", "display_name", "avatar_url", "bio", "role", "created_at", "updated_at"},
+	"categories":      {"id", "name", "slug", "description", "sort_order", "created_at"},
+	"tags":            {"id", "name", "slug", "created_at"},
+	"media_tags":      {"id", "name", "created_at"},
+	"site_configs":    {"id", "key", "value", "type", "created_at", "updated_at"},
+	"posts":           {"id", "title", "slug", "content", "excerpt", "cover_image", "status", "is_top", "allow_comment", "author_name", "author_id", "editor_id", "category_id", "view_count", "published_at", "preview_token", "created_at", "updated_at"},
+	"post_tags":       {"post_id", "tag_id"},
+	"comments":        {"id", "post_id", "parent_id", "nickname", "email", "website", "content", "status", "ip_address", "user_agent", "country", "city", "created_at"},
+	"media":           {"id", "filename", "original_name", "mime_type", "size", "url", "created_at"},
+	"media_tag_links": {"media_id", "media_tag_id"},
+	"passkeys":        {"id", "user_id", "nickname", "created_at"},
+	"post_revisions":  {"id", "post_id", "title", "content", "excerpt", "editor_id", "created_at"},
+	"access_logs":     {"id", "path", "method", "ip_address", "user_agent", "status_code", "response_time", "referer", "query_params", "device_type", "browser", "os", "country", "city", "created_at"},
+}
+
 // safeColumnName ensures a column name contains only safe characters
 var safeColumnRe = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
 
@@ -157,6 +173,19 @@ func (h *BackupHandler) restoreFromZip(zr *zip.Reader) error {
 			for k, v := range row {
 				if !safeColumnRe.MatchString(k) {
 					continue // skip unsafe column names
+				}
+				// Skip columns not in the allowlist for this table
+				if safeCols, ok := restoreSafeColumns[table]; ok {
+					allowed := false
+					for _, col := range safeCols {
+						if col == k {
+							allowed = true
+							break
+						}
+					}
+					if !allowed {
+						continue
+					}
 				}
 				cols = append(cols, k)
 				vals = append(vals, v)

@@ -4,23 +4,7 @@ import { useState } from 'react';
 import { api } from '@/lib/api';
 import { ArrowLeft, Eye, EyeOff, KeyRound } from 'lucide-react';
 import { Checkbox } from '@/components/ConfirmDialog';
-
-function bufferToBase64url(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  let binary = '';
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-}
-
-function base64urlToBuffer(base64url: string): ArrayBuffer {
-  let base64 = base64url.replace(/-/g, '+').replace(/_/g, '/');
-  while (base64.length % 4) base64 += '=';
-  const binary = atob(base64);
-  const buffer = new ArrayBuffer(binary.length);
-  const bytes = new Uint8Array(buffer);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return buffer;
-}
+import { bufferToBase64url, base64urlToBuffer } from '@/lib/webauthn';
 
 export default function LoginPage() {
   const [username, setUsername] = useState('');

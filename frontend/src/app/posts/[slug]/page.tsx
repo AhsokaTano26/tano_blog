@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -9,7 +9,6 @@ import rehypeHighlight from 'rehype-highlight';
 import rehypeSlug from 'rehype-slug';
 import rehypeKatex from 'rehype-katex';
 import rehypeRaw from 'rehype-raw';
-import DOMPurify from 'dompurify';
 import 'katex/dist/katex.min.css';
 import { api } from '@/lib/api';
 import { Calendar, Eye, Copy, Check, BookOpen, Shield, User, Edit3, Bookmark } from 'lucide-react';
@@ -17,6 +16,7 @@ import { ContentHeadInjection } from '@/components/HtmlInjection';
 import { ReadingProgress } from '@/components/ReadingProgress';
 import { ImageLightbox } from '@/components/ImageLightbox';
 import { Loading } from '@/components/Loading';
+import { MermaidDiagram } from '@/components/MermaidDiagram';
 import { EmojiPickerButton } from '@/components/EmojiPicker';
 import { ScrollReveal } from '@/components/ScrollReveal';
 
@@ -112,40 +112,6 @@ function SharePanel({ url, title }: { url: string; title: string }) {
 }
 
 
-/* ── Mermaid Diagram Renderer ── */
-
-const mermaidCache = new Map<string, string>();
-
-function MermaidDiagram({ children }: { children: string }) {
-  const [svg, setSvg] = useState(() => mermaidCache.get(children) || '');
-  const [error, setError] = useState('');
-  const id = useRef(`mermaid-${Math.random().toString(36).slice(2)}`).current;
-
-  useEffect(() => {
-    if (svg) return;
-    let cancelled = false;
-    import('mermaid').then(({ default: mermaid }) => {
-      const isDark = document.documentElement.classList.contains('dark');
-      mermaid.initialize({ startOnLoad: false, theme: isDark ? 'dark' : 'default' });
-      mermaid.render(id, children).then(({ svg: rendered }) => {
-        if (!cancelled) {
-          const clean = DOMPurify.sanitize(rendered, { USE_PROFILES: { svg: true } });
-          mermaidCache.set(children, clean);
-          setSvg(clean);
-          setError('');
-        }
-      }).catch((e) => {
-        if (!cancelled) setError(e.message || 'Mermaid render error');
-      });
-    });
-    return () => { cancelled = true; };
-  }, [children, id, svg]);
-
-  if (error) return <pre className="mermaid-container" style={{ color: 'var(--color-error)' }}>{error}</pre>;
-  if (!svg) return <div className="mermaid-container" style={{ color: 'var(--text-info)' }}>渲染中...</div>;
-  return <div className="mermaid-container" dangerouslySetInnerHTML={{ __html: svg }} />;
-}
-
 /* ── Recursive Comment Item ── */
 function CommentItem({ comment, depth, onReply, reactions, onReaction }: {
   comment: any;
@@ -194,6 +160,45 @@ function CommentItem({ comment, depth, onReply, reactions, onReaction }: {
           <CommentItem comment={child} depth={depth + 1} onReply={onReply} reactions={reactions} onReaction={onReaction} />
         </div>
       ))}
+    </div>
+  );
+}
+
+/* ── Code Block Renderer ── */
+
+function CodeBlock({ children, className }: { children?: React.ReactNode; className?: string }) {
+  const [copied, setCopied] = useState(false);
+  const codeRef = useRef<HTMLPreElement>(null);
+
+  const handleCopy = useCallback(() => {
+    const code = codeRef.current?.querySelector('code')?.textContent || '';
+    navigator.clipboard.writeText(code).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }).catch(() => {});
+  }, []);
+
+  const lang = className?.replace('language-', '') || '';
+  const isMermaid = lang === 'mermaid';
+  const codeContent = codeRef.current?.querySelector('code')?.textContent || '';
+
+  if (isMermaid && typeof window !== 'undefined') {
+    return <MermaidDiagram code={codeContent} />;
+  }
+
+  return (
+    <div className="relative group my-4 rounded-lg overflow-hidden" style={{ background: 'var(--code-bg, #1e1e2e)' }}>
+      <div className="flex items-center justify-between px-4 py-1.5 text-xs" style={{ background: 'var(--code-header, #2d2d3d)', color: 'var(--text-secondary)' }}>
+        <span>{lang || 'code'}</span>
+        <button
+          onClick={handleCopy}
+          className="flex items-center gap-1 px-2 py-0.5 rounded transition-opacity hover:opacity-80"
+          style={{ color: 'var(--text-secondary)' }}
+        >
+          {copied ? '已复制' : '复制'}
+        </button>
+      </div>
+      <pre ref={codeRef} className={className} style={{ margin: 0, padding: '1rem' }}>{children}</pre>
     </div>
   );
 }
@@ -651,39 +656,11 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
                 code: ({ className, children, ...props }: any) => {
                   const match = /language-(\w+)/.exec(className || '');
                   if (match?.[1] === 'mermaid') {
-                    return <MermaidDiagram>{String(children).replace(/\n$/, '')}</MermaidDiagram>;
+                    return <MermaidDiagram code={String(children).replace(/\n$/, '')} />;
                   }
                   return <code className={className} {...props}>{children}</code>;
                 },
-                pre: ({ children, ...props }: any) => {
-                  const codeEl = (Array.isArray(children) ? children[0] : children) as any;
-                  const lang = codeEl?.props?.className?.match(/language-(\w+)/)?.[1] || '';
-                  const [copied, setCopied] = useState(false);
-                  const codeText = useMemo(() => {
-                    const extractText = (node: any): string => {
-                      if (typeof node === 'string') return node;
-                      if (Array.isArray(node)) return node.map(extractText).join('');
-                      return extractText(node?.props?.children);
-                    };
-                    return extractText(codeEl?.props?.children);
-                  }, [codeEl]);
-                  return (
-                    <div className="my-4 overflow-hidden rounded-xl" style={{ background: 'var(--card-bg)', border: '1px solid var(--glass-border)' }}>
-                      <div className="flex items-center justify-between px-4 py-1.5 text-xs" style={{ background: 'var(--btn-card-bg)', borderBottom: '1px solid var(--glass-border)' }}>
-                        <span style={{ color: 'var(--text-info)' }}>{lang || 'code'}</span>
-                        <button onClick={async () => { await navigator.clipboard.writeText(codeText); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
-                          className="flex items-center gap-1 px-2 py-0.5 rounded-lg transition-colors hover:opacity-80"
-                          style={{ color: 'var(--text-info)' }}>
-                          {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                          {copied ? '已复制' : '复制'}
-                        </button>
-                      </div>
-                      <pre {...props} className="!mt-0 !rounded-t-none !rounded-b-xl !border-0" style={{ background: 'transparent !important' as any }}>
-                        {children}
-                      </pre>
-                    </div>
-                  );
-                },
+                pre: CodeBlock,
               }}
             >
               {post.content}

@@ -55,9 +55,15 @@ func main() {
 	utils.LogInfo("Database migrated")
 
 	// Enable pg_trgm extension for full-text search
-	db.Exec("CREATE EXTENSION IF NOT EXISTS pg_trgm")
-	db.Exec("CREATE INDEX IF NOT EXISTS idx_posts_title_trgm ON posts USING GIN (title gin_trgm_ops)")
-	db.Exec("CREATE INDEX IF NOT EXISTS idx_posts_content_trgm ON posts USING GIN (content gin_trgm_ops)")
+	if err := db.Exec("CREATE EXTENSION IF NOT EXISTS pg_trgm").Error; err != nil {
+		utils.LogWarn("failed to create pg_trgm extension", "error", err)
+	}
+	if err := db.Exec("CREATE INDEX IF NOT EXISTS idx_posts_title_trgm ON posts USING GIN (title gin_trgm_ops)").Error; err != nil {
+		utils.LogWarn("failed to create title trigram index", "error", err)
+	}
+	if err := db.Exec("CREATE INDEX IF NOT EXISTS idx_posts_content_trgm ON posts USING GIN (content gin_trgm_ops)").Error; err != nil {
+		utils.LogWarn("failed to create content trigram index", "error", err)
+	}
 
 	// Seed default admin user if not exists
 	seedAdmin(db, cfg.AdminPassword)
@@ -192,10 +198,12 @@ func main() {
 				admin.POST("/posts/:id/preview-token", postHandler.GeneratePreviewToken)
 				admin.GET("/posts/export", postHandler.Export)
 
+				admin.GET("/categories", categoryHandler.List)
 				admin.POST("/categories", categoryHandler.Create)
 				admin.PUT("/categories/:id", categoryHandler.Update)
 				admin.DELETE("/categories/:id", categoryHandler.Delete)
 
+				admin.GET("/tags", tagHandler.List)
 				admin.POST("/tags", tagHandler.Create)
 				admin.PUT("/tags/:id", tagHandler.Update)
 				admin.DELETE("/tags/:id", tagHandler.Delete)

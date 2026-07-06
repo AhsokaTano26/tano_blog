@@ -9,6 +9,7 @@ import {
   Bookmark, Link, Menu
 } from 'lucide-react';
 import { usePathname } from 'next/navigation';
+import NavLink from 'next/link';
 import { Loading } from '@/components/Loading';
 import { ConfirmProvider } from '@/components/ConfirmDialog';
 
@@ -100,24 +101,24 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         {/* Logo */}
         <div className="h-14 flex items-center px-4 flex-shrink-0"
           style={{ borderBottom: '1px solid var(--glass-border)' }}>
-          <a href="/admin" className="flex items-center gap-2 overflow-hidden">
+          <NavLink href="/admin" className="flex items-center gap-2 overflow-hidden">
             <img src="/aimi.png" alt="T" className="w-8 h-8 rounded-lg object-cover flex-shrink-0" />
             {!collapsed && (
               <span className="text-base font-bold truncate" style={{ color: 'var(--text-primary)' }}>管理后台</span>
             )}
-          </a>
+          </NavLink>
         </div>
 
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto py-3 px-2">
-          <a href="/"
+          <NavLink href="/"
             className="flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-all hover:bg-white/5"
             style={{ color: 'var(--text-secondary)' }}>
             <Home className="w-4 h-4 flex-shrink-0" />
             {!collapsed && <span>前台首页</span>}
-          </a>
+          </NavLink>
 
-          <a href="/admin"
+          <NavLink href="/admin"
             className="flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-all hover:bg-white/5 mt-1"
             style={{
               background: pathname === '/admin' ? 'var(--primary-sub)' : 'transparent',
@@ -125,7 +126,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             }}>
             <LayoutDashboard className="w-4 h-4 flex-shrink-0" />
             {!collapsed && <span>概览</span>}
-          </a>
+          </NavLink>
 
           {navSections.map((section) => (
             <div key={section.title} className="mt-4">
@@ -142,7 +143,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 const badgeCount = item.href === '/admin/comments' ? pendingCounts.comments
                   : item.href === '/admin/links' ? pendingCounts.links : 0;
                 return (
-                  <a key={item.href} href={item.href}
+                  <NavLink key={item.href} href={item.href}
                     className={`flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-all mb-0.5 ${collapsed && badgeCount > 0 ? 'relative' : ''}`}
                     style={{
                       background: isActive ? 'var(--primary-sub)' : 'transparent',
@@ -162,7 +163,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                       <span className="absolute top-1 right-1 w-2 h-2 rounded-full"
                         style={{ background: 'var(--color-error)' }} />
                     )}
-                  </a>
+                  </NavLink>
                 );
               })}
             </div>

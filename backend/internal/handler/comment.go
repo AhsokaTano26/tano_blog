@@ -200,7 +200,6 @@ func (h *CommentHandler) Create(c *gin.Context) {
 			return
 		}
 		// Verify parent comment belongs to the same post
-		var parent model.Comment
 		if err := h.db.Where("id = ? AND post_id = ?", pid, post.ID).First(&parent).Error; err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "父评论不存在"})
 			return
@@ -354,8 +353,6 @@ func (h *CommentHandler) Delete(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"message": "已删除"})
 }
-
-
 
 func (h *CommentHandler) ToggleReaction(c *gin.Context) {
 	commentID, err := uuid.Parse(c.Param("id"))

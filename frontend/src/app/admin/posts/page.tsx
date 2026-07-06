@@ -10,6 +10,7 @@ import {
   Undo, Redo, Minus, SquareCode, Superscript, GitBranch, Table, Video, Music, Palette, Settings
 } from 'lucide-react';
 import { Loading } from '@/components/Loading';
+import { MermaidDiagram } from '@/components/MermaidDiagram';
 import { useConfirm, Checkbox, Select } from '@/components/ConfirmDialog';
 import { MediaField, MediaPickerModal } from '@/components/MediaField';
 import ReactMarkdown from 'react-markdown';
@@ -19,7 +20,6 @@ import rehypeHighlight from 'rehype-highlight';
 import rehypeKatex from 'rehype-katex';
 import rehypeRaw from 'rehype-raw';
 import rehypeSlug from 'rehype-slug';
-import DOMPurify from 'dompurify';
 
 export default function AdminPosts() {
   const { confirm } = useConfirm();
@@ -351,40 +351,6 @@ export default function AdminPosts() {
       )}
     </div>
   );
-}
-
-/* ── Mermaid Diagram Renderer ── */
-
-const mermaidCache = new Map<string, string>();
-
-function MermaidDiagram({ children }: { children: string }) {
-  const [svg, setSvg] = useState(() => mermaidCache.get(children) || '');
-  const [error, setError] = useState('');
-  const id = useRef(`mermaid-${Math.random().toString(36).slice(2)}`).current;
-
-  useEffect(() => {
-    if (svg) return;
-    let cancelled = false;
-    import('mermaid').then(({ default: mermaid }) => {
-      const isDark = document.documentElement.classList.contains('dark');
-      mermaid.initialize({ startOnLoad: false, theme: isDark ? 'dark' : 'default' });
-      mermaid.render(id, children).then(({ svg: rendered }) => {
-        if (!cancelled) {
-          const clean = DOMPurify.sanitize(rendered, { USE_PROFILES: { svg: true } });
-          mermaidCache.set(children, clean);
-          setSvg(clean);
-          setError('');
-        }
-      }).catch((e) => {
-        if (!cancelled) setError(e.message || 'Mermaid render error');
-      });
-    });
-    return () => { cancelled = true; };
-  }, [children, id, svg]);
-
-  if (error) return <pre className="mermaid-container" style={{ color: 'var(--color-error)' }}>{error}</pre>;
-  if (!svg) return <div className="mermaid-container" style={{ color: 'var(--text-info)' }}>渲染中...</div>;
-  return <div className="mermaid-container" dangerouslySetInnerHTML={{ __html: svg }} />;
 }
 
 /* ── Post Detail Dialog ── */
@@ -1256,7 +1222,7 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
                       code: ({ className, children, ...props }: any) => {
                         const match = /language-(\w+)/.exec(className || '');
                         if (match?.[1] === 'mermaid') {
-                          return <MermaidDiagram>{String(children).replace(/\n$/, '')}</MermaidDiagram>;
+                          return <MermaidDiagram code={String(children).replace(/\n$/, '')} />;
                         }
                         return <code className={className} {...props}>{children}</code>;
                       },

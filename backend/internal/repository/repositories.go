@@ -153,7 +153,7 @@ func (r *PostRepo) ListPublic(page, pageSize int, category, tag, search string) 
 	var posts []model.Post
 	var total int64
 	query := r.db.Model(&model.Post{}).Where("status = ?", "published").
-		Preload("Category").Preload("Tags").Preload("Author")
+		Preload("Category").Preload("Tags").Preload("Author").Preload("Series")
 
 	if category != "" {
 		query = query.Joins("JOIN categories ON categories.id = posts.category_id").
