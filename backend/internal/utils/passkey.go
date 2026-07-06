@@ -178,7 +178,10 @@ func VerifyPasskeyRegistration(db *gorm.DB, userID uuid.UUID, rawBody []byte) er
 		return fmt.Errorf("registration session not found, please try again")
 	}
 	sessionDataStore.Delete(userID.String())
-	session := sessionRaw.(*webauthn.SessionData)
+	session, ok := sessionRaw.(*webauthn.SessionData)
+	if !ok {
+		return fmt.Errorf("invalid session data")
+	}
 
 	wu := makeWebAuthnUser(user, loadCredentials(db, userID))
 
@@ -246,7 +249,10 @@ func VerifyPasskeyLogin(db *gorm.DB, rawBody []byte) (uuid.UUID, error) {
 	if !ok {
 		return uuid.Nil, fmt.Errorf("login session expired, please try again")
 	}
-	session := sessionRaw.(*webauthn.SessionData)
+	session, ok := sessionRaw.(*webauthn.SessionData)
+	if !ok {
+		return uuid.Nil, fmt.Errorf("invalid session data")
+	}
 
 	// Use ValidatePasskeyLogin with a handler that looks up user from credential
 	_, _, err = wa.ValidatePasskeyLogin(func(rawID, userHandle []byte) (webauthn.User, error) {

@@ -185,7 +185,8 @@ func (h *PostHandler) VerifyPassword(c *gin.Context) {
 	}
 
 	cookieKey := "post_access_" + post.ID.String()
-	c.SetCookie(cookieKey, "granted", 7*24*3600, "/", "", false, true)
+	secure := c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https"
+	c.SetCookie(cookieKey, "granted", 7*24*3600, "/", "", secure, true)
 
 	c.JSON(http.StatusOK, gin.H{"verified": true})
 }

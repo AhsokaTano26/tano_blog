@@ -97,6 +97,7 @@ func main() {
 
 	// Setup router
 	r := gin.New()
+	r.MaxMultipartMemory = 32 << 20 // 32 MB
 	r.Use(gin.Recovery())
 	r.Use(middleware.AccessLogger(db))
 
@@ -172,7 +173,7 @@ func main() {
 			authRequired.PUT("/auth/profile", authHandler.UpdateProfile)
 			authRequired.PUT("/auth/password", authHandler.ChangePassword)
 			authRequired.POST("/auth/totp/setup", authHandler.TOTPSetup)
-			authRequired.POST("/auth/totp/verify", authHandler.TOTPVerify)
+			authRequired.POST("/auth/totp/verify", middleware.RateLimit(5, 60*time.Second), authHandler.TOTPVerify)
 			authRequired.DELETE("/auth/totp", authHandler.TOTPDisable)
 			authRequired.POST("/auth/passkey/register/options", authHandler.PasskeyRegisterOptions)
 			authRequired.POST("/auth/passkey/register/verify", authHandler.PasskeyRegisterVerify)

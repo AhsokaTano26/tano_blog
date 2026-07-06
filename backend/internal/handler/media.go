@@ -13,6 +13,7 @@ import (
 	"tano_blog/backend/internal/config"
 	"tano_blog/backend/internal/model"
 	"tano_blog/backend/internal/repository"
+	"tano_blog/backend/internal/utils"
 )
 
 type MediaHandler struct {
@@ -148,7 +149,7 @@ func (h *MediaHandler) Delete(c *gin.Context) {
 	}
 
 	if err := os.Remove(filepath.Join(h.cfg.Dir, m.Filename)); err != nil && !os.IsNotExist(err) {
-		// Log but continue with deleting the record
+			utils.LogWarn("failed to remove media file", "error", err)
 	}
 	if err := h.repo.Delete(id); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "删除记录失败"})

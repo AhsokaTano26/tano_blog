@@ -3,6 +3,7 @@
 import React, { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import DOMPurify from 'dompurify';
 import { api } from '@/lib/api';
 import { Loading } from '@/components/Loading';
 
@@ -43,7 +44,7 @@ function PreviewContent() {
       <div className="text-sm mb-6" style={{ color: 'var(--text-info)' }}>
         {post.author?.display_name || post.author?.username}
       </div>
-      <div className="prose max-w-none" dangerouslySetInnerHTML={{ __html: post.content }} />
+      <div className="prose max-w-none" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(post.content) }} />
     </div>
   );
 }

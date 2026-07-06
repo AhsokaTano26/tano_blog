@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import DOMPurify from 'dompurify';
 import { api } from '@/lib/api';
 
 interface InjectionConfig {
@@ -123,7 +124,7 @@ export function FooterInjection() {
   return (
     <div
       data-injection="footer"
-      dangerouslySetInnerHTML={{ __html: config.footer_injection }}
+      dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(config.footer_injection) }}
     />
   );
 }

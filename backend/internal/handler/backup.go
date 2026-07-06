@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -16,6 +18,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
+
+	"tano_blog/backend/internal/utils"
 )
 
 var restoreSafeColumns = map[string][]string{
@@ -254,7 +258,8 @@ func (h *BackupHandler) extractUploads(zr *zip.Reader) []string {
 func (h *BackupHandler) CreateBackup(c *gin.Context) {
 	zipData, err := h.generateBackup()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		utils.LogError("操作失败", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "操作失败"})
 		return
 	}
 
@@ -376,7 +381,8 @@ func (h *BackupHandler) RestoreUpload(c *gin.Context) {
 	}
 
 	if err := h.restoreFromZip(zr); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		utils.LogError("操作失败", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "操作失败"})
 		return
 	}
 
@@ -396,6 +402,28 @@ func (h *BackupHandler) RestoreURL(c *gin.Context) {
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "请输入下载地址"})
 		return
+	}
+
+	// Validate URL to prevent SSRF
+	parsedURL, err := url.Parse(input.URL)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的下载地址"})
+		return
+	}
+	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "仅支持 http/https 协议"})
+		return
+	}
+	// Block private/non-routable IPs
+	host := parsedURL.Hostname()
+	if addrs, err := net.LookupHost(host); err == nil {
+		for _, addr := range addrs {
+			ip := net.ParseIP(addr)
+			if ip != nil && (ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsUnspecified()) {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "不允许下载内网地址"})
+				return
+			}
+		}
 	}
 
 	// Download with timeout
@@ -422,7 +450,8 @@ func (h *BackupHandler) RestoreURL(c *gin.Context) {
 	}
 
 	if err := h.restoreFromZip(zr); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		utils.LogError("操作失败", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "操作失败"})
 		return
 	}
 
@@ -469,7 +498,8 @@ func (h *BackupHandler) RestoreLocal(c *gin.Context) {
 	}
 
 	if err := h.restoreFromZip(zr); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		utils.LogError("操作失败", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "操作失败"})
 		return
 	}
 

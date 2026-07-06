@@ -682,6 +682,6 @@ func (h *AuthHandler) sendLoginNotify(c *gin.Context, user model.User) {
 
 func setJWTCookie(c *gin.Context, token string, expiration time.Duration) {
 	secure := c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https"
-	c.SetSameSite(http.SameSiteLaxMode)
+	c.SetSameSite(http.SameSiteStrictMode)
 	c.SetCookie("jwt", token, int(expiration.Seconds()), "/", "", secure, true)
 }
