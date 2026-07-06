@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { api } from '@/lib/api';
-import { Image, Upload, Trash2, Copy, Check, Grid, List, Search, X, FileText, Video, Music, File, Tag, Plus, Settings } from 'lucide-react';
+import { Image, Upload, Trash2, Copy, Check, Grid, List, Search, X, FileText, Video, Music, File, Tag, Plus, Settings, Play, Maximize2, ExternalLink } from 'lucide-react';
 import { Loading } from '@/components/Loading';
 import { useConfirm, Checkbox } from '@/components/ConfirmDialog';
 
@@ -119,6 +119,19 @@ export default function AdminMedia() {
   const [showBatchTag, setShowBatchTag] = useState(false);
   const [pendingBatchTagIds, setPendingBatchTagIds] = useState<string[]>([]);
   const batchTagBtnRef = useRef<HTMLButtonElement>(null);
+
+  // Media viewer
+  const [viewerItem, setViewerItem] = useState<MediaItem | null>(null);
+
+  // Close viewer on Escape
+  useEffect(() => {
+    if (!viewerItem) return;
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setViewerItem(null);
+    }
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [viewerItem]);
 
   const load = useCallback(async () => {
     setSelectedIds(new Set());
@@ -557,19 +570,31 @@ export default function AdminMedia() {
               const Icon = getMediaIcon(item.mime_type);
               return (
                 <div key={item.id} className="glass-card rounded-xl overflow-hidden group">
-                  <div className="relative aspect-square" style={{ background: 'var(--surface-bg)' }}>
+                  <div className="relative aspect-square cursor-pointer" style={{ background: 'var(--surface-bg)' }}
+                    onClick={() => setViewerItem(item)}>
                     {item.mime_type?.startsWith('image/') ? (
                       <img src={item.url} alt={item.original_name || item.filename} className="w-full h-full object-cover" />
                     ) : item.mime_type?.startsWith('video/') ? (
-                      <video src={item.url} controls preload="metadata"
-                        className="w-full h-full object-contain bg-black/20"
-                        onClick={e => e.stopPropagation()} />
+                      <div className="w-full h-full relative bg-black/20">
+                        <video src={item.url} preload="metadata"
+                          className="w-full h-full object-contain" />
+                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                          <div className="w-12 h-12 rounded-full flex items-center justify-center"
+                            style={{ background: 'rgba(0,0,0,0.6)' }}>
+                            <Play className="w-6 h-6 text-white ml-0.5" />
+                          </div>
+                        </div>
+                      </div>
                     ) : item.mime_type?.startsWith('audio/') ? (
                       <div className="w-full h-full flex items-center justify-center"
                         style={{ background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)' }}>
-                        <audio src={item.url} controls preload="none"
-                          className="w-full"
-                          onClick={e => e.stopPropagation()} />
+                        <div className="flex flex-col items-center gap-2 pointer-events-none">
+                          <div className="w-12 h-12 rounded-full flex items-center justify-center"
+                            style={{ background: 'rgba(255,255,255,0.1)' }}>
+                            <Music className="w-6 h-6" style={{ color: 'var(--primary)' }} />
+                          </div>
+                          <Play className="w-5 h-5" style={{ color: 'rgba(255,255,255,0.6)' }} />
+                        </div>
                       </div>
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">
@@ -579,23 +604,28 @@ export default function AdminMedia() {
                     <div className="absolute top-2 left-2 z-10">
                       <Checkbox checked={selectedIds.has(item.id)} onChange={() => toggleSelect(item.id)} />
                     </div>
-                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100">
+                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 pointer-events-none">
                       <button onClick={(e) => {
+                        e.stopPropagation();
                         if (openLinksId === item.id) { setOpenLinksId(null); setOpenLinksEl(null); }
                         else { setOpenLinksId(item.id); setOpenLinksEl(e.currentTarget); setEditingTagsId(null); }
                       }}
-                        className="p-1.5 rounded-full transition-colors" style={{ background: 'var(--card-bg)', color: 'var(--text-primary)' }} title="复制链接">
+                        className="p-1.5 rounded-full transition-colors pointer-events-auto" style={{ background: 'var(--card-bg)', color: 'var(--text-primary)' }} title="复制链接">
                         <Copy className="w-4 h-4" />
                       </button>
                       <button onClick={(e) => {
+                        e.stopPropagation();
                         if (editingTagsId === item.id) { setEditingTagsId(null); setEditingTagsEl(null); }
                         else { setEditingTagsId(item.id); setEditingTagsEl(e.currentTarget); setOpenLinksId(null); }
                       }}
-                        className="p-1.5 rounded-full transition-colors" style={{ background: 'var(--card-bg)', color: 'var(--text-primary)' }} title="编辑标签">
+                        className="p-1.5 rounded-full transition-colors pointer-events-auto" style={{ background: 'var(--card-bg)', color: 'var(--text-primary)' }} title="编辑标签">
                         <Tag className="w-4 h-4" />
                       </button>
-                      <button onClick={() => handleDelete(item.id)}
-                        className="p-1.5 rounded-full transition-colors" style={{ background: 'var(--card-bg)', color: 'var(--color-error)' }} title="删除">
+                      <button onClick={(e) => {
+                        e.stopPropagation();
+                        handleDelete(item.id);
+                      }}
+                        className="p-1.5 rounded-full transition-colors pointer-events-auto" style={{ background: 'var(--card-bg)', color: 'var(--color-error)' }} title="删除">
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
@@ -645,24 +675,30 @@ export default function AdminMedia() {
                         <Checkbox checked={selectedIds.has(item.id)} onChange={() => toggleSelect(item.id)} />
                       </td>
                       <td className="px-4 py-3">
-                        {item.mime_type?.startsWith('image/') ? (
-                          <img src={item.url} alt={item.original_name || item.filename} className="w-8 h-8 rounded object-cover" />
-                        ) : item.mime_type?.startsWith('video/') ? (
-                          <video src={item.url} controls preload="metadata"
-                            className="w-32 h-16 object-contain rounded bg-black/20"
-                            onClick={e => e.stopPropagation()} />
-                        ) : item.mime_type?.startsWith('audio/') ? (
-                          <div className="w-48 h-12 rounded flex items-center justify-center px-2"
-                            style={{ background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)' }}>
-                            <audio src={item.url} controls preload="none"
-                              className="w-full"
-                              onClick={e => e.stopPropagation()} />
-                          </div>
-                        ) : (
-                          <div className="w-8 h-8 rounded flex items-center justify-center" style={{ background: 'var(--surface-bg)' }}>
-                            <Icon className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
-                          </div>
-                        )}
+                        <div className="cursor-pointer" onClick={() => setViewerItem(item)}>
+                          {item.mime_type?.startsWith('image/') ? (
+                            <img src={item.url} alt={item.original_name || item.filename} className="w-10 h-10 rounded object-cover" />
+                          ) : item.mime_type?.startsWith('video/') ? (
+                            <div className="relative w-20 h-12 rounded bg-black/20 flex items-center justify-center overflow-hidden">
+                              <video src={item.url} preload="metadata" className="w-full h-full object-contain" />
+                              <div className="absolute inset-0 flex items-center justify-center">
+                                <div className="w-7 h-7 rounded-full flex items-center justify-center"
+                                  style={{ background: 'rgba(0,0,0,0.6)' }}>
+                                  <Play className="w-3.5 h-3.5 text-white ml-0.5" />
+                                </div>
+                              </div>
+                            </div>
+                          ) : item.mime_type?.startsWith('audio/') ? (
+                            <div className="w-14 h-12 rounded flex items-center justify-center"
+                              style={{ background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)' }}>
+                              <Music className="w-5 h-5" style={{ color: 'var(--primary)' }} />
+                            </div>
+                          ) : (
+                            <div className="w-10 h-10 rounded flex items-center justify-center" style={{ background: 'var(--surface-bg)' }}>
+                              <Icon className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
+                            </div>
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 py-3 text-sm truncate max-w-[200px]" style={{ color: 'var(--text-primary)' }} title={item.original_name || item.filename}>
                         {item.original_name || item.filename}
@@ -718,7 +754,79 @@ export default function AdminMedia() {
         {(typeFilter || tagFilter) && ` (筛选自 ${items.length} 个)`}
       </div>
 
-      {/* Floating Popovers */}
+      {/* Media viewer modal */}
+      {viewerItem && (() => {
+        const item = viewerItem;
+        const type = getMediaType(item.mime_type);
+        return (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 sm:p-8"
+            style={{ background: 'rgba(0,0,0,0.85)' }}
+            onClick={() => setViewerItem(null)}>
+            <div className="relative max-w-5xl w-full max-h-full flex flex-col items-center"
+              onClick={e => e.stopPropagation()}>
+              {/* Close button */}
+              <button onClick={() => setViewerItem(null)}
+                className="absolute -top-10 right-0 sm:-right-10 sm:-top-10 p-2 rounded-full transition-colors hover:bg-white/10 z-10 cursor-pointer"
+                style={{ color: '#fff' }}>
+                <X className="w-6 h-6" />
+              </button>
+
+              {/* Media display */}
+              <div className="w-full flex items-center justify-center rounded-xl overflow-hidden"
+                style={{ background: 'var(--surface-bg)', minHeight: type === 'audio' ? '200px' : 'auto' }}>
+                {type === 'image' ? (
+                  <img src={item.url} alt={item.original_name || item.filename}
+                    className="max-w-full max-h-[70vh] object-contain"
+                    style={{ background: 'var(--surface-bg)' }} />
+                ) : type === 'video' ? (
+                  <video src={item.url} controls autoPlay
+                    className="max-w-full max-h-[70vh] w-full"
+                    style={{ background: '#000' }} />
+                ) : type === 'audio' ? (
+                  <div className="w-full p-8 sm:p-12 flex flex-col items-center gap-6"
+                    style={{ background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)', minHeight: '280px' }}>
+                    <div className="w-24 h-24 rounded-full flex items-center justify-center"
+                      style={{ background: 'var(--glass-bg)', border: '2px solid var(--glass-border)' }}>
+                      <Music className="w-10 h-10" style={{ color: 'var(--primary)' }} />
+                    </div>
+                    <audio src={item.url} controls autoPlay
+                      className="w-full max-w-md" />
+                  </div>
+                ) : (
+                  <div className="p-12 flex flex-col items-center gap-4">
+                    <FileText className="w-16 h-16" style={{ color: 'var(--text-info)' }} />
+                    <a href={item.url} target="_blank" rel="noopener noreferrer"
+                      className="text-sm underline" style={{ color: 'var(--primary)' }}>
+                      打开文件
+                    </a>
+                  </div>
+                )}
+              </div>
+
+              {/* Info bar */}
+              <div className="w-full mt-3 flex items-center justify-between px-2">
+                <div className="flex items-center gap-3 min-w-0">
+                  <span className="text-sm font-medium truncate" style={{ color: '#e5e7eb' }}>
+                    {item.original_name || item.filename}
+                  </span>
+                  <span className="text-xs flex-shrink-0" style={{ color: '#9ca3af' }}>
+                    {formatSize(item.size)}
+                  </span>
+                  <span className="text-xs flex-shrink-0" style={{ color: '#9ca3af' }}>
+                    {item.mime_type}
+                  </span>
+                </div>
+                <a href={item.url} target="_blank" rel="noopener noreferrer"
+                  className="flex items-center gap-1 text-xs p-1.5 rounded transition-colors hover:bg-white/10 flex-shrink-0"
+                  style={{ color: '#9ca3af' }}>
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  {SITE_URL}{item.url}
+                </a>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
       {openLinksId && (() => {
         const item = items.find(i => i.id === openLinksId);
         if (!item) return null;

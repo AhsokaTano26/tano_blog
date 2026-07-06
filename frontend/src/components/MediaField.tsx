@@ -219,6 +219,7 @@ export function MediaPickerModal({ onSelect, onClose, onUpload }: { onSelect: (u
               onClick={() => onSelect(item.url)}
               className="cursor-pointer rounded-xl overflow-hidden hover:opacity-80 transition-opacity"
               style={{ background: 'var(--btn-card-bg)' }}
+              title={item.original_name || item.filename || ''}
             >
               {item.mime_type?.startsWith('image/') ? (
                 <img

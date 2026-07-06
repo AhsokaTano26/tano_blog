@@ -6,7 +6,7 @@ import { useTheme } from '@/lib/theme';
 import {
   FileText, FolderTree, Tags, MessageSquare, Image, Settings, ScrollText,
   LogOut, Home, Sun, Moon, Monitor, UserCircle, Database, LayoutDashboard,
-  Bookmark, Link, Menu, Calendar, BarChart3, Bell
+  Bookmark, Link, Menu, Calendar, BarChart3, Bell, HelpCircle
 } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import NavLink from 'next/link';
@@ -36,6 +36,7 @@ const navSections = [
       { href: '/admin/analytics', label: '统计', icon: BarChart3 },
       { href: '/admin/backup', label: '备份', icon: Database },
 	      { href: '/admin/nav-links', label: '导航', icon: Menu },
+      { href: '/admin/help', label: '帮助', icon: HelpCircle },
     ],
   },
 ];
@@ -86,6 +87,16 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     const interval = setInterval(fetchNotifCount, 30000);
     return () => clearInterval(interval);
   }, [user]);
+
+  // Update document title with unread count
+  useEffect(() => {
+    const base = '管理后台';
+    if (notifCount > 0) {
+      document.title = `(${notifCount}) ${base}`;
+    } else {
+      document.title = base;
+    }
+  }, [notifCount]);
 
   if (loading) {
     return (
