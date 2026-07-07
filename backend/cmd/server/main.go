@@ -132,6 +132,15 @@ func main() {
 		restoreGroup.POST("/local", backupHandler.RestoreLocal)
 	}
 
+	// Media upload endpoint (exempt from maxBodySize since handler has its own type-specific limits)
+	mediaGroup := api.Group("/admin")
+	mediaGroup.Use(middleware.AuthRequired(&cfg.JWT, db))
+	mediaGroup.Use(middleware.CSRF())
+	mediaGroup.Use(middleware.RoleRequired("admin"))
+	{
+		mediaGroup.POST("/upload", mediaHandler.Upload)
+	}
+
 	api.Use(maxBodySize(50 << 20))
 	{
 		// Public auth endpoints (with rate limiting)
@@ -250,7 +259,6 @@ func main() {
 				admin.DELETE("/commenters/:id", commenterHandler.Unblock)
 				admin.GET("/commenters/comments", commenterHandler.ListCommenterComments)
 
-				admin.POST("/upload", mediaHandler.Upload)
 				admin.GET("/media", mediaHandler.List)
 				admin.DELETE("/media/:id", mediaHandler.Delete)
 				admin.PUT("/media/:id/tags", mediaHandler.UpdateMediaTags)

@@ -95,6 +95,7 @@ export default function AdminMedia() {
   const [items, setItems] = useState<MediaItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState('');
   const [uploadError, setUploadError] = useState('');
   const [copiedKey, setCopiedKey] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
@@ -158,16 +159,22 @@ export default function AdminMedia() {
   useEffect(() => { loadTags(); }, [loadTags]);
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
     setUploading(true);
+    setUploadProgress('');
     setUploadError('');
+    const tagIds = uploadTagIds.length > 0 ? uploadTagIds : undefined;
     try {
-      await api.admin.media.upload(file, uploadTagIds.length > 0 ? uploadTagIds : undefined);
+      for (let i = 0; i < files.length; i++) {
+        setUploadProgress(`${i + 1}/${files.length}`);
+        await api.admin.media.upload(files[i], tagIds);
+      }
       load();
     } catch (err: any) {
       setUploadError(err.message || '上传失败');
     }
+    setUploadProgress('');
     setUploading(false);
     e.target.value = '';
   }
@@ -391,8 +398,8 @@ export default function AdminMedia() {
           <label className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-white cursor-pointer transition-colors ${uploading ? 'opacity-50' : ''}`}
             style={{ background: 'var(--primary)' }}>
             <Upload className="w-4 h-4" />
-            {uploading ? '上传中...' : '上传'}
-            <input type="file" className="hidden" onChange={handleUpload} disabled={uploading} />
+            {uploading ? `上传中${uploadProgress ? ` (${uploadProgress})` : '...'}` : '上传'}
+            <input type="file" className="hidden" onChange={handleUpload} disabled={uploading} multiple />
           </label>
         </div>
       </div>

@@ -372,6 +372,17 @@ func (h *MediaHandler) BatchUpdateTags(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "已更新"})
 }
 
+// safeExtractAudioCover calls extractAudioCover with panic recovery.
+func safeExtractAudioCover(filePath, uploadDir, filename string) (thumb string) {
+	defer func() {
+		if r := recover(); r != nil {
+			utils.LogWarn("audio cover extraction panicked", "file", filename, "recover", r)
+		}
+	}()
+	thumb, _ = extractAudioCover(filePath, uploadDir, filename)
+	return
+}
+
 // extractAudioCover extracts embedded album art from an audio file and saves it as a thumbnail.
 func extractAudioCover(filePath, uploadDir, filename string) (string, error) {
 	f, err := os.Open(filePath)

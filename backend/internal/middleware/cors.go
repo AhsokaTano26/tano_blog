@@ -83,7 +83,7 @@ func SecurityHeaders() gin.HandlerFunc {
 		c.Header("X-Frame-Options", "DENY")
 		c.Header("Referrer-Policy", "strict-origin-when-cross-origin")
 		c.Header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
-		c.Header("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self'; connect-src 'self'; frame-src 'none'; object-src 'none'")
+		c.Header("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline' static.cloudflareinsights.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self'; connect-src 'self'; frame-src 'none'; object-src 'none'")
 		c.Header("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
 		c.Next()
 	}
