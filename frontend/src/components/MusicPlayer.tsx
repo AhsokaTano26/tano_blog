@@ -84,6 +84,15 @@ export function MusicPlayer() {
 
     api.getPublicConfig().then(res => {
       try {
+        // Read from music_page_config (new structure) with fallback to music_playlist (old)
+        const cfg = JSON.parse(res.config?.music_page_config || '{}');
+        const tracks = cfg.playlists?.[0]?.tracks;
+        if (Array.isArray(tracks) && tracks.length > 0) {
+          setPlaylist(tracks);
+          return;
+        }
+      } catch {}
+      try {
         const items = JSON.parse(res.config?.music_playlist || '[]');
         if (Array.isArray(items) && items.length > 0) {
           setPlaylist(items);

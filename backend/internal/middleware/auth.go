@@ -3,7 +3,6 @@ package middleware
 import (
 	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
@@ -81,21 +80,6 @@ func OptionalAuth(cfg *config.JWTConfig) gin.HandlerFunc {
 		}
 		c.Next()
 	}
-}
-
-// PathPrefix checks if the path is a public or admin route
-func IsPublicRoute(path string) bool {
-	publicPrefixes := []string{"/api/v1/auth/login", "/api/v1/auth/passkey/login", "/api/v1/posts", "/api/v1/categories", "/api/v1/tags"}
-	for _, p := range publicPrefixes {
-		if strings.HasPrefix(path, p) {
-			return true
-		}
-	}
-	return strings.HasPrefix(path, "/uploads/")
-}
-
-func IsAdminRoute(path string) bool {
-	return strings.HasPrefix(path, "/api/v1/admin/")
 }
 
 // RoleRequired checks that the authenticated user has the required role

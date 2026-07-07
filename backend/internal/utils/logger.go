@@ -7,7 +7,6 @@ import (
 	"log"
 	"log/slog"
 	"os"
-	"runtime"
 	"strings"
 )
 
@@ -152,15 +151,6 @@ func LogWarn(msg string, args ...interface{}) {
 
 func LogError(msg string, args ...interface{}) {
 	L().LogAttrs(context.Background(), slog.LevelError, msg, argsToAttrs(args)...)
-}
-
-// LogErrorWithStack logs an error with stack trace
-func LogErrorWithStack(err error, msg string, args ...interface{}) {
-	// Capture stack
-	stack := make([]byte, 4096)
-	n := runtime.Stack(stack, false)
-	allArgs := append(args, "error", err, "stack", string(stack[:n]))
-	L().LogAttrs(context.Background(), slog.LevelError, msg, argsToAttrs(allArgs)...)
 }
 
 // SetAsDefault redirects the standard log package to our logger

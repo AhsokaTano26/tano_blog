@@ -13,8 +13,6 @@
 
   /* Page */
   --page-width: 1200px;
-  --content-delay: 0ms;
-  --radius-large: 1rem;
 
   /* Glass */
   --glass-bg: rgba(255, 255, 255, 0.05);
@@ -25,14 +23,11 @@
   --card-bg: rgba(255, 255, 255, 0.05);
   --surface-bg: rgba(255, 255, 255, 0.03);
   --btn-card-bg: rgba(255, 255, 255, 0.08);
-  --btn-regular-bg: rgba(255, 255, 255, 0.06);
-  --btn-plain-bg: transparent;
 
   /* Text */
   --text-primary: hsla(0, 0%, 100%, 0.9);
   --text-secondary: hsla(0, 0%, 100%, 0.5);
   --text-info: hsla(0, 0%, 100%, 0.3);
-  --color-text: hsla(0, 0%, 100%, 0.9);
 
   /* Border */
   --border-color: hsla(0, 0%, 100%, 0.08);
@@ -44,10 +39,8 @@
   --color-error: hsl(0, 60%, 60%);
   --color-success: hsl(142, 60%, 50%);
 
-  /* Legacy accent (for backward compat) */
+  /* Legacy accent */
   --accent: hsl(var(--accent-hue), 60%, 55%);
-  --accent-light: hsla(var(--accent-hue), 60%, 55%, 0.15);
-  --accent-dark: hsla(var(--accent-hue), 60%, 40%, 1);
 }
 
 /* Light mode */
@@ -59,12 +52,10 @@
   --card-bg: rgba(255, 255, 255, 0.6);
   --surface-bg: rgba(0, 0, 0, 0.03);
   --btn-card-bg: rgba(0, 0, 0, 0.05);
-  --btn-regular-bg: rgba(0, 0, 0, 0.04);
 
   --text-primary: #1e293b;
   --text-secondary: #94a3b8;
   --text-info: #cbd5e1;
-  --color-text: #1e293b;
 
   --border-color: rgba(0, 0, 0, 0.08);
   --color-bg: #f1f5f9;
@@ -110,15 +101,10 @@ html {
   box-shadow: 0 8px 32px -8px rgba(0, 0, 0, 0.1);
 }
 
-/* ===== Glow Shadow ===== */
-.shadow-glow {
-  box-shadow: 0 0 8px var(--primary-glow);
-}
-
 /* ===== Glass Button ===== */
 .btn-glass {
-  -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  backdrop-filter: blur(var(--glass-blur));
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
   transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
@@ -221,16 +207,6 @@ html {
   to { opacity: 1; transform: translateY(0); }
 }
 
-@keyframes pulse-subtle {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.6; }
-}
-
-@keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
-}
-
 .animate-fade-in-up {
   animation: fade-in-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
@@ -249,19 +225,6 @@ html {
 
 .animate-slide-down {
   animation: slide-down 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-.animate-pulse-subtle {
-  animation: pulse-subtle 2s ease-in-out infinite;
-}
-
-.animate-shimmer {
-  background: linear-gradient(90deg,
-    var(--btn-card-bg) 25%,
-    var(--glass-border) 50%,
-    var(--btn-card-bg) 75%);
-  background-size: 200% 100%;
-  animation: shimmer 1.5s infinite;
 }
 
 /* Interactive press effect */
@@ -313,20 +276,6 @@ html {
   animation: page-reveal 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-/* ===== Card Hover Micro-Interactions ===== */
-.card-hover {
-  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1),
-              box-shadow 0.35s cubic-bezier(0.16, 1, 0.3, 1),
-              background 0.35s cubic-bezier(0.16, 1, 0.3, 1);
-}
-.card-hover:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 12px 40px -8px rgba(0, 0, 0, 0.4);
-}
-.light .card-hover:hover {
-  box-shadow: 0 12px 40px -8px rgba(0, 0, 0, 0.12);
-}
-
 /* ===== Theme Transition ===== */
 html.theme-transitioning,
 html.theme-transitioning *,
@@ -366,8 +315,7 @@ html.theme-transitioning *::after {
   .btn-press:active {
     transform: none;
   }
-  .card-base:hover,
-  .card-hover:hover {
+  .card-base:hover {
     transform: none;
     box-shadow: none;
   }
@@ -376,21 +324,7 @@ html.theme-transitioning *::after {
   }
 }
 
-/* ===== Banner ===== */
-.banner-mask {
-  mask-image: linear-gradient(to top, white 0%, transparent 100%);
-  -webkit-mask-image: linear-gradient(to top, white 0%, transparent 100%);
-}
-
-.float-nav {
-  border: 1px solid var(--glass-border);
-  -webkit-backdrop-filter: blur(var(--glass-blur));
-  backdrop-filter: blur(var(--glass-blur));
-  background: var(--glass-bg);
-}
-
 /* ===== Dark mode code theme ===== */
-.dark .hljs {
   background: rgba(0, 0, 0, 0.2) !important;
   color: hsla(0, 0%, 100%, 0.85) !important;
 }
@@ -444,13 +378,6 @@ html.theme-transitioning *::after {
 }
 
 /* ===== Table row hover ===== */
-.admin-table-row {
-  transition: background 0.2s ease;
-}
-.admin-table-row:hover {
-  background: rgba(255, 255, 255, 0.05);
-}
-
 /* ===== CD Spin ===== */
 @keyframes cd-spin {
   from { transform: rotate(0deg); }
@@ -485,12 +412,6 @@ html.theme-transitioning *::after {
 }
 .music-scrollbar::-webkit-scrollbar-track {
   background: transparent;
-}
-
-/* ===== Selection ===== */
-::selection {
-  background: var(--primary-glow);
-  color: var(--text-primary);
 }
 
 /* ===== Range Slider ===== */
@@ -549,22 +470,6 @@ input[type="range"]::-moz-range-thumb {
   border-radius: 0;
 }
 
-/* ===== Sidebar Widget Title ===== */
-.widget-title {
-  position: relative;
-  padding-left: 2rem;
-}
-.widget-title::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 0.35rem;
-  height: 1rem;
-  width: 0.25rem;
-  border-radius: 0.375rem;
-  background: var(--primary);
-}
-
 /* ===== KaTeX dark mode ===== */
 .dark .katex {
   color: hsla(0, 0%, 100%, 0.9);
@@ -579,16 +484,3 @@ input[type="range"]::-moz-range-thumb {
   color: hsla(0, 0%, 100%, 0.9);
 }
 
-/* ===== Mermaid container ===== */
-.mermaid-container {
-  background: var(--card-bg);
-  border-radius: 0.75rem;
-  padding: 1.5rem;
-  margin: 1rem 0;
-  overflow-x: auto;
-  text-align: center;
-}
-.mermaid-container svg {
-  max-width: 100%;
-  height: auto;
-}

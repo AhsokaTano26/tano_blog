@@ -488,11 +488,11 @@ export default function AdminMusicPage() {
                       placeholder="封面图 URL"
                       className="flex-1 px-3 py-2.5 rounded-lg text-sm outline-none"
                       style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
-                    <button onClick={() => setTrackPickerTarget({
+                    <button onClick={(e) => setTrackPickerTarget({
                       playlistId: editingTrack.playlistId,
                       index: editingTrack.index,
                       field: 'cover',
-                      anchorRect: undefined,
+                      anchorRect: e.currentTarget.getBoundingClientRect(),
                     })}
                       className="px-3 py-2.5 rounded-lg text-sm btn-glass flex-shrink-0"
                       style={{ color: 'var(--text-secondary)' }}>
@@ -509,11 +509,11 @@ export default function AdminMusicPage() {
                       placeholder="音频 URL"
                       className="flex-1 px-3 py-2.5 rounded-lg text-sm outline-none"
                       style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
-                    <button onClick={() => setTrackPickerTarget({
+                    <button onClick={(e) => setTrackPickerTarget({
                       playlistId: editingTrack.playlistId,
                       index: editingTrack.index,
                       field: 'url',
-                      anchorRect: undefined,
+                      anchorRect: e.currentTarget.getBoundingClientRect(),
                     })}
                       className="px-3 py-2.5 rounded-lg text-sm btn-glass flex-shrink-0"
                       style={{ color: 'var(--text-secondary)' }}>
@@ -537,11 +537,11 @@ export default function AdminMusicPage() {
                       placeholder="播放此曲时显示此背景（选填）"
                       className="flex-1 px-3 py-2.5 rounded-lg text-sm outline-none"
                       style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
-                    <button onClick={() => setTrackPickerTarget({
+                    <button onClick={(e) => setTrackPickerTarget({
                       playlistId: editingTrack.playlistId,
                       index: editingTrack.index,
                       field: 'background',
-                      anchorRect: undefined,
+                      anchorRect: e.currentTarget.getBoundingClientRect(),
                     })}
                       className="px-3 py-2.5 rounded-lg text-sm btn-glass flex-shrink-0"
                       style={{ color: 'var(--text-secondary)' }}>

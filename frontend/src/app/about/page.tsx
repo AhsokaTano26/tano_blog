@@ -8,9 +8,9 @@ import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
 import rehypeSlug from 'rehype-slug';
 import {
-  Mail, Globe, Send, ExternalLink, User,
+  Mail, Globe, Send,
   Heart, Sparkles, Quote, Pen, BookHeart,
-  MessageCircle, MapPin, CalendarDays, Clock
+  ExternalLink, User
 } from 'lucide-react';
 
 const contactIcons: Record<string, any> = { email: Mail, telegram: Send, link: Globe };

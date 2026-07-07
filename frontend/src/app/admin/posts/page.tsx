@@ -4,10 +4,10 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { api } from '@/lib/api';
 import {
   Plus, Pencil, Trash2, ExternalLink, Eye, Search, X, Check, FileText,
-  ArrowLeft, Save, ChevronDown, ChevronRight, User,
+  ArrowLeft, Save,
   Bold, Italic, Underline, Strikethrough, Link, Code, Quote, List, ListOrdered,
-  AlignLeft, AlignCenter, AlignRight, Image as ImageIcon, Heading1, Heading2, Heading3,
-  Undo, Redo, Minus, SquareCode, Superscript, GitBranch, Table, Video, Music, Palette, Settings
+  Image as ImageIcon, Heading1, Heading2, Heading3,
+  Minus, SquareCode, Superscript, GitBranch, Table, Video, Music, Palette, Settings
 } from 'lucide-react';
 import { Loading } from '@/components/Loading';
 import { MermaidDiagram } from '@/components/MermaidDiagram';

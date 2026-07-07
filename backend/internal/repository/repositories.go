@@ -192,21 +192,24 @@ type TimeRangeStats struct {
 }
 
 func (r *AccessLogRepo) StatsTimeRange(start, end string) (*TimeRangeStats, error) {
-	query := r.db.Model(&model.AccessLog{})
-	if start != "" {
-		query = query.Where("created_at >= ?", start+" 00:00:00")
-	}
-	if end != "" {
-		query = query.Where("created_at <= ?", end+" 23:59:59")
+	makeQuery := func() *gorm.DB {
+		q := r.db.Model(&model.AccessLog{})
+		if start != "" {
+			q = q.Where("created_at >= ?", start+" 00:00:00")
+		}
+		if end != "" {
+			q = q.Where("created_at <= ?", end+" 23:59:59")
+		}
+		return q
 	}
 
 	var stats TimeRangeStats
-	query.Count(&stats.TotalRequests)
-	query.Select("COUNT(DISTINCT ip_address)").Scan(&stats.UniqueIPs)
-	query.Where("status_code >= 400").Count(&stats.TotalErrors)
-	query.Select("COALESCE(AVG(response_time), 0)").Scan(&stats.AvgResponseMs)
+	makeQuery().Count(&stats.TotalRequests)
+	makeQuery().Select("COUNT(DISTINCT ip_address)").Scan(&stats.UniqueIPs)
+	makeQuery().Where("status_code >= 400").Count(&stats.TotalErrors)
+	makeQuery().Select("COALESCE(AVG(response_time), 0)").Scan(&stats.AvgResponseMs)
 
-	rows, err := query.Select("to_char(DATE(created_at), 'YYYY-MM-DD') as date, COUNT(*) as count").
+	rows, err := makeQuery().Select("to_char(DATE(created_at), 'YYYY-MM-DD') as date, COUNT(*) as count").
 		Group("DATE(created_at)").Order("date ASC").Rows()
 	if err != nil {
 		return &stats, nil

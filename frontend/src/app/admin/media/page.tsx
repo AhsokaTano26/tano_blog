@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { api } from '@/lib/api';
-import { Image, Upload, Trash2, Copy, Check, Grid, List, Search, X, FileText, Video, Music, File, Tag, Plus, Settings, Play, Maximize2, ExternalLink } from 'lucide-react';
+import { Image, Upload, Trash2, Copy, Check, Grid, List, Search, X, FileText, Video, Music, File, Tag, Plus, Settings, Play, ExternalLink } from 'lucide-react';
 import { Loading } from '@/components/Loading';
 import { useConfirm, Checkbox } from '@/components/ConfirmDialog';
 
