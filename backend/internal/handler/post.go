@@ -49,6 +49,7 @@ func (h *PostHandler) ListPublic(c *gin.Context) {
 		Excerpt     string                 `json:"excerpt"`
 		CoverImage  string                 `json:"cover_image"`
 		ViewCount   int64                  `json:"view_count"`
+		CommentCount int64                  `json:"comment_count"`
 		PublishedAt *string                `json:"published_at"`
 		AuthorName  string                 `json:"author_name"`
 		Author      map[string]interface{} `json:"author,omitempty"`
@@ -66,6 +67,7 @@ func (h *PostHandler) ListPublic(c *gin.Context) {
 			Excerpt:    p.Excerpt,
 			CoverImage: p.CoverImage,
 			ViewCount:  p.ViewCount,
+			CommentCount: p.CommentCount,
 			AuthorName: p.AuthorName,
 		}
 		if p.PublishedAt != nil {

@@ -7,7 +7,7 @@ import {
   UserCircle, LayoutDashboard, Bell, Shield, KeyRound, Lock, Eye,
   Search, BarChart3, Menu, Upload, Download, RefreshCw, Globe, Mail,
   Calendar, Moon, Palette, ExternalLink, GripVertical, Filter,
-  Sparkles
+  Sparkles, Music
 } from 'lucide-react';
 
 interface HelpSection {
@@ -381,6 +381,54 @@ const sections: HelpSection[] = [
           '• 全部已读 — 一键标记所有通知为已读',
           '• 未读计数 — 侧边栏和浏览器标题显示未读数量',
           '系统每 30 秒自动轮询未读通知数。',
+        ],
+      },
+    ],
+  },
+  {
+    id: 'music',
+    title: '音乐馆管理',
+    icon: Music,
+    items: [
+      {
+        title: '页面设置',
+        content: [
+          '音乐馆管理 (/admin/music-page) 的"页面设置"标签页配置公共音乐播放页面的外观：',
+          '• 标题 — 页面顶部显示的大标题',
+          '• 副标题 — 标题下方的副标题文字',
+          '• 背景图 — 页面背景图片，支持从媒体库选择',
+        ],
+      },
+      {
+        title: '播放列表管理',
+        content: [
+          '"播放列表管理"标签页支持多播放列表 CRUD：',
+          '• 新建播放列表 — 创建命名的播放列表',
+          '• 重命名 — 修改播放列表名称',
+          '• 删除 — 删除整个播放列表及其所有歌曲',
+          '• 展开/折叠 — 点击播放列表查看其中的歌曲列表',
+        ],
+      },
+      {
+        title: '歌曲管理',
+        content: [
+          '在每个播放列表中可以管理歌曲：',
+          '• 添加歌曲 — 填写标题和音频 URL（支持从媒体库选择或上传）',
+          '• 歌曲行 — 序号、封面小图、标题、艺术家、上移/下移/删除',
+          '• 拖拽排序 — 拖拽调整歌曲播放顺序',
+          '• 点击编辑 — 点击歌曲行弹出详情弹窗编辑所有字段',
+        ],
+      },
+      {
+        title: '歌曲详情编辑',
+        content: [
+          '弹窗内可编辑歌曲的完整信息，修改即生效：',
+          '• 标题 — 歌曲名称',
+          '• 艺术家 — 演唱者/创作者',
+          '• 封面图 — 歌曲封面图片，支持从媒体库选择',
+          '• 音频 URL — 音乐文件地址，支持媒体库选择和上传',
+          '• 背景图 — 播放此曲时的独立背景图',
+          '音频 URL 填写后自动填充封面图（如未手动设置过）。',
         ],
       },
     ],

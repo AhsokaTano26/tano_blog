@@ -84,6 +84,7 @@ type Post struct {
 	Tags         []Tag      `gorm:"many2many:post_tags;" json:"tags"`
 	Series       []Series   `gorm:"many2many:post_series;" json:"series,omitempty"`
 	Comments     []Comment  `gorm:"foreignKey:PostID" json:"-"`
+	CommentCount int64      `gorm:"-" json:"comment_count"`
 }
 
 type PostTag struct {

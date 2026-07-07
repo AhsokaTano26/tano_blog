@@ -14,6 +14,12 @@ interface Track {
   cover?: string;
 }
 
+interface Playlist {
+  id: string;
+  name: string;
+  tracks: Track[];
+}
+
 const STORAGE_KEY = 'music_player_state';
 const POS_KEY = 'music_player_pos';
 
@@ -22,10 +28,10 @@ function loadState() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) return JSON.parse(raw);
   } catch {}
-  return { index: 0, volume: 0.5 };
+  return { index: 0, volume: 0.5, playlistIndex: 0 };
 }
 
-function saveState(state: { index: number; volume: number }) {
+function saveState(state: { index: number; volume: number; playlistIndex: number }) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   } catch {}
@@ -57,7 +63,8 @@ function savePos(pos: { x: number; y: number }) {
 }
 
 export function MusicPlayer() {
-  const [playlist, setPlaylist] = useState<Track[]>([]);
+  const [playlists, setPlaylists] = useState<Playlist[]>([]);
+  const [currentPlaylistIndex, setCurrentPlaylistIndex] = useState(0);
   const [visible, setVisible] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -79,6 +86,7 @@ export function MusicPlayer() {
     const saved = loadState();
     setCurrentIndex(saved.index);
     setVolume(saved.volume);
+    setCurrentPlaylistIndex(saved.playlistIndex || 0);
     const savedPos = loadPos();
     if (savedPos) setDragPos(savedPos);
 
@@ -86,16 +94,16 @@ export function MusicPlayer() {
       try {
         // Read from music_page_config (new structure) with fallback to music_playlist (old)
         const cfg = JSON.parse(res.config?.music_page_config || '{}');
-        const tracks = cfg.playlists?.[0]?.tracks;
-        if (Array.isArray(tracks) && tracks.length > 0) {
-          setPlaylist(tracks);
+        if (Array.isArray(cfg.playlists) && cfg.playlists.length > 0) {
+          setPlaylists(cfg.playlists);
           return;
         }
       } catch {}
       try {
         const items = JSON.parse(res.config?.music_playlist || '[]');
         if (Array.isArray(items) && items.length > 0) {
-          setPlaylist(items);
+          // Convert old single-playlist format
+          setPlaylists([{ id: 'default', name: '默认播放列表', tracks: items }]);
         }
       } catch {}
     }).catch(() => {});
@@ -106,12 +114,14 @@ export function MusicPlayer() {
     if (dragPos) savePos(dragPos);
   }, [dragPos]);
 
+  const currentPlaylist = playlists[currentPlaylistIndex];
+  const playlist = currentPlaylist?.tracks || [];
   const currentTrack = playlist[currentIndex] || null;
 
   // Persist playback state
   useEffect(() => {
-    if (mounted) saveState({ index: currentIndex, volume });
-  }, [currentIndex, volume, mounted]);
+    if (mounted) saveState({ index: currentIndex, volume, playlistIndex: currentPlaylistIndex });
+  }, [currentIndex, volume, currentPlaylistIndex, mounted]);
 
   // Play when track changes
   useEffect(() => {
@@ -411,9 +421,32 @@ export function MusicPlayer() {
         <div className={`transition-all duration-300 ease-out overflow-hidden ${showPlaylist ? 'max-h-64 opacity-100' : 'max-h-0 opacity-0'}`}>
           <div className="px-3 pb-3 space-y-0.5 max-h-52 overflow-y-auto"
             style={{ borderTop: showPlaylist ? '1px solid var(--glass-border)' : 'none' }}>
-            <div className="flex items-center gap-2 px-2.5 py-1.5 text-[10px]" style={{ color: 'var(--text-info)' }}>
-              <ChevronDown className="w-3 h-3" />
-              播放列表
+            <div className="flex items-center gap-2 px-2.5 py-1.5">
+              <ChevronDown className="w-3 h-3" style={{ color: 'var(--text-info)' }} />
+              {playlists.length > 1 ? (
+                <select
+                  value={currentPlaylistIndex}
+                  onChange={e => {
+                    const idx = parseInt(e.target.value);
+                    setCurrentPlaylistIndex(idx);
+                    setCurrentIndex(0);
+                    setPlaying(false);
+                    if (audioRef.current) {
+                      audioRef.current.src = '';
+                      audioRef.current.removeAttribute('data-src');
+                    }
+                  }}
+                  className="text-[10px] font-medium bg-transparent border-none outline-none appearance-none cursor-pointer"
+                  style={{ color: 'var(--text-info)' }}>
+                  {playlists.map((pl, i) => (
+                    <option key={pl.id} value={i}>{pl.name} ({pl.tracks.length}首)</option>
+                  ))}
+                </select>
+              ) : (
+                <span className="text-[10px] font-medium" style={{ color: 'var(--text-info)' }}>
+                  {currentPlaylist?.name || '播放列表'}
+                </span>
+              )}
             </div>
             {playlist.map((track, i) => (
               <button key={i} onClick={() => playTrack(i)}

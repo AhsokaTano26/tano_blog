@@ -253,7 +253,35 @@ func (r *PostRepo) ListPublic(page, pageSize int, category, tag, search string) 
 
 	query.Count(&total)
 	err := query.Order("is_top DESC, published_at DESC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&posts).Error
-	return posts, total, err
+	if err != nil {
+		return posts, total, err
+	}
+
+	// Batch fetch comment counts
+	if len(posts) > 0 {
+		ids := make([]uuid.UUID, len(posts))
+		for i, p := range posts {
+			ids[i] = p.ID
+		}
+		type countResult struct {
+			PostID uuid.UUID
+			Count  int64
+		}
+		var counts []countResult
+		r.db.Model(&model.Comment{}).
+			Select("post_id, COUNT(*) as count").
+			Where("post_id IN ? AND status = ?", ids, "approved").
+			Group("post_id").Find(&counts)
+		countMap := make(map[uuid.UUID]int64)
+		for _, c := range counts {
+			countMap[c.PostID] = c.Count
+		}
+		for i := range posts {
+			posts[i].CommentCount = countMap[posts[i].ID]
+		}
+	}
+
+	return posts, total, nil
 }
 
 func (r *PostRepo) GetBySlug(slug string) (*model.Post, error) {
