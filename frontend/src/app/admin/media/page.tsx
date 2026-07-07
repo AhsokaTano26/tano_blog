@@ -172,8 +172,8 @@ export default function AdminMedia() {
     e.target.value = '';
   }
 
-  async function handleDelete(id: string) {
-    if (!await confirm('确定删除此文件？')) return;
+  async function handleDelete(id: string, anchorEl?: HTMLElement | null) {
+    if (!await confirm('确定删除此文件？', anchorEl)) return;
     try { await api.admin.media.delete(id); load(); } catch { /* empty */ }
   }
 
@@ -626,7 +626,7 @@ export default function AdminMedia() {
                       </button>
                       <button onClick={(e) => {
                         e.stopPropagation();
-                        handleDelete(item.id);
+                        handleDelete(item.id, e.currentTarget);
                       }}
                         className="p-1.5 rounded-full transition-colors pointer-events-auto" style={{ background: 'var(--card-bg)', color: 'var(--color-error)' }} title="删除">
                         <Trash2 className="w-4 h-4" />

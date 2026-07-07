@@ -13,25 +13,26 @@ interface Track {
   background?: string;
 }
 
+interface Playlist {
+  id: string;
+  name: string;
+  tracks: Track[];
+}
+
 interface MusicPageConfig {
   title: string;
   subtitle: string;
   background: string;
-  playlist: Track[];
+  playlists: Playlist[];
 }
 
 const barCount = 64;
 const bars = Array.from({ length: barCount }).map((_, i) => {
-  // Simulate frequency bands — lower index = bass, higher = treble
   const freq = i / barCount;
   return {
-    // Base height varies by frequency zone
     base: 6 + Math.sin(freq * Math.PI) * 20,
-    // Speed factor — mid frequencies move fastest
     speed: 0.8 + Math.sin(freq * Math.PI * 3) * 0.6 + Math.random() * 0.3,
-    // Phase offset so bars don't move in sync
     phase: Math.random() * Math.PI * 2,
-    // Color hue offset
     hueOff: i * 2.8,
   };
 });
@@ -53,6 +54,9 @@ export default function MusicPage() {
 
   const audioRef = useRef<HTMLAudioElement>(null);
 
+  const currentTracks = config?.playlists[0]?.tracks || [];
+  const currentTrack = currentTracks[currentIndex] || null;
+
   // Track change animation
   useEffect(() => {
     if (prevIndexRef.current !== currentIndex) {
@@ -68,17 +72,23 @@ export default function MusicPage() {
     api.getPublicConfig().then(res => {
       try {
         const cfg = JSON.parse(res.config?.music_page_config || '{}');
+        // Migrate old format (playlist) to new format (playlists)
+        if (!cfg.playlists && Array.isArray(cfg.playlist)) {
+          cfg.playlists = cfg.playlist.length > 0
+            ? [{ id: 'default', name: '默认播放列表', tracks: cfg.playlist }]
+            : [];
+        }
         setConfig({
           title: cfg.title || '音乐馆',
           subtitle: cfg.subtitle || '',
           background: cfg.background || '',
-          playlist: Array.isArray(cfg.playlist) ? cfg.playlist : [],
+          playlists: Array.isArray(cfg.playlists) ? cfg.playlists : [],
         });
       } catch {
-        setConfig({ title: '音乐馆', subtitle: '', background: '', playlist: [] });
+        setConfig({ title: '音乐馆', subtitle: '', background: '', playlists: [] });
       }
     }).catch(() => {
-      setConfig({ title: '音乐馆', subtitle: '', background: '', playlist: [] });
+      setConfig({ title: '音乐馆', subtitle: '', background: '', playlists: [] });
     }).finally(() => setLoading(false));
   }, []);
 
@@ -91,8 +101,6 @@ export default function MusicPage() {
       return () => clearInterval(interval);
     }
   }, [loading]);
-
-  const currentTrack = config?.playlist[currentIndex] || null;
 
   // Sync audio src when track changes
   useEffect(() => {
@@ -129,22 +137,21 @@ export default function MusicPage() {
   }, []);
 
   const next = useCallback(() => {
-    if (!config?.playlist.length) return;
-    // Loop within playlist
-    setCurrentIndex(i => (i + 1) % config.playlist.length);
+    if (!currentTracks.length) return;
+    setCurrentIndex(i => (i + 1) % currentTracks.length);
     setPlaying(true);
-  }, [config?.playlist.length]);
+  }, [currentTracks.length]);
 
   const prev = useCallback(() => {
-    if (!config?.playlist.length) return;
-    setCurrentIndex(i => (i - 1 + config.playlist.length) % config.playlist.length);
+    if (!currentTracks.length) return;
+    setCurrentIndex(i => (i - 1 + currentTracks.length) % currentTracks.length);
     setPlaying(true);
-  }, [config?.playlist.length]);
+  }, [currentTracks.length]);
 
   const handleEnded = useCallback(() => {
-    if (currentIndex < (config?.playlist.length || 0) - 1) next();
+    if (currentIndex < currentTracks.length - 1) next();
     else setPlaying(false);
-  }, [currentIndex, config?.playlist.length, next]);
+  }, [currentIndex, currentTracks.length, next]);
 
   const formatTime = (s: number) => {
     if (!isFinite(s)) return '0:00';
@@ -196,7 +203,7 @@ export default function MusicPage() {
     );
   }
 
-  if (!config || config.playlist.length === 0) {
+  if (!config || currentTracks.length === 0) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={bgStyle}>
         <Link href="/" className="absolute top-5 left-5 p-2 rounded-xl transition-all hover:bg-white/10 text-white/50 hover:text-white z-20">
@@ -245,7 +252,6 @@ export default function MusicPage() {
         <div className="flex flex-col items-center gap-5 w-full max-w-sm md:max-w-md">
           {/* CD Disc */}
           <div className="relative group">
-            {/* Glow */}
             <div className="absolute -inset-8 rounded-full opacity-30 blur-3xl animate-pulse"
               style={{
                 background: `radial-gradient(circle, hsl(${bgHue}, 70%, 60%) 0%, transparent 70%)`,
@@ -256,13 +262,11 @@ export default function MusicPage() {
               style={{ background: `radial-gradient(circle, hsl(${(bgHue + 60) % 360}, 70%, 60%) 0%, transparent 60%)` }}
             />
 
-            {/* CD body */}
             <div className={`relative w-56 h-56 sm:w-72 sm:h-72 rounded-full shadow-2xl ${playing ? 'cd-spinning' : 'cd-spinning cd-paused'} ${trackTransition ? 'track-changing' : ''}`}
               style={{
                 boxShadow: `0 0 60px hsl(${bgHue}, 70%, 50%, 0.3), 0 20px 60px rgba(0,0,0,0.5),
                             inset 0 -20px 40px rgba(0,0,0,0.3)`,
               }}>
-              {/* Vinyl grooves (concentric rings) */}
               <div className="absolute inset-0 rounded-full" style={{
                 background: `
                   radial-gradient(circle at center,
@@ -278,7 +282,6 @@ export default function MusicPage() {
                 pointerEvents: 'none',
               }} />
 
-              {/* Album art (clipped to circle) */}
               {currentTrack?.cover ? (
                 <img src={currentTrack.cover} alt={currentTrack.title}
                   className="w-full h-full rounded-full object-cover"
@@ -293,7 +296,6 @@ export default function MusicPage() {
                 </div>
               )}
 
-              {/* Center hub */}
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                 <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center"
                   style={{
@@ -378,7 +380,7 @@ export default function MusicPage() {
               }} />
           </div>
 
-          {/* Decorative visualizer bars — animated equalizer */}
+          {/* Decorative visualizer bars */}
           <div className="flex items-end gap-[2px] h-14 w-full max-w-[300px] opacity-50">
             {bars.map((bar, i) => {
               const t = Date.now() / 1000;
@@ -410,10 +412,10 @@ export default function MusicPage() {
           <div className="flex items-center gap-2 mb-3 px-1">
             <ListMusic className="w-4 h-4 text-white/50" />
             <span className="text-xs font-medium text-white/50 uppercase tracking-wider">播放列表</span>
-            <span className="text-xs text-white/30 ml-auto">{config.playlist.length} 首</span>
+            <span className="text-xs text-white/30 ml-auto">{currentTracks.length} 首</span>
           </div>
           <div className="flex-1 overflow-y-auto space-y-1 max-h-[50vh] md:max-h-[60vh] pr-1 music-scrollbar">
-            {config.playlist.map((track, i) => (
+            {currentTracks.map((track, i) => (
               <button key={i} onClick={() => playTrack(i)}
                 className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm transition-all group"
                 style={{

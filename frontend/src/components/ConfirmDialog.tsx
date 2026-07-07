@@ -7,16 +7,23 @@ import { ChevronDown } from 'lucide-react';
 interface ConfirmState {
   message: string;
   resolve: (value: boolean) => void;
+  anchorRect?: { top: number; left: number };
 }
 
-const ConfirmContext = createContext<((message: string) => Promise<boolean>) | null>(null);
+const ConfirmContext = createContext<((message: string, anchorEl?: HTMLElement | null) => Promise<boolean>) | null>(null);
 
 export function ConfirmProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<ConfirmState | null>(null);
 
-  const confirm = useCallback((message: string) => {
+  const confirm = useCallback((message: string, anchorEl?: HTMLElement | null) => {
     return new Promise<boolean>(resolve => {
-      setState({ message, resolve });
+      const target = anchorEl || (document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null);
+      const rect = target?.getBoundingClientRect();
+      setState({
+        message,
+        resolve,
+        anchorRect: rect ? { top: rect.bottom + 4, left: rect.right } : undefined,
+      });
     });
   }, []);
 
@@ -34,22 +41,49 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
     <ConfirmContext.Provider value={confirm}>
       {children}
       {state && (
-        <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 animate-fade-in"
-          style={{ background: 'rgba(0,0,0,0.5)' }}
-          onClick={(e) => { if (e.target === e.currentTarget) handleCancel(); }}>
-          <div className="w-full max-w-sm rounded-2xl p-6 shadow-2xl animate-fade-scale-in"
-            style={{ background: 'var(--card-bg)', border: '1px solid var(--glass-border)', backdropFilter: 'blur(24px)' }}>
-            <p className="text-sm mb-6" style={{ color: 'var(--text-primary)' }}>{state.message}</p>
-            <div className="flex justify-end gap-2">
-              <button onClick={handleCancel}
-                className="px-4 py-2 rounded-xl text-sm btn-glass btn-press"
-                style={{ color: 'var(--text-secondary)' }}>取消</button>
-              <button onClick={handleConfirm}
-                className="px-4 py-2 rounded-xl text-sm font-medium text-white btn-press"
-                style={{ background: 'var(--primary)' }}>确定</button>
+        <>
+          {/* Backdrop only for centered mode */}
+          {!state.anchorRect && (
+            <div className="fixed inset-0 z-[300] animate-fade-in"
+              style={{ background: 'rgba(0,0,0,0.5)' }}
+              onClick={(e) => { if (e.target === e.currentTarget) handleCancel(); }} />
+          )}
+          {state.anchorRect ? (
+            // Anchor-positioned popover
+            <div className="fixed z-[300] animate-fade-in"
+              style={{ top: state.anchorRect.top, left: state.anchorRect.left }}>
+              <div className="rounded-2xl p-5 shadow-2xl"
+                style={{ background: 'var(--card-bg)', border: '1px solid var(--glass-border)', backdropFilter: 'blur(24px)', minWidth: '220px' }}>
+                <p className="text-sm mb-5" style={{ color: 'var(--text-primary)' }}>{state.message}</p>
+                <div className="flex justify-end gap-2">
+                  <button onClick={handleCancel}
+                    className="px-4 py-2 rounded-xl text-sm btn-glass btn-press"
+                    style={{ color: 'var(--text-secondary)' }}>取消</button>
+                  <button onClick={handleConfirm}
+                    className="px-4 py-2 rounded-xl text-sm font-medium text-white btn-press"
+                    style={{ background: 'var(--primary)' }}>确定</button>
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
+          ) : (
+            // Centered modal
+            <div className="fixed inset-0 z-[300] flex items-center justify-center p-4"
+              onClick={(e) => { if (e.target === e.currentTarget) handleCancel(); }}>
+              <div className="w-full max-w-sm rounded-2xl p-6 shadow-2xl animate-fade-scale-in"
+                style={{ background: 'var(--card-bg)', border: '1px solid var(--glass-border)', backdropFilter: 'blur(24px)' }}>
+                <p className="text-sm mb-6" style={{ color: 'var(--text-primary)' }}>{state.message}</p>
+                <div className="flex justify-end gap-2">
+                  <button onClick={handleCancel}
+                    className="px-4 py-2 rounded-xl text-sm btn-glass btn-press"
+                    style={{ color: 'var(--text-secondary)' }}>取消</button>
+                  <button onClick={handleConfirm}
+                    className="px-4 py-2 rounded-xl text-sm font-medium text-white btn-press"
+                    style={{ background: 'var(--primary)' }}>确定</button>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </ConfirmContext.Provider>
   );

@@ -663,6 +663,7 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [mediaPickerType, setMediaPickerType] = useState<'image' | 'video' | 'audio' | null>(null);
   const mediaFileRef = useRef<HTMLInputElement>(null);
+  const mediaPickerBtnRef = useRef<HTMLButtonElement>(null);
   const [mediaUploading, setMediaUploading] = useState(false);
   const previewScrollRef = useRef<HTMLDivElement>(null);
   const syncingRef = useRef<'editor' | 'preview' | null>(null);
@@ -1163,7 +1164,7 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
                   }
                   const Icon = btn.icon!;
                   return (
-                    <button key={i} onClick={btn.action} title={btn.title}
+                    <button key={i} onClick={(e) => { btn.action(); mediaPickerBtnRef.current = e.currentTarget; }} title={btn.title}
                       className="p-1.5 rounded-lg transition-all duration-150 btn-glass hover:scale-110" style={{ color: 'var(--text-secondary)' }}>
                       <Icon className="w-4 h-4" />
                     </button>
@@ -1177,6 +1178,7 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
                 style={{ display: 'none' }} />
               {mediaPickerType && (
                 <MediaPickerModal
+                  triggerRect={mediaPickerBtnRef.current?.getBoundingClientRect()}
                   onSelect={(url) => insertMedia(url, mediaPickerType)}
                   onClose={() => setMediaPickerType(null)}
                   onUpload={() => mediaFileRef.current?.click()}

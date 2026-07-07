@@ -544,7 +544,7 @@ function MusicPlaylistEditor({ value, onChange }: { value: string; onChange: (v:
     setTracks(next);
   }
 
-  const [pickerTarget, setPickerTarget] = useState<{ index: number; field: 'url' | 'cover' } | null>(null);
+  const [pickerTarget, setPickerTarget] = useState<{ index: number; field: 'url' | 'cover'; anchorRect?: DOMRect } | null>(null);
   const [uploadTarget, setUploadTarget] = useState<{ index: number; field: 'url' | 'cover' } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -633,7 +633,7 @@ function MusicPlaylistEditor({ value, onChange }: { value: string; onChange: (v:
                   placeholder="封面图 URL（选填）"
                   className={`${inputClass} flex-1`}
                   style={inputStyle} />
-                <button onClick={() => setPickerTarget({ index: i, field: 'cover' })}
+                <button onClick={(e) => setPickerTarget({ index: i, field: 'cover', anchorRect: e.currentTarget.getBoundingClientRect() })}
                   className="px-3 py-2 rounded-lg text-sm btn-glass whitespace-nowrap flex-shrink-0"
                   style={{ color: 'var(--text-secondary)' }}>
                   <Image className="w-4 h-4" />
@@ -655,7 +655,7 @@ function MusicPlaylistEditor({ value, onChange }: { value: string; onChange: (v:
                   placeholder="音频 URL（支持 mp3/wav/ogg）"
                   className={`${inputClass} flex-1`}
                   style={inputStyle} />
-                <button onClick={() => setPickerTarget({ index: i, field: 'url' })}
+                <button onClick={(e) => setPickerTarget({ index: i, field: 'url', anchorRect: e.currentTarget.getBoundingClientRect() })}
                   className="px-3 py-2 rounded-lg text-sm btn-glass whitespace-nowrap flex-shrink-0"
                   style={{ color: 'var(--text-secondary)' }}>
                   <Headphones className="w-4 h-4" />
@@ -679,6 +679,7 @@ function MusicPlaylistEditor({ value, onChange }: { value: string; onChange: (v:
       {/* Media picker modal */}
       {pickerTarget && (
         <MediaPickerModal
+          triggerRect={pickerTarget.anchorRect}
           onSelect={(url, originalName, thumbnailUrl) => {
             if (pickerTarget.field === 'url') {
               autoFillTrack(pickerTarget.index, url, originalName, thumbnailUrl);
