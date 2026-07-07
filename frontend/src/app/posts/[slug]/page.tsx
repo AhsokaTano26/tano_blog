@@ -8,6 +8,7 @@ import remarkMath from 'remark-math';
 import rehypeHighlight from 'rehype-highlight';
 import rehypeSlug from 'rehype-slug';
 import rehypeKatex from 'rehype-katex';
+import rehypeRaw from 'rehype-raw';
 
 import 'katex/dist/katex.min.css';
 import { api } from '@/lib/api';
@@ -651,7 +652,7 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
           <div ref={contentRef} className="prose dark:prose-invert prose-sm sm:prose-base max-w-none mb-10">
             <ReactMarkdown
               remarkPlugins={[remarkGfm, remarkMath]}
-              rehypePlugins={[rehypeHighlight, rehypeSlug, rehypeKatex]}
+              rehypePlugins={[rehypeHighlight, rehypeSlug, rehypeKatex, rehypeRaw]}
               components={{
                 code: ({ className, children, ...props }: any) => {
                   const match = /language-(\w+)/.exec(className || '');
