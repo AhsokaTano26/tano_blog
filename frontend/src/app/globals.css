@@ -327,6 +327,17 @@ html {
   box-shadow: 0 12px 40px -8px rgba(0, 0, 0, 0.12);
 }
 
+/* ===== Theme Transition ===== */
+html.theme-transitioning,
+html.theme-transitioning *,
+html.theme-transitioning *::before,
+html.theme-transitioning *::after {
+  transition: background-color 0.3s ease,
+              color 0.3s ease,
+              border-color 0.3s ease,
+              box-shadow 0.3s ease !important;
+}
+
 /* ===== Reduced Motion ===== */
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -438,6 +449,42 @@ html {
 }
 .admin-table-row:hover {
   background: rgba(255, 255, 255, 0.05);
+}
+
+/* ===== CD Spin ===== */
+@keyframes cd-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.cd-spinning {
+  animation: cd-spin 8s linear infinite;
+}
+.cd-paused {
+  animation-play-state: paused;
+}
+
+.track-changing {
+  opacity: 0.6;
+  transform: scale(0.95);
+  transition: opacity 0.35s ease, transform 0.35s ease;
+}
+.track-changing-fade {
+  opacity: 0.7;
+  transform: translateY(4px);
+  transition: opacity 0.35s ease, transform 0.35s ease;
+}
+
+
+/* ===== Music page scrollbar ===== */
+.music-scrollbar::-webkit-scrollbar {
+  width: 3px;
+}
+.music-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.15);
+  border-radius: 10px;
+}
+.music-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 /* ===== Selection ===== */

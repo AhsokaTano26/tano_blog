@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/dhowden/tag"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
@@ -78,6 +79,12 @@ func (h *MediaHandler) Upload(c *gin.Context) {
 	f.Close()
 	mimeType := http.DetectContentType(buf[:n])
 
+	// Extract embedded album art from audio files
+	var thumbnailURL string
+	if strings.HasPrefix(mimeType, "audio/") {
+		thumbnailURL, _ = extractAudioCover(filePath, uploadDir, filename)
+	}
+
 	userID, _ := uuid.Parse(c.GetString("user_id"))
 	media := &model.Media{
 		Filename:     filename,
@@ -85,6 +92,7 @@ func (h *MediaHandler) Upload(c *gin.Context) {
 		MimeType:     mimeType,
 		Size:         file.Size,
 		URL:          "/uploads/" + filename,
+		ThumbnailURL: thumbnailURL,
 		UploadedBy:   userID,
 	}
 
@@ -150,8 +158,15 @@ func (h *MediaHandler) Delete(c *gin.Context) {
 		return
 	}
 
+	// Remove source file
 	if err := os.Remove(filepath.Join(h.cfg.Dir, m.Filename)); err != nil && !os.IsNotExist(err) {
-			utils.LogWarn("failed to remove media file", "error", err)
+		utils.LogWarn("failed to remove media file", "error", err)
+	}
+	// Remove thumbnail if present
+	if m.ThumbnailURL != "" {
+		if err := os.Remove(filepath.Join(h.cfg.Dir, filepath.Base(m.ThumbnailURL))); err != nil && !os.IsNotExist(err) {
+			utils.LogWarn("failed to remove media thumbnail", "error", err)
+		}
 	}
 	if err := h.repo.Delete(id); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "删除记录失败"})
@@ -260,6 +275,23 @@ func (h *MediaHandler) BatchDelete(c *gin.Context) {
 		ids[i] = uid
 	}
 
+	// Fetch items to remove files before deleting from DB
+	items, err := h.repo.GetByIDs(ids)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取文件信息失败"})
+		return
+	}
+	for _, item := range items {
+		if err := os.Remove(filepath.Join(h.cfg.Dir, item.Filename)); err != nil && !os.IsNotExist(err) {
+			utils.LogWarn("failed to remove media file", "error", err)
+		}
+		if item.ThumbnailURL != "" {
+			if err := os.Remove(filepath.Join(h.cfg.Dir, filepath.Base(item.ThumbnailURL))); err != nil && !os.IsNotExist(err) {
+				utils.LogWarn("failed to remove media thumbnail", "error", err)
+			}
+		}
+	}
+
 	if err := h.repo.BatchDelete(ids); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "删除失败"})
 		return
@@ -302,4 +334,31 @@ func (h *MediaHandler) BatchUpdateTags(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "已更新"})
+}
+
+// extractAudioCover extracts embedded album art from an audio file and saves it as a thumbnail.
+func extractAudioCover(filePath, uploadDir, filename string) (string, error) {
+	f, err := os.Open(filePath)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	meta, err := tag.ReadFrom(f)
+	if err != nil {
+		return "", err
+	}
+
+	pic := meta.Picture()
+	if pic == nil {
+		return "", nil
+	}
+
+	thumbFilename := strings.TrimSuffix(filename, filepath.Ext(filename)) + "_thumb." + pic.Ext
+	thumbPath := filepath.Join(uploadDir, thumbFilename)
+	if err := os.WriteFile(thumbPath, pic.Data, 0644); err != nil {
+		return "", err
+	}
+
+	return "/uploads/" + thumbFilename, nil
 }

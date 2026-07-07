@@ -136,6 +136,7 @@ type Media struct {
 	MimeType     string     `gorm:"size:100" json:"mime_type"`
 	Size         int64      `json:"size"`
 	URL          string     `gorm:"size:1000;not null" json:"url"`
+	ThumbnailURL string     `gorm:"size:1000" json:"thumbnail_url"`
 	AltText      string     `gorm:"size:500" json:"alt_text"`
 	UploadedBy   uuid.UUID  `gorm:"type:uuid;index" json:"uploaded_by"`
 	CreatedAt    time.Time  `json:"created_at"`

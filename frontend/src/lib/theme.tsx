@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 
 type Theme = 'dark' | 'light' | 'system';
 
@@ -22,6 +22,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setThemeState] = useState<Theme>('dark');
   const [hue, setHueState] = useState(225);
   const [mounted, setMounted] = useState(false);
+  const userChangedRef = useRef(false);
 
   useEffect(() => { setMounted(true); }, []);
 
@@ -39,17 +40,28 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem('theme-hue', String(hue));
   }, [hue, mounted]);
 
-  const applyTheme = useCallback((t: Theme) => {
+  const applyTheme = useCallback((t: Theme, animate = false) => {
+    if (animate) {
+      document.documentElement.classList.add('theme-transitioning');
+    }
     const resolved = t === 'system'
       ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
       : t;
     document.documentElement.classList.toggle('dark', resolved === 'dark');
     document.documentElement.classList.toggle('light', resolved === 'light');
+    if (animate) {
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          document.documentElement.classList.remove('theme-transitioning');
+        }, 350);
+      });
+    }
   }, []);
 
   useEffect(() => {
     if (!mounted) return;
-    applyTheme(theme);
+    applyTheme(theme, userChangedRef.current);
+    userChangedRef.current = false;
     localStorage.setItem('theme', theme);
 
     if (theme === 'system') {
@@ -67,7 +79,10 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       : theme;
   }, [theme]);
 
-  const setTheme = useCallback((t: Theme) => setThemeState(t), []);
+  const setTheme = useCallback((t: Theme) => {
+    userChangedRef.current = true;
+    setThemeState(t);
+  }, []);
   const setHue = useCallback((h: number) => setHueState(h), []);
 
   return (

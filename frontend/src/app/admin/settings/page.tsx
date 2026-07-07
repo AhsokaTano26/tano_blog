@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { api } from '@/lib/api';
-import { Save, Globe, FileText, Palette, MessageSquare, Code, Mail, User, Plus, Trash2 } from 'lucide-react';
+import { Save, Globe, FileText, Palette, MessageSquare, Code, Mail, User, Plus, Trash2, Music, Image, ArrowUp, ArrowDown, Headphones } from 'lucide-react';
 import { Loading } from '@/components/Loading';
 import { Select } from '@/components/ConfirmDialog';
 import { MediaField } from '@/components/MediaField';
+import { MediaPickerModal } from '@/components/MediaField';
 
 const contactTypes = [
   { value: 'email', label: '邮箱' },
@@ -25,6 +26,7 @@ const tabs = [
   { key: 'comment', label: '评论设置', icon: MessageSquare },
   { key: 'email', label: '邮件通知', icon: Mail },
   { key: 'injection', label: '代码注入', icon: Code },
+  { key: 'music', label: '音乐播放器', icon: Music },
 ];
 
 export default function AdminSettings() {
@@ -453,6 +455,13 @@ export default function AdminSettings() {
             </div>
           )}
 
+          {activeTab === 'music' && (
+            <MusicPlaylistEditor
+              value={config.music_playlist || ''}
+              onChange={v => setConfig({ ...config, music_playlist: v })}
+            />
+          )}
+
           <div className="pt-4 mt-6" style={{ borderTop: '1px solid var(--glass-border)' }}>
             <button onClick={handleSave} disabled={saving}
               className="flex items-center gap-1.5 px-6 py-2.5 rounded-lg text-sm font-medium text-white disabled:opacity-50 transition-colors"
@@ -463,6 +472,232 @@ export default function AdminSettings() {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ── Music Playlist Editor ── */
+function MusicPlaylistEditor({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const inputStyle = {
+    background: 'var(--glass-bg)',
+    border: '1px solid var(--glass-border)',
+    color: 'var(--text-primary)',
+  };
+  const inputClass = "w-full px-3 py-2 rounded-lg text-sm outline-none";
+
+  let tracks: any[] = [];
+  let parseError = false;
+  try {
+    tracks = JSON.parse(value || '[]');
+    if (!Array.isArray(tracks)) tracks = [];
+  } catch {
+    parseError = true;
+    tracks = [];
+  }
+
+  function setTracks(newTracks: any[]) {
+    onChange(JSON.stringify(newTracks));
+  }
+
+  function updateTrack(i: number, field: string, val: string) {
+    const next = [...tracks];
+    next[i] = { ...next[i], [field]: val };
+    setTracks(next);
+  }
+
+  function addTrack() {
+    setTracks([...tracks, { title: '', artist: '', url: '', cover: '' }]);
+  }
+
+  function parseFilename(name: string): { title: string; artist: string } {
+    let clean = name.replace(/\.(mp3|wav|ogg|flac|aac|m4a|wma|opus)$/i, '').trim();
+    const sepMatch = clean.match(/^(.+?)\s*[–—-]\s*(.+)$/);
+    if (sepMatch) {
+      return { title: sepMatch[2].trim(), artist: sepMatch[1].trim() };
+    }
+    return { title: clean, artist: '' };
+  }
+
+  function autoFillTrack(i: number, url: string, originalName?: string, thumbnailUrl?: string) {
+    const next = [...tracks];
+    next[i] = { ...next[i], url };
+    if (originalName && !next[i].title) {
+      const { title, artist } = parseFilename(originalName);
+      next[i].title = title;
+      if (artist && !next[i].artist) next[i].artist = artist;
+    }
+    if (thumbnailUrl && !next[i].cover) {
+      next[i].cover = thumbnailUrl;
+    }
+    setTracks(next);
+  }
+
+  function removeTrack(i: number) {
+    setTracks(tracks.filter((_, idx) => idx !== i));
+  }
+
+  function moveTrack(i: number, dir: -1 | 1) {
+    const next = [...tracks];
+    const j = i + dir;
+    if (j < 0 || j >= next.length) return;
+    [next[i], next[j]] = [next[j], next[i]];
+    setTracks(next);
+  }
+
+  const [pickerTarget, setPickerTarget] = useState<{ index: number; field: 'url' | 'cover' } | null>(null);
+  const [uploadTarget, setUploadTarget] = useState<{ index: number; field: 'url' | 'cover' } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || !uploadTarget) return;
+    const { index, field } = uploadTarget;
+    try {
+      const res = await api.admin.media.upload(file);
+      const url = res.media?.url;
+      if (url) updateTrack(index, field, url);
+    } catch (err) {
+      console.error('Upload failed', err);
+    }
+    setUploadTarget(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }
+
+  return (
+    <div className="space-y-4 max-w-2xl">
+      {parseError && (
+        <div className="px-4 py-2.5 rounded-lg text-sm" style={{ color: 'var(--color-error)', background: 'var(--glass-bg)' }}>
+          播放列表数据格式错误
+        </div>
+      )}
+
+      {/* Track list */}
+      <div className="space-y-3">
+        {tracks.length === 0 && (
+          <div className="text-center py-8 rounded-xl" style={{ background: 'var(--surface-bg)' }}>
+            <Music className="w-10 h-10 mx-auto mb-2" style={{ color: 'var(--text-info)' }} />
+            <p className="text-sm" style={{ color: 'var(--text-info)' }}>暂无歌曲</p>
+            <p className="text-xs mt-1" style={{ color: 'var(--text-info)', opacity: 0.6 }}>点击下方按钮添加</p>
+          </div>
+        )}
+        {tracks.map((track, i) => (
+          <div key={i} className="rounded-xl p-4 space-y-3"
+            style={{ background: 'var(--surface-bg)', border: '1px solid var(--glass-border)' }}>
+            {/* Header: index + title + actions */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium w-6 text-center flex-shrink-0" style={{ color: 'var(--text-info)' }}>
+                #{i + 1}
+              </span>
+              <input type="text" value={track.title || ''}
+                onChange={e => updateTrack(i, 'title', e.target.value)}
+                placeholder="歌曲标题"
+                className={`${inputClass} flex-1`}
+                style={inputStyle} />
+              <div className="flex gap-1 flex-shrink-0">
+                <button onClick={() => moveTrack(i, -1)} disabled={i === 0}
+                  className="p-1.5 rounded-lg transition-colors disabled:opacity-30 hover:bg-white/10"
+                  style={{ color: 'var(--text-info)' }} title="上移">
+                  <ArrowUp className="w-4 h-4" />
+                </button>
+                <button onClick={() => moveTrack(i, 1)} disabled={i === tracks.length - 1}
+                  className="p-1.5 rounded-lg transition-colors disabled:opacity-30 hover:bg-white/10"
+                  style={{ color: 'var(--text-info)' }} title="下移">
+                  <ArrowDown className="w-4 h-4" />
+                </button>
+                <button onClick={() => removeTrack(i)}
+                  className="p-1.5 rounded-lg transition-colors hover:bg-red-500/10"
+                  style={{ color: 'var(--color-error)' }} title="删除">
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Artist */}
+            <input type="text" value={track.artist || ''}
+              onChange={e => updateTrack(i, 'artist', e.target.value)}
+              placeholder="艺术家（选填）"
+              className={`${inputClass}`}
+              style={inputStyle} />
+
+            {/* Cover */}
+            <div>
+              <label className="block text-xs mb-1" style={{ color: 'var(--text-info)' }}>封面图</label>
+              <div className="flex items-center gap-2">
+                {track.cover && (
+                  <img src={track.cover} alt="cover"
+                    className="w-10 h-10 rounded-lg object-cover flex-shrink-0"
+                    onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                )}
+                <input type="text" value={track.cover || ''}
+                  onChange={e => updateTrack(i, 'cover', e.target.value)}
+                  placeholder="封面图 URL（选填）"
+                  className={`${inputClass} flex-1`}
+                  style={inputStyle} />
+                <button onClick={() => setPickerTarget({ index: i, field: 'cover' })}
+                  className="px-3 py-2 rounded-lg text-sm btn-glass whitespace-nowrap flex-shrink-0"
+                  style={{ color: 'var(--text-secondary)' }}>
+                  <Image className="w-4 h-4" />
+                </button>
+                <button onClick={() => { setUploadTarget({ index: i, field: 'cover' }); (fileInputRef.current as HTMLInputElement)?.click(); }}
+                  className="px-3 py-2 rounded-lg text-sm text-white whitespace-nowrap flex-shrink-0"
+                  style={{ background: 'var(--primary)' }}>
+                  上传
+                </button>
+              </div>
+            </div>
+
+            {/* Audio URL */}
+            <div>
+              <label className="block text-xs mb-1" style={{ color: 'var(--text-info)' }}>音频文件</label>
+              <div className="flex items-center gap-2">
+                <input type="text" value={track.url || ''}
+                  onChange={e => updateTrack(i, 'url', e.target.value)}
+                  placeholder="音频 URL（支持 mp3/wav/ogg）"
+                  className={`${inputClass} flex-1`}
+                  style={inputStyle} />
+                <button onClick={() => setPickerTarget({ index: i, field: 'url' })}
+                  className="px-3 py-2 rounded-lg text-sm btn-glass whitespace-nowrap flex-shrink-0"
+                  style={{ color: 'var(--text-secondary)' }}>
+                  <Headphones className="w-4 h-4" />
+                </button>
+                <button onClick={() => { setUploadTarget({ index: i, field: 'url' }); (fileInputRef.current as HTMLInputElement)?.click(); }}
+                  className="px-3 py-2 rounded-lg text-sm text-white whitespace-nowrap flex-shrink-0"
+                  style={{ background: 'var(--primary)' }}>
+                  上传
+                </button>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Hidden file input */}
+      <input ref={fileInputRef} type="file" accept="audio/*,image/*"
+        onChange={handleUpload}
+        style={{ display: 'none' }} />
+
+      {/* Media picker modal */}
+      {pickerTarget && (
+        <MediaPickerModal
+          onSelect={(url, originalName, thumbnailUrl) => {
+            if (pickerTarget.field === 'url') {
+              autoFillTrack(pickerTarget.index, url, originalName, thumbnailUrl);
+            } else {
+              updateTrack(pickerTarget.index, pickerTarget.field, url);
+            }
+            setPickerTarget(null);
+          }}
+          onClose={() => setPickerTarget(null)}
+        />
+      )}
+
+      {/* Add button */}
+      <button onClick={addTrack}
+        className="w-full flex items-center justify-center gap-1.5 px-4 py-3 rounded-xl text-sm transition-all btn-glass hover:bg-white/10"
+        style={{ color: 'var(--text-secondary)' }}>
+        <Plus className="w-4 h-4" />
+        添加歌曲
+      </button>
     </div>
   );
 }

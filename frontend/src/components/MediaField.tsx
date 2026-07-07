@@ -104,7 +104,7 @@ const typeTabs = [
   { key: 'document', label: '文档' },
 ];
 
-export function MediaPickerModal({ onSelect, onClose, onUpload }: { onSelect: (url: string) => void; onClose: () => void; onUpload?: () => void }) {
+export function MediaPickerModal({ onSelect, onClose, onUpload }: { onSelect: (url: string, originalName?: string, thumbnailUrl?: string) => void; onClose: () => void; onUpload?: () => void }) {
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -217,12 +217,12 @@ export function MediaPickerModal({ onSelect, onClose, onUpload }: { onSelect: (u
           {filtered.map(item => (
             <div
               key={item.id}
-              onClick={() => onSelect(item.url)}
+              onClick={() => onSelect(item.url, item.original_name || item.filename || '', item.thumbnail_url || '')}
               className="cursor-pointer rounded-xl overflow-hidden hover:opacity-80 transition-opacity"
               style={{ background: 'var(--card-bg)', border: '1px solid var(--glass-border)' }}
               title={item.original_name || item.filename || ''}
             >
-              {item.mime_type?.startsWith('image/') ? (
+              {item.thumbnail_url || item.mime_type?.startsWith('image/') ? (
                 <img
                   src={item.thumbnail_url || item.url}
                   alt={item.original_name || ''}

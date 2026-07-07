@@ -2,7 +2,6 @@ package repository
 
 import (
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -812,6 +811,12 @@ func (r *MediaRepo) GetByID(id uuid.UUID) (*model.Media, error) {
 	return &m, err
 }
 
+func (r *MediaRepo) GetByIDs(ids []uuid.UUID) ([]model.Media, error) {
+	var items []model.Media
+	err := r.db.Where("id IN ?", ids).Find(&items).Error
+	return items, err
+}
+
 func (r *MediaRepo) UpdateTags(mediaID uuid.UUID, tagIDs []uuid.UUID) error {
 	var m model.Media
 	m.ID = mediaID
@@ -827,11 +832,6 @@ func (r *MediaRepo) UpdateTags(mediaID uuid.UUID, tagIDs []uuid.UUID) error {
 func (r *MediaRepo) BatchDelete(ids []uuid.UUID) error {
 	if len(ids) == 0 {
 		return nil
-	}
-	var items []model.Media
-	r.db.Where("id IN ?", ids).Find(&items)
-	for _, item := range items {
-		os.Remove(item.URL)
 	}
 	return r.db.Where("id IN ?", ids).Delete(&model.Media{}).Error
 }

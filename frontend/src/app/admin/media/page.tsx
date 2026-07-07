@@ -12,6 +12,7 @@ const SITE_URL = typeof window !== 'undefined' ? window.location.origin : 'https
 type MediaTag = { id: string; name: string };
 type MediaItem = {
   id: string;
+  thumbnail_url?: string;
   url: string;
   original_name: string;
   filename: string;
@@ -585,6 +586,8 @@ export default function AdminMedia() {
                           </div>
                         </div>
                       </div>
+                    ) : item.thumbnail_url ? (
+                      <img src={item.thumbnail_url} alt={item.original_name || item.filename} className="w-full h-full object-cover" />
                     ) : item.mime_type?.startsWith('audio/') ? (
                       <div className="w-full h-full flex items-center justify-center"
                         style={{ background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)' }}>
@@ -688,6 +691,8 @@ export default function AdminMedia() {
                                 </div>
                               </div>
                             </div>
+                          ) : item.thumbnail_url ? (
+                            <img src={item.thumbnail_url} alt={item.original_name || item.filename} className="w-14 h-12 rounded object-cover" />
                           ) : item.mime_type?.startsWith('audio/') ? (
                             <div className="w-14 h-12 rounded flex items-center justify-center"
                               style={{ background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)' }}>
@@ -783,14 +788,27 @@ export default function AdminMedia() {
                     className="max-w-full max-h-[70vh] w-full"
                     style={{ background: '#000' }} />
                 ) : type === 'audio' ? (
-                  <div className="w-full p-8 sm:p-12 flex flex-col items-center gap-6"
-                    style={{ background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)', minHeight: '280px' }}>
-                    <div className="w-24 h-24 rounded-full flex items-center justify-center"
+                  <div className="w-full p-8 sm:p-12 flex flex-col items-center gap-6 relative"
+                    style={{
+                      background: item.thumbnail_url
+                        ? `linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)`
+                        : 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
+                      minHeight: '280px',
+                    }}>
+                    {item.thumbnail_url && (
+                      <img src={item.thumbnail_url} alt=""
+                        className="absolute inset-0 w-full h-full object-contain opacity-30 pointer-events-none" />
+                    )}
+                    <div className="w-24 h-24 rounded-full overflow-hidden flex items-center justify-center relative z-10"
                       style={{ background: 'var(--glass-bg)', border: '2px solid var(--glass-border)' }}>
-                      <Music className="w-10 h-10" style={{ color: 'var(--primary)' }} />
+                      {item.thumbnail_url ? (
+                        <img src={item.thumbnail_url} alt={item.original_name || item.filename} className="w-full h-full object-cover" />
+                      ) : (
+                        <Music className="w-10 h-10" style={{ color: 'var(--primary)' }} />
+                      )}
                     </div>
                     <audio src={item.url} controls autoPlay
-                      className="w-full max-w-md" />
+                      className="w-full max-w-md relative z-10" />
                   </div>
                 ) : (
                   <div className="p-12 flex flex-col items-center gap-4">

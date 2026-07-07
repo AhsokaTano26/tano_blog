@@ -6,7 +6,7 @@ import { useTheme } from '@/lib/theme';
 import {
   FileText, FolderTree, Tags, MessageSquare, Image, Settings, ScrollText,
   LogOut, Home, Sun, Moon, Monitor, UserCircle, Database, LayoutDashboard,
-  Bookmark, Link, Menu, Calendar, BarChart3, Bell, HelpCircle
+  Bookmark, Link, Menu, Calendar, BarChart3, Bell, HelpCircle, Music
 } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import NavLink from 'next/link';
@@ -35,6 +35,7 @@ const navSections = [
       { href: '/admin/access-logs', label: '日志', icon: ScrollText },
       { href: '/admin/analytics', label: '统计', icon: BarChart3 },
       { href: '/admin/backup', label: '备份', icon: Database },
+	      { href: '/admin/music-page', label: '音乐馆', icon: Music },
 	      { href: '/admin/nav-links', label: '导航', icon: Menu },
       { href: '/admin/help', label: '帮助', icon: HelpCircle },
     ],
