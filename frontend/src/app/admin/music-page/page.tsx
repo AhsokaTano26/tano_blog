@@ -137,7 +137,7 @@ export default function AdminMusicPage() {
       updates.title = title;
       if (artist && !track.artist) updates.artist = artist;
     }
-    if (thumbnailUrl && !track.cover) {
+    if (thumbnailUrl) {
       updates.cover = thumbnailUrl;
     }
     updateTrackInPlaylist(plId, index, updates);

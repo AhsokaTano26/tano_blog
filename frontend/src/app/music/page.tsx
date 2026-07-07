@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { api } from '@/lib/api';
 import { Play, Pause, SkipForward, SkipBack, Volume2, VolumeX, ListMusic, Music, ChevronLeft } from 'lucide-react';
-import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 
 interface Track {
   title: string;
@@ -27,19 +27,15 @@ interface MusicPageConfig {
 }
 
 const barCount = 64;
-const bars = Array.from({ length: barCount }).map((_, i) => {
-  const freq = i / barCount;
-  return {
-    base: 6 + Math.sin(freq * Math.PI) * 20,
-    speed: 0.8 + Math.sin(freq * Math.PI * 3) * 0.6 + Math.random() * 0.3,
-    phase: Math.random() * Math.PI * 2,
-    hueOff: i * 2.8,
-  };
-});
+const barHues = Array.from({ length: barCount }).map((_, i) => i * 2.8);
 
 export default function MusicPage() {
+  const router = useRouter();
   const [config, setConfig] = useState<MusicPageConfig | null>(null);
   const [loading, setLoading] = useState(true);
+  const [splashDone, setSplashDone] = useState(false);
+  const [exiting, setExiting] = useState(false);
+  const splashTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   // Player state
   const [playing, setPlaying] = useState(false);
@@ -48,13 +44,37 @@ export default function MusicPage() {
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(0.5);
   const [showPlaylist, setShowPlaylist] = useState(true);
+  const [currentPlaylistIndex, setCurrentPlaylistIndex] = useState(0);
   const [bgHue, setBgHue] = useState(225);
   const [trackTransition, setTrackTransition] = useState(false);
   const prevIndexRef = useRef(currentIndex);
+  const [freqData, setFreqData] = useState<Uint8Array>(new Uint8Array(barCount));
+  const animFrameRef = useRef(0);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const sourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null);
 
   const audioRef = useRef<HTMLAudioElement>(null);
 
-  const currentTracks = config?.playlists[0]?.tracks || [];
+  // Particle system refs (no re-renders)
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const bgHueRef = useRef(bgHue);
+  const freqDataRef = useRef(freqData);
+  const playingRef = useRef(playing);
+
+  // Keep animation refs in sync with state
+  useEffect(() => { bgHueRef.current = bgHue; }, [bgHue]);
+  useEffect(() => { freqDataRef.current = freqData; }, [freqData]);
+  useEffect(() => { playingRef.current = playing; }, [playing]);
+
+  // Transition refs for particle entrance/exit
+  const splashDoneRef = useRef(false);
+  const exitingRef = useRef(false);
+  useEffect(() => { splashDoneRef.current = splashDone; }, [splashDone]);
+  useEffect(() => { exitingRef.current = exiting; }, [exiting]);
+
+  const currentPlaylist = config?.playlists[currentPlaylistIndex];
+  const currentTracks = currentPlaylist?.tracks || [];
   const currentTrack = currentTracks[currentIndex] || null;
 
   // Track change animation
@@ -92,6 +112,58 @@ export default function MusicPage() {
     }).finally(() => setLoading(false));
   }, []);
 
+  // Splash screen timing — wait for config then show splash for 2s
+  useEffect(() => {
+    if (!loading) {
+      splashTimerRef.current = setTimeout(() => setSplashDone(true), 2000);
+      return () => clearTimeout(splashTimerRef.current);
+    }
+  }, [loading]);
+
+  // Setup Web Audio API analyser (once, on first user interaction)
+  const setupAnalyser = useCallback(() => {
+    if (analyserRef.current || !audioRef.current) return;
+    try {
+      const ctx = new AudioContext();
+      audioContextRef.current = ctx;
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 128;
+      analyserRef.current = analyser;
+      const source = ctx.createMediaElementSource(audioRef.current);
+      source.connect(analyser);
+      analyser.connect(ctx.destination);
+      sourceNodeRef.current = source;
+    } catch (e) {
+      // AudioContext unavailable (e.g. already connected, or not supported)
+    }
+  }, []);
+
+  // Read frequency data from analyser when playing
+  useEffect(() => {
+    if (!playing || !analyserRef.current) return;
+
+    audioContextRef.current?.resume();
+
+    const update = () => {
+      if (!analyserRef.current) return;
+      const buf = new Uint8Array(analyserRef.current.frequencyBinCount);
+      analyserRef.current.getByteFrequencyData(buf);
+      setFreqData(buf);
+      animFrameRef.current = requestAnimationFrame(update);
+    };
+    animFrameRef.current = requestAnimationFrame(update);
+
+    return () => cancelAnimationFrame(animFrameRef.current);
+  }, [playing]);
+
+  // Cleanup AudioContext on unmount
+  useEffect(() => {
+    return () => {
+      cancelAnimationFrame(animFrameRef.current);
+      audioContextRef.current?.close();
+    };
+  }, []);
+
   // Animated background hue shift
   useEffect(() => {
     if (!loading) {
@@ -101,6 +173,177 @@ export default function MusicPage() {
       return () => clearInterval(interval);
     }
   }, [loading]);
+
+  // Particle canvas animation with entrance burst & exit explosion
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const mouse = { x: -9999, y: -9999 };
+    const onMove = (e: MouseEvent) => { mouse.x = e.clientX; mouse.y = e.clientY; };
+    const onLeave = () => { mouse.x = -9999; mouse.y = -9999; };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseleave', onLeave);
+
+    let animId: number;
+    let w = 0, h = 0;
+    const cx = () => w / 2;
+    const cy = () => h / 2;
+
+    const resize = () => {
+      w = window.innerWidth;
+      h = window.innerHeight;
+      canvas!.width = w;
+      canvas!.height = h;
+    };
+    window.addEventListener('resize', resize);
+    resize();
+
+    // ─── Particles — 1500, larger, no constellation lines ───
+    const particles: {
+      x: number; y: number; size: number; baseSize: number;
+      homeX: number; homeY: number;
+      speedX: number; speedY: number; hueOff: number; opacity: number;
+      phase: number; twinkleSpeed: number;
+      exitVX: number; exitVY: number;
+    }[] = [];
+
+    const count = 1500;
+    const maxRadius = Math.min(w, h) * 0.15;
+    for (let i = 0; i < count; i++) {
+      const homeX = Math.random() * (w + 400) - 200;
+      const homeY = Math.random() * (h + 400) - 200;
+      const angle = Math.random() * Math.PI * 2;
+      const radius = Math.random() * maxRadius;
+      particles.push({
+        x: cx() + Math.cos(angle) * radius,
+        y: cy() + Math.sin(angle) * radius,
+        size: Math.random() * 2.5 + 1.5,
+        baseSize: 0,
+        homeX, homeY,
+        speedY: -(Math.random() * 0.4 + 0.1),
+        speedX: (Math.random() - 0.5) * 0.25,
+        hueOff: Math.random() * 120 - 60,
+        opacity: Math.random() * 0.4 + 0.12,
+        phase: Math.random() * Math.PI * 2,
+        twinkleSpeed: Math.random() * 0.025 + 0.005,
+        exitVX: 0, exitVY: 0,
+      });
+    }
+    for (const p of particles) p.baseSize = p.size;
+
+    let time = 0;
+    let prevSplashDone = false;
+    let burstStart = -1;
+    let exitStart = -1;
+
+    const animate = () => {
+      const now = performance.now();
+      ctx!.clearRect(0, 0, w, h);
+      const hue = bgHueRef.current;
+      const splash = splashDoneRef.current;
+      const exiting = exitingRef.current;
+
+      const avgFreq = playingRef.current
+        ? Array.from(freqDataRef.current).reduce((a, b) => a + b, 0) / freqDataRef.current.length / 255
+        : 0;
+      const pulse = 1 + avgFreq * 0.5;
+      time += 1;
+
+      // ─── Detect state transitions ───
+      if (splash && !prevSplashDone) burstStart = now;
+      prevSplashDone = splash;
+
+      if (exiting && exitStart < 0) {
+        exitStart = now;
+        for (const p of particles) {
+          const dx = p.x - cx();
+          const dy = p.y - cy();
+          const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+          const strength = 5 + Math.random() * 8;
+          p.exitVX = (dx / dist) * strength + (Math.random() - 0.5) * 4;
+          p.exitVY = (dy / dist) * strength + (Math.random() - 0.5) * 4;
+        }
+      }
+
+      const burstElapsed = burstStart > 0 ? (now - burstStart) / 1200 : 0;
+      const burstProgress = Math.min(burstElapsed, 1);
+      const burstEased = 1 - Math.pow(1 - burstProgress, 3);
+
+      const exitElapsed = exitStart > 0 ? (now - exitStart) / 1000 : 0;
+      const exitProgress = Math.min(exitElapsed, 1);
+      const exitEased = exitProgress;
+
+      // ─── Update & draw ───
+      for (const p of particles) {
+        if (exitStart > 0) {
+          p.x += p.exitVX;
+          p.y += p.exitVY;
+          const scale = 1 + exitEased * 4;
+          const fade = 1 - exitEased;
+          const r = p.size * scale;
+          ctx!.beginPath();
+          ctx!.arc(p.x, p.y, r * 4, 0, Math.PI * 2);
+          ctx!.fillStyle = `hsla(${(hue + p.hueOff + 360) % 360}, 80%, 70%, ${fade * 0.08})`;
+          ctx!.fill();
+          ctx!.beginPath();
+          ctx!.arc(p.x, p.y, r, 0, Math.PI * 2);
+          ctx!.fillStyle = `hsla(${(hue + p.hueOff + 360) % 360}, 90%, 80%, ${fade * p.opacity})`;
+          ctx!.fill();
+          continue;
+        }
+
+        // Mouse repulsion
+        const dx = p.x - mouse.x;
+        const dy = p.y - mouse.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 120) {
+          const force = (120 - dist) / 120 * 1.2;
+          p.x += (dx / dist) * force;
+          p.y += (dy / dist) * force;
+        }
+
+        if (burstStart > 0 && burstProgress < 1) {
+          const startX = cx();
+          const startY = cy();
+          const jitter = (Math.random() - 0.5) * 3 * (1 - burstEased);
+          p.x = startX + (p.homeX - startX) * burstEased + jitter;
+          p.y = startY + (p.homeY - startY) * burstEased + jitter;
+        } else {
+          p.x += p.speedX;
+          p.y += p.speedY;
+          if (p.y < -50) { p.y = h + 50; p.x = Math.random() * w; }
+          if (p.x < -50) p.x = w + 50;
+          if (p.x > w + 50) p.x = -50;
+        }
+
+        const twinkle = 0.6 + 0.4 * Math.sin(time * p.twinkleSpeed + p.phase);
+        const sizePulse = p.baseSize * pulse;
+        const displayOpacity = p.opacity * twinkle;
+
+        ctx!.beginPath();
+        ctx!.arc(p.x, p.y, sizePulse * 4, 0, Math.PI * 2);
+        ctx!.fillStyle = `hsla(${(hue + p.hueOff + 360) % 360}, 65%, 60%, ${displayOpacity * 0.06})`;
+        ctx!.fill();
+        ctx!.beginPath();
+        ctx!.arc(p.x, p.y, sizePulse, 0, Math.PI * 2);
+        ctx!.fillStyle = `hsla(${(hue + p.hueOff + 360) % 360}, 80%, 75%, ${displayOpacity})`;
+        ctx!.fill();
+      }
+
+      animId = requestAnimationFrame(animate);
+    };
+    animate();
+
+    return () => {
+      cancelAnimationFrame(animId);
+      window.removeEventListener('resize', resize);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseleave', onLeave);
+    };
+  }, []);
 
   // Sync audio src when track changes
   useEffect(() => {
@@ -127,14 +370,16 @@ export default function MusicPage() {
       audioRef.current.pause();
       setPlaying(false);
     } else {
+      setupAnalyser();
       audioRef.current.play().then(() => setPlaying(true)).catch(() => {});
     }
-  }, [playing, currentTrack]);
+  }, [playing, currentTrack, setupAnalyser]);
 
   const playTrack = useCallback((index: number) => {
+    setupAnalyser();
     setCurrentIndex(index);
     setPlaying(true);
-  }, []);
+  }, [setupAnalyser]);
 
   const next = useCallback(() => {
     if (!currentTracks.length) return;
@@ -152,6 +397,12 @@ export default function MusicPage() {
     if (currentIndex < currentTracks.length - 1) next();
     else setPlaying(false);
   }, [currentIndex, currentTracks.length, next]);
+
+  const handleBack = useCallback(() => {
+    if (exiting) return;
+    setExiting(true);
+    setTimeout(() => router.push('/'), 900);
+  }, [exiting, router]);
 
   const formatTime = (s: number) => {
     if (!isFinite(s)) return '0:00';
@@ -189,53 +440,193 @@ export default function MusicPage() {
         `,
       };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center" style={bgStyle}>
-        <Link href="/" className="absolute top-5 left-5 p-2 rounded-xl transition-all hover:bg-white/10 text-white/50 hover:text-white z-20">
-          <ChevronLeft className="w-5 h-5" />
-        </Link>
-        <div className="flex flex-col items-center gap-4">
-          <Music className="w-12 h-12 animate-pulse" style={{ color: 'var(--primary)' }} />
-          <span className="text-sm" style={{ color: 'var(--text-info)' }}>加载中...</span>
-        </div>
-      </div>
-    );
-  }
+  const hasAnyTracks = config?.playlists.some(p => p.tracks.length > 0);
+  const showPlayer = splashDone && config && hasAnyTracks;
+  const playerConfig = config!; // non-null: only used when showPlayer is true
 
-  if (!config || currentTracks.length === 0) {
-    return (
-      <div className="min-h-screen flex items-center justify-center" style={bgStyle}>
-        <Link href="/" className="absolute top-5 left-5 p-2 rounded-xl transition-all hover:bg-white/10 text-white/50 hover:text-white z-20">
-          <ChevronLeft className="w-5 h-5" />
-        </Link>
-        <div className="text-center">
-          <Music className="w-16 h-16 mx-auto mb-4" style={{ color: 'var(--text-info)' }} />
-          <p className="text-lg mb-2" style={{ color: 'var(--text-secondary)' }}>暂无音乐</p>
-          <p className="text-sm" style={{ color: 'var(--text-info)' }}>管理员还没有添加任何歌曲</p>
-        </div>
-      </div>
-    );
-  }
+  // Shared background for splash/exit overlays — dark gradient + optional bg image
+  const overlayBg = (bgUrl: string | undefined): React.CSSProperties => bgUrl
+    ? {
+        backgroundImage: `
+          linear-gradient(135deg,
+            hsla(${bgHue}, 60%, 5%, 0.65) 0%,
+            hsla(${(bgHue + 30) % 360}, 50%, 8%, 0.60) 100%
+          ),
+          url(${JSON.stringify(bgUrl)})
+        `,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+      }
+    : { background: `hsla(${bgHue}, 60%, 5%, 0.7)` };
 
   return (
-    <div className="min-h-screen flex flex-col transition-colors duration-1000"
+    <div className="min-h-screen flex flex-col overflow-hidden"
       style={{ ...bgStyle, color: 'var(--text-primary)' }}>
+      {/* Particle canvas background */}
+      <canvas ref={canvasRef}
+        className="fixed inset-0 w-full h-full pointer-events-none"
+        style={{ zIndex: 199 }} />
+
+      {/* ─── Splash Screen ─── */}
+      {!splashDone && (
+        <div className={`fixed inset-0 z-[200] flex flex-col items-center justify-center transition-all duration-1000 ${splashDone ? 'opacity-0 scale-110' : 'opacity-100'}`}
+          style={overlayBg(config?.background)}>
+          {/* Expanding light rings */}
+          <div className="absolute inset-0 flex items-center justify-center">
+            {[0, 1, 2, 3].map(i => (
+              <div key={i} className="absolute rounded-full animate-pulse"
+                style={{
+                  width: `${120 + i * 80}px`,
+                  height: `${120 + i * 80}px`,
+                  border: `1px solid hsla(${(bgHue + i * 30) % 360}, 80%, 60%, ${0.3 - i * 0.06})`,
+                  animationDelay: `${i * 0.4}s`,
+                  animationDuration: '3s',
+                  opacity: 0,
+                }} />
+            ))}
+          </div>
+
+          {/* Spinning record */}
+          <div className="relative mb-8">
+            <div className="w-40 h-40 rounded-full animate-spin-slow"
+              style={{
+                background: `linear-gradient(135deg, #1a1a2e, #16213e)`,
+                boxShadow: `0 0 80px hsl(${bgHue}, 70%, 50%, 0.3), 0 0 160px hsl(${(bgHue + 60) % 360}, 70%, 50%, 0.15)`,
+              }}>
+              <div className="w-full h-full rounded-full flex items-center justify-center relative"
+                style={{
+                  background: `
+                    radial-gradient(circle at center,
+                      transparent 38%,
+                      hsla(${bgHue}, 70%, 50%, 0.15) 38.5%, transparent 39%,
+                      hsla(${(bgHue + 60) % 360}, 60%, 50%, 0.1) 45%, transparent 45.5%,
+                      hsla(${(bgHue + 30) % 360}, 70%, 50%, 0.12) 52%, transparent 52.5%,
+                      hsla(${(bgHue + 90) % 360}, 60%, 50%, 0.08) 60%, transparent 60.5%
+                    )
+                  `,
+                }}>
+                <div className="w-10 h-10 rounded-full flex items-center justify-center"
+                  style={{ background: `radial-gradient(circle, hsl(${bgHue}, 70%, 60%), hsl(${bgHue}, 50%, 25%))` }}>
+                  <Music className="w-5 h-5 text-white/80" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Title */}
+          <h1 className="text-3xl font-bold tracking-widest animate-fade-in-up"
+            style={{ color: '#fff', animationDelay: '0.5s', animationFillMode: 'both' }}>
+            {config?.title || '音乐馆'}
+          </h1>
+          {config?.subtitle && (
+            <p className="text-sm mt-3 tracking-wide animate-fade-in-up"
+              style={{ color: 'rgba(255,255,255,0.5)', animationDelay: '0.8s', animationFillMode: 'both' }}>
+              {config.subtitle}
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* ─── Exit Overlay ─── */}
+      {exiting && (
+        <div className="fixed inset-0 z-[200] flex flex-col items-center justify-center animate-fade-in"
+          style={overlayBg(config?.background)}>
+          {/* Contracting light rings */}
+          <div className="absolute inset-0 flex items-center justify-center">
+            {[0, 1, 2, 3].map(i => (
+              <div key={i} className="absolute rounded-full"
+                style={{
+                  width: `${200 - i * 40}px`,
+                  height: `${200 - i * 40}px`,
+                  border: `1px solid hsla(${(bgHue + i * 30) % 360}, 80%, 60%, ${0.2 - i * 0.04})`,
+                  animation: 'ping 1s ease-out infinite',
+                  animationDelay: `${i * 0.15}s`,
+                }} />
+            ))}
+          </div>
+
+          {/* Slowing spinning record */}
+          <div className="relative mb-8">
+            <div className="w-32 h-32 rounded-full animate-spin-slow"
+              style={{
+                background: `linear-gradient(135deg, #1a1a2e, #16213e)`,
+                boxShadow: `0 0 60px hsl(${bgHue}, 70%, 50%, 0.25), 0 0 120px hsl(${(bgHue + 60) % 360}, 70%, 50%, 0.1)`,
+                animationDuration: '3s',
+              }}>
+              <div className="w-full h-full rounded-full flex items-center justify-center relative"
+                style={{
+                  background: `
+                    radial-gradient(circle at center,
+                      transparent 38%,
+                      hsla(${bgHue}, 70%, 50%, 0.12) 38.5%, transparent 39%,
+                      hsla(${(bgHue + 60) % 360}, 60%, 50%, 0.08) 45%, transparent 45.5%,
+                      hsla(${(bgHue + 30) % 360}, 70%, 50%, 0.1) 52%, transparent 52.5%
+                    )
+                  `,
+                }}>
+                <div className="w-8 h-8 rounded-full flex items-center justify-center"
+                  style={{ background: `radial-gradient(circle, hsl(${bgHue}, 70%, 60%), hsl(${bgHue}, 50%, 25%))` }}>
+                  <Music className="w-4 h-4 text-white/80" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Farewell text */}
+          <h1 className="text-3xl font-bold tracking-widest animate-fade-in-up"
+            style={{ color: '#fff', animationDelay: '0.3s', animationFillMode: 'both' }}>
+            再见
+          </h1>
+          <p className="text-sm mt-3 tracking-wide animate-fade-in-up"
+            style={{ color: 'rgba(255,255,255,0.5)', animationDelay: '0.6s', animationFillMode: 'both' }}>
+            期待下次相遇
+          </p>
+        </div>
+      )}
+
+      {/* ─── Loading State ─── */}
+      {loading && !config && (
+        <div className="min-h-screen flex items-center justify-center">
+          <div className="flex flex-col items-center gap-4">
+            <div className="w-14 h-14 rounded-full animate-spin-slow"
+              style={{ border: '2px solid hsla(var(--primary-hsl), 0.2)', borderTopColor: 'var(--primary)', boxShadow: '0 0 30px hsla(var(--primary-hsl), 0.2)' }} />
+            <span className="text-sm" style={{ color: 'var(--text-info)' }}>加载中...</span>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Empty State ─── */}
+      {!loading && (!config || !hasAnyTracks) && (
+        <div className="min-h-screen flex items-center justify-center">
+          <button onClick={handleBack} className="absolute top-5 left-5 p-2 rounded-xl transition-all hover:bg-white/10 text-white/50 hover:text-white z-20">
+            <ChevronLeft className="w-5 h-5" />
+          </button>
+          <div className="text-center">
+            <Music className="w-16 h-16 mx-auto mb-4" style={{ color: 'var(--text-info)' }} />
+            <p className="text-lg mb-2" style={{ color: 'var(--text-secondary)' }}>暂无音乐</p>
+            <p className="text-sm" style={{ color: 'var(--text-info)' }}>管理员还没有添加任何歌曲</p>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Player UI ─── */}
+      {showPlayer && (
+      <div className={`flex-1 flex flex-col transition-all duration-700 ${exiting ? 'opacity-0 scale-95 translate-y-4 !duration-500' : 'opacity-100 translate-y-0'}`}>
 
       {/* Header */}
       <header className="flex items-center justify-between px-2 sm:px-6 py-4 z-10">
         <div className="flex items-center gap-2 sm:gap-4">
-          <Link href="/"
+          <button onClick={handleBack}
             className="p-2 rounded-xl transition-all hover:bg-white/10 text-white/50 hover:text-white"
             title="返回首页">
             <ChevronLeft className="w-5 h-5" />
-          </Link>
+          </button>
           <div>
             <h1 className="text-lg font-bold tracking-wide" style={{ color: '#fff' }}>
-              {config.title}
+              {playerConfig.title}
             </h1>
-            {config.subtitle && (
-              <p className="text-xs mt-0.5 opacity-60" style={{ color: '#fff' }}>{config.subtitle}</p>
+            {playerConfig.subtitle && (
+              <p className="text-xs mt-0.5 opacity-60" style={{ color: '#fff' }}>{playerConfig.subtitle}</p>
             )}
           </div>
         </div>
@@ -380,27 +771,22 @@ export default function MusicPage() {
               }} />
           </div>
 
-          {/* Decorative visualizer bars */}
+          {/* Frequency visualizer bars */}
           <div className="flex items-end gap-[2px] h-14 w-full max-w-[300px] opacity-50">
-            {bars.map((bar, i) => {
-              const t = Date.now() / 1000;
-              const dynamic = playing
-                ? bar.base
-                  + Math.sin(t * bar.speed + bar.phase) * 8
-                  + Math.sin(t * bar.speed * 1.7 + bar.phase * 1.3) * 5
-                  + Math.sin(t * bar.speed * 3.1 + bar.phase * 2.7) * 3
-                  + (Math.sin(t * 2.3 + i * 0.7) * 0.5 + 0.5) * 6
-                : 0;
-              const height = Math.max(3, playing ? dynamic + 2 : 3);
+            {Array.from({ length: barCount }).map((_, i) => {
+              const val = freqData[i] / 255;
+              const height = playing ? Math.max(3, val * 55) : 3;
+              // Smooth the height using CSS transition
+              const smoothTransition = playing
+                ? 'height 80ms ease-out'
+                : 'height 300ms ease, opacity 300ms ease';
               return (
                 <div key={i} className="flex-1 rounded-full"
                   style={{
                     height: `${height}px`,
-                    background: `hsl(${(bgHue + bar.hueOff) % 360}, 70%, 60%)`,
-                    opacity: playing ? 0.5 + Math.random() * 0.2 : 0.15,
-                    transition: playing
-                      ? `height ${60 + Math.random() * 80}ms linear, opacity 150ms ease`
-                      : 'height 300ms ease, opacity 300ms ease',
+                    background: `hsl(${(bgHue + barHues[i]) % 360}, 70%, 60%)`,
+                    opacity: playing ? 0.35 + val * 0.5 : 0.15,
+                    transition: smoothTransition,
                   }} />
               );
             })}
@@ -409,10 +795,36 @@ export default function MusicPage() {
 
         {/* Right: Playlist */}
         <div className={`${showPlaylist ? 'flex' : 'hidden'} md:flex flex-col w-full max-w-sm md:max-w-xs lg:max-w-sm transition-all`}>
+          {/* Playlist dropdown */}
           <div className="flex items-center gap-2 mb-3 px-1">
-            <ListMusic className="w-4 h-4 text-white/50" />
-            <span className="text-xs font-medium text-white/50 uppercase tracking-wider">播放列表</span>
-            <span className="text-xs text-white/30 ml-auto">{currentTracks.length} 首</span>
+            <ListMusic className="w-4 h-4 text-white/50 flex-shrink-0" />
+            {playerConfig.playlists.length > 1 ? (
+              <select value={currentPlaylistIndex} onChange={e => {
+                const pi = Number(e.target.value);
+                if (pi !== currentPlaylistIndex) {
+                  setCurrentPlaylistIndex(pi);
+                  setCurrentIndex(0);
+                  setPlaying(false);
+                  if (audioRef.current) {
+                    audioRef.current.pause();
+                    audioRef.current.src = '';
+                  }
+                }
+              }}
+                className="flex-1 text-xs font-medium bg-transparent outline-none cursor-pointer"
+                style={{ color: 'rgba(255,255,255,0.7)' }}>
+                {playerConfig.playlists.map((pl, pi) => (
+                  <option key={pl.id} value={pi} style={{ background: '#222', color: '#fff' }}>
+                    {pl.name} ({pl.tracks.length} 首)
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <span className="text-xs font-medium" style={{ color: 'rgba(255,255,255,0.7)' }}>
+                {currentPlaylist?.name || '播放列表'}
+              </span>
+            )}
+            <span className="text-xs text-white/30">{currentTracks.length} 首</span>
           </div>
           <div className="flex-1 overflow-y-auto space-y-1 max-h-[50vh] md:max-h-[60vh] pr-1 music-scrollbar">
             {currentTracks.map((track, i) => (
@@ -453,15 +865,17 @@ export default function MusicPage() {
         </div>
       </div>
 
-      {/* Audio element */}
-      <audio ref={audioRef}
-        onTimeUpdate={() => setCurrentTime(audioRef.current?.currentTime || 0)}
-        onLoadedMetadata={() => setDuration(audioRef.current?.duration || 0)}
-        onEnded={handleEnded}
-        onPlay={() => setPlaying(true)}
-        onPause={() => setPlaying(false)}
-        preload="none"
-      />
+        {/* Audio element */}
+        <audio ref={audioRef}
+          onTimeUpdate={() => setCurrentTime(audioRef.current?.currentTime || 0)}
+          onLoadedMetadata={() => setDuration(audioRef.current?.duration || 0)}
+          onEnded={handleEnded}
+          onPlay={() => setPlaying(true)}
+          onPause={() => setPlaying(false)}
+          preload="none"
+        />
+      </div>
+      )}
     </div>
   );
 }
