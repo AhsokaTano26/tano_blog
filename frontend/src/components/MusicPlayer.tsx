@@ -74,6 +74,8 @@ export function MusicPlayer() {
   const [showPlaylist, setShowPlaylist] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
   const [mounted, setMounted] = useState(false);
+  const seekBarRef = useRef<HTMLDivElement>(null);
+  const progressRef = useRef<HTMLDivElement>(null);
 
   // Dragging state — stores offset from initial mouse/touch to element corner
   const [dragPos, setDragPos] = useState<{ x: number; y: number } | null>(null);
@@ -158,6 +160,33 @@ export function MusicPlayer() {
     setVisible(true);
     setShowPlaylist(false);
   }, []);
+
+  const startSeek = useCallback((e: React.MouseEvent) => {
+    if (!audioRef.current || !duration) return;
+    const bar = seekBarRef.current;
+    if (!bar) return;
+    const seek = (clientX: number) => {
+      const rect = bar.getBoundingClientRect();
+      const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+      if (progressRef.current) {
+        progressRef.current.style.transition = 'none';
+        progressRef.current.style.width = `${pct * 100}%`;
+      }
+      setCurrentTime(pct * duration);
+    };
+    seek(e.clientX);
+    const onMove = (me: MouseEvent) => seek(me.clientX);
+    const onUp = (me: MouseEvent) => {
+      const rect = bar.getBoundingClientRect();
+      const pct = Math.max(0, Math.min(1, (me.clientX - rect.left) / rect.width));
+      if (audioRef.current) audioRef.current.currentTime = pct * duration;
+      if (progressRef.current) progressRef.current.style.transition = '';
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, [duration]);
 
   const next = useCallback(() => {
     if (playlist.length === 0) return;
@@ -312,21 +341,24 @@ export function MusicPlayer() {
           </button>
         </div>
 
-        {/* Progress bar */}
-        <div
-          className="mx-4 mt-1 h-1 rounded-full cursor-pointer relative overflow-hidden"
+        {/* Progress bar — draggable */}
+        <div ref={seekBarRef}
+          className="mx-4 mt-1 h-2 rounded-full cursor-pointer relative overflow-hidden group"
           style={{ background: 'var(--btn-card-bg)' }}
-          onClick={(e) => {
-            if (!audioRef.current || !duration) return;
-            const rect = e.currentTarget.getBoundingClientRect();
-            const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-            audioRef.current.currentTime = pct * duration;
-          }}
+          onMouseDown={startSeek}
         >
-          <div
-            className="h-full rounded-full transition-all duration-200"
+          <div ref={progressRef}
+            className="h-full rounded-full absolute left-0 top-0"
             style={{
               width: duration > 0 ? `${(currentTime / duration) * 100}%` : '0%',
+              background: 'var(--primary)',
+              boxShadow: '0 0 8px var(--primary-glow)',
+            }}
+          />
+          <div className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-white shadow-lg opacity-0 group-hover:opacity-100 transition-opacity"
+            style={{
+              left: duration > 0 ? `${(currentTime / duration) * 100}%` : '0%',
+              marginLeft: '-6px',
               background: 'var(--primary)',
               boxShadow: '0 0 8px var(--primary-glow)',
             }}

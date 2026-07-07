@@ -44,6 +44,7 @@ export default function MusicPage() {
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(0.5);
   const [showPlaylist, setShowPlaylist] = useState(true);
+  const [showParticles, setShowParticles] = useState(true);
   const [currentPlaylistIndex, setCurrentPlaylistIndex] = useState(0);
   const [bgHue, setBgHue] = useState(225);
   const [trackTransition, setTrackTransition] = useState(false);
@@ -55,6 +56,10 @@ export default function MusicPage() {
   const sourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null);
 
   const audioRef = useRef<HTMLAudioElement>(null);
+
+  // Seek bar refs
+  const seekBarRef = useRef<HTMLDivElement>(null);
+  const progressRef = useRef<HTMLDivElement>(null);
 
   // Particle system refs (no re-renders)
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -208,6 +213,8 @@ export default function MusicPage() {
       speedX: number; speedY: number; hueOff: number; opacity: number;
       phase: number; twinkleSpeed: number;
       exitVX: number; exitVY: number;
+      freqBand: number;
+      noiseOffset: number;
     }[] = [];
 
     const count = 1500;
@@ -230,6 +237,8 @@ export default function MusicPage() {
         phase: Math.random() * Math.PI * 2,
         twinkleSpeed: Math.random() * 0.025 + 0.005,
         exitVX: 0, exitVY: 0,
+        freqBand: Math.floor(Math.random() * barCount),
+        noiseOffset: Math.random() * Math.PI * 2,
       });
     }
     for (const p of particles) p.baseSize = p.size;
@@ -246,10 +255,19 @@ export default function MusicPage() {
       const splash = splashDoneRef.current;
       const exiting = exitingRef.current;
 
-      const avgFreq = playingRef.current
-        ? Array.from(freqDataRef.current).reduce((a, b) => a + b, 0) / freqDataRef.current.length / 255
+      const freqs = freqDataRef.current;
+      const isPlaying = playingRef.current;
+      const avgFreq = isPlaying
+        ? Array.from(freqs).reduce((a, b) => a + b, 0) / freqs.length / 255
         : 0;
       const pulse = 1 + avgFreq * 0.5;
+      // Frequency bands: bass (0-5), mid (6-15), treble (16+)
+      const bass = isPlaying
+        ? Array.from(freqs.slice(0, 6)).reduce((a, b) => Math.max(a, b / 255), 0)
+        : 0;
+      const treble = isPlaying
+        ? Array.from(freqs.slice(16)).reduce((a, b) => Math.max(a, b / 255), 0)
+        : 0;
       time += 1;
 
       // ─── Detect state transitions ───
@@ -311,6 +329,25 @@ export default function MusicPage() {
           const jitter = (Math.random() - 0.5) * 3 * (1 - burstEased);
           p.x = startX + (p.homeX - startX) * burstEased + jitter;
           p.y = startY + (p.homeY - startY) * burstEased + jitter;
+        } else if (isPlaying) {
+          // Music-reactive movement
+          const binVal = freqs[p.freqBand] / 255;
+          // Drift speed modulated by overall energy
+          const speedMul = 1 + avgFreq * 1.8;
+          p.x += p.speedX * speedMul;
+          p.y += p.speedY * speedMul;
+          // Gentle frequency wave — particles undulate in their area
+          const bandPhase = (p.freqBand / barCount) * Math.PI * 2;
+          const waveForce = Math.sin(time * 0.02 + bandPhase) * binVal * 0.8;
+          p.x += Math.cos(bandPhase) * waveForce;
+          p.y += Math.sin(bandPhase) * waveForce;
+          // Soft home pull prevents drifting off
+          p.x += (p.homeX - p.x) * 0.002;
+          p.y += (p.homeY - p.y) * 0.002;
+          // Boundary
+          if (p.y < -100) { p.y = h + 100; p.x = Math.random() * w; }
+          if (p.x < -150) p.x = w + 150;
+          if (p.x > w + 150) p.x = -150;
         } else {
           p.x += p.speedX;
           p.y += p.speedY;
@@ -319,9 +356,12 @@ export default function MusicPage() {
           if (p.x > w + 50) p.x = -50;
         }
 
-        const twinkle = 0.6 + 0.4 * Math.sin(time * p.twinkleSpeed + p.phase);
-        const sizePulse = p.baseSize * pulse;
-        const displayOpacity = p.opacity * twinkle;
+        const binVal = freqs[p.freqBand] / 255;
+        const musicTwinkle = isPlaying ? 0.4 + 0.6 * binVal : 1;
+        const trebleShimmer = isPlaying ? 1 + treble * 0.8 : 1;
+        const twinkle = (0.4 + 0.6 * Math.sin(time * p.twinkleSpeed + p.phase)) * musicTwinkle;
+        const sizePulse = p.baseSize * pulse * (1 + binVal * 0.3);
+        const displayOpacity = p.opacity * twinkle * trebleShimmer;
 
         ctx!.beginPath();
         ctx!.arc(p.x, p.y, sizePulse * 4, 0, Math.PI * 2);
@@ -392,6 +432,33 @@ export default function MusicPage() {
     setCurrentIndex(i => (i - 1 + currentTracks.length) % currentTracks.length);
     setPlaying(true);
   }, [currentTracks.length]);
+
+  const startSeek = useCallback((e: React.MouseEvent) => {
+    if (!audioRef.current || !duration) return;
+    const bar = seekBarRef.current;
+    if (!bar) return;
+    const seek = (clientX: number) => {
+      const rect = bar.getBoundingClientRect();
+      const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+      if (progressRef.current) {
+        progressRef.current.style.transition = 'none';
+        progressRef.current.style.width = `${pct * 100}%`;
+      }
+      setCurrentTime(pct * duration);
+    };
+    seek(e.clientX);
+    const onMove = (me: MouseEvent) => seek(me.clientX);
+    const onUp = (me: MouseEvent) => {
+      const rect = bar.getBoundingClientRect();
+      const pct = Math.max(0, Math.min(1, (me.clientX - rect.left) / rect.width));
+      if (audioRef.current) audioRef.current.currentTime = pct * duration;
+      if (progressRef.current) progressRef.current.style.transition = '';
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, [duration]);
 
   const handleEnded = useCallback(() => {
     if (currentIndex < currentTracks.length - 1) next();
@@ -464,8 +531,8 @@ export default function MusicPage() {
       style={{ ...bgStyle, color: 'var(--text-primary)' }}>
       {/* Particle canvas background */}
       <canvas ref={canvasRef}
-        className="fixed inset-0 w-full h-full pointer-events-none"
-        style={{ zIndex: 199 }} />
+        className="fixed inset-0 w-full h-full pointer-events-none transition-opacity duration-500"
+        style={{ zIndex: 199, opacity: showParticles ? 1 : 0 }} />
 
       {/* ─── Splash Screen ─── */}
       {!splashDone && (
@@ -630,11 +697,13 @@ export default function MusicPage() {
             )}
           </div>
         </div>
-        <button onClick={() => setShowPlaylist(!showPlaylist)}
-          className="p-2.5 rounded-xl transition-all hover:bg-white/10 md:hidden"
-          style={{ color: showPlaylist ? 'var(--primary)' : 'rgba(255,255,255,0.6)' }}>
-          <ListMusic className="w-5 h-5" />
-        </button>
+        <div className="flex items-center gap-1">
+          <button onClick={() => setShowPlaylist(!showPlaylist)}
+            className="p-2.5 rounded-xl transition-all hover:bg-white/10 md:hidden"
+            style={{ color: showPlaylist ? 'var(--primary)' : 'rgba(255,255,255,0.6)' }}>
+            <ListMusic className="w-5 h-5" />
+          </button>
+        </div>
       </header>
 
       {/* Main content */}
@@ -714,18 +783,24 @@ export default function MusicPage() {
 
           {/* Progress bar */}
           <div className="w-full max-w-xs">
-            <div className="relative h-1.5 rounded-full overflow-hidden cursor-pointer bg-white/10"
-              onClick={(e) => {
-                if (!audioRef.current || !duration) return;
-                const rect = e.currentTarget.getBoundingClientRect();
-                const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-                audioRef.current.currentTime = pct * duration;
-              }}>
-              <div className="h-full rounded-full transition-all duration-200"
+            <div ref={seekBarRef}
+              className="relative h-1.5 rounded-full overflow-hidden cursor-pointer group"
+              style={{ background: 'rgba(255,255,255,0.1)' }}
+              onMouseDown={startSeek}
+            >
+              <div ref={progressRef}
+                className="h-full rounded-full absolute left-0 top-0 transition-all duration-200"
                 style={{
                   width: duration > 0 ? `${(currentTime / duration) * 100}%` : '0%',
                   background: `linear-gradient(90deg, hsl(${bgHue}, 80%, 65%), hsl(${(bgHue + 60) % 360}, 80%, 65%))`,
                   boxShadow: `0 0 12px hsl(${bgHue}, 80%, 65%, 0.5)`,
+                }}
+              />
+              <div className="absolute top-1/2 -translate-y-1/2 w-3.5 h-3.5 rounded-full bg-white shadow-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                style={{
+                  left: duration > 0 ? `${(currentTime / duration) * 100}%` : '0%',
+                  marginLeft: '-7px',
+                  boxShadow: `0 0 10px hsl(${bgHue}, 80%, 65%, 0.6)`,
                 }}
               />
             </div>
@@ -771,14 +846,22 @@ export default function MusicPage() {
               }} />
           </div>
 
+          {/* Particle toggle */}
+          <button onClick={() => setShowParticles(!showParticles)}
+            className="text-xs px-3 py-1.5 rounded-lg transition-all hover:bg-white/10"
+            style={{ color: showParticles ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.25)' }}>
+            {showParticles ? '粒子已开启' : '粒子已关闭'}
+          </button>
+
           {/* Frequency visualizer bars */}
           <div className="flex items-end gap-[2px] h-14 w-full max-w-[300px] opacity-50">
             {Array.from({ length: barCount }).map((_, i) => {
               const val = freqData[i] / 255;
-              const height = playing ? Math.max(3, val * 55) : 3;
+              const noise = Math.sin(Date.now() * 0.003 + i * 1.7) * 0.15 + Math.cos(Date.now() * 0.005 + i * 0.9) * 0.1;
+              const height = playing ? Math.max(3, (val + noise * 0.3) * 55) : 3;
               // Smooth the height using CSS transition
               const smoothTransition = playing
-                ? 'height 80ms ease-out'
+                ? 'height 60ms ease-out'
                 : 'height 300ms ease, opacity 300ms ease';
               return (
                 <div key={i} className="flex-1 rounded-full"
