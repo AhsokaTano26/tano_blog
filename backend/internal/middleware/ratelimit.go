@@ -1,5 +1,13 @@
 package middleware
 
+// RateLimiter provides a simple in-memory rate limiter keyed by IP address.
+// IMPORTANT: This is a per-instance in-process limiter and does not scale
+// across multiple backend instances. For distributed deployments, replace
+// with a shared store (e.g. Redis). Additionally, the visitor map is cleaned
+// every 10 minutes but entries for active IPs persist beyond the window.
+// Current implementation is suitable for single-instance deployments under
+// moderate traffic.
+
 import (
 	"sync"
 	"time"

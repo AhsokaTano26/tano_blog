@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"log"
 	"net/http"
@@ -118,6 +120,7 @@ func main() {
 	r.Static("/uploads", cfg.Upload.Dir)
 
 	api := r.Group("/api/v1")
+	api.Use(maxBodySize(50 << 20))
 	{
 		// Public auth endpoints (with rate limiting)
 		auth := api.Group("/auth")
@@ -385,18 +388,33 @@ func seedAdmin(db *gorm.DB, password string) {
 		return
 	}
 
+	// If no password provided via env, generate a random one
+	if password == "" {
+		b := make([]byte, 4)
+		if _, err := rand.Read(b); err != nil {
+			log.Fatalf("Failed to generate random admin password: %v", err)
+		}
+		password = hex.EncodeToString(b)
+		log.Println("============================================")
+		log.Println("  INITIAL ADMIN PASSWORD:", password)
+		log.Println("  Login with username: admin")
+		log.Println("  You will be required to change password on first login.")
+		log.Println("============================================")
+	}
+
 	hash, err := utils.HashPassword(password)
 	if err != nil {
 		log.Fatalf("Failed to hash admin password: %v", err)
 	}
 
 	admin := model.User{
-		Username:     "admin",
-		Email:        "admin@tano.asia",
-		PasswordHash: hash,
-		DisplayName:  "管理员",
-		Role:         "admin",
-		Bio:          "A BanG Dreamer!",
+		Username:            "admin",
+		Email:               "admin@tano.asia",
+		PasswordHash:        hash,
+		DisplayName:         "管理员",
+		Role:                "admin",
+		Bio:                 "A BanG Dreamer!",
+		MustChangePassword:  true,
 	}
 
 	if err := db.Create(&admin).Error; err != nil {
@@ -449,4 +467,12 @@ func init() {
   ║        Powered by Go + Gin           ║
   ╚══════════════════════════════════════╝
 	`)
+}
+
+// maxBodySize limits the request body size.
+func maxBodySize(limit int64) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, limit)
+		c.Next()
+	}
 }

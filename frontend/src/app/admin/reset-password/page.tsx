@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, Suspense } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { api } from '@/lib/api';
@@ -13,6 +13,13 @@ function ResetContent() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Clear token from URL after reading it to prevent leakage via referrer/sharing
+  useEffect(() => {
+    if (token) {
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, [token]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

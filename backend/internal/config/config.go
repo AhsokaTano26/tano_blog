@@ -1,6 +1,8 @@
 package config
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"log"
 	"os"
 	"strconv"
@@ -27,30 +29,33 @@ type DatabaseConfig struct {
 }
 
 type JWTConfig struct {
-	Secret              string
-	Expiration          time.Duration
+	Secret               string
+	Expiration           time.Duration
 	RememberMeExpiration time.Duration
 }
 
 type UploadConfig struct {
-	Dir         string
-	MaxImageMB  int64
-	MaxAudioMB  int64
-	MaxVideoMB  int64
+	Dir        string
+	MaxImageMB int64
+	MaxAudioMB int64
+	MaxVideoMB int64
 }
 
 func Load() *Config {
 	jwtSecret := os.Getenv("JWT_SECRET")
 	if jwtSecret == "" {
-		log.Fatal("FATAL: JWT_SECRET environment variable is required")
+		// Generate a random JWT secret for development
+		b := make([]byte, 32)
+		if _, err := rand.Read(b); err != nil {
+			log.Fatalf("FATAL: failed to generate random JWT secret: %v", err)
+		}
+		jwtSecret = hex.EncodeToString(b)
+		log.Printf("WARNING: JWT_SECRET not set, generated random secret. JWTs will be invalid on restart.")
+		log.Printf("WARNING: Set JWT_SECRET environment variable for persistent sessions.")
 	}
 	dbDSN := os.Getenv("DB_DSN")
 	if dbDSN == "" {
 		log.Fatal("FATAL: DB_DSN environment variable is required")
-	}
-	adminPassword := os.Getenv("ADMIN_PASSWORD")
-	if adminPassword == "" {
-		log.Fatal("FATAL: ADMIN_PASSWORD environment variable is required")
 	}
 
 	return &Config{
@@ -63,8 +68,8 @@ func Load() *Config {
 			DSN: dbDSN,
 		},
 		JWT: JWTConfig{
-			Secret:              jwtSecret,
-			Expiration:          2 * time.Hour,
+			Secret:               jwtSecret,
+			Expiration:           2 * time.Hour,
 			RememberMeExpiration: 7 * 24 * time.Hour,
 		},
 		Upload: UploadConfig{
@@ -74,7 +79,7 @@ func Load() *Config {
 			MaxVideoMB:  getEnvInt64("UPLOAD_MAX_VIDEO_MB", 2048),
 		},
 		BackupDir:     getEnv("BACKUP_DIR", "./backups"),
-		AdminPassword: adminPassword,
+		AdminPassword: os.Getenv("ADMIN_PASSWORD"),
 	}
 }
 

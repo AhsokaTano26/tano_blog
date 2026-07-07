@@ -82,11 +82,12 @@ func (h *AuthHandler) Login(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"user": gin.H{
-			"id":           user.ID,
-			"username":     user.Username,
-			"display_name": user.DisplayName,
-			"avatar_url":   user.AvatarURL,
-			"role":         user.Role,
+			"id":                  user.ID,
+			"username":            user.Username,
+			"display_name":        user.DisplayName,
+			"avatar_url":          user.AvatarURL,
+			"role":                user.Role,
+			"must_change_password": user.MustChangePassword,
 		},
 	})
 }
@@ -142,11 +143,12 @@ func (h *AuthHandler) LoginWithTOTP(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"user": gin.H{
-			"id":           user.ID,
-			"username":     user.Username,
-			"display_name": user.DisplayName,
-			"avatar_url":   user.AvatarURL,
-			"role":         user.Role,
+			"id":                  user.ID,
+			"username":            user.Username,
+			"display_name":        user.DisplayName,
+			"avatar_url":          user.AvatarURL,
+			"role":                user.Role,
+			"must_change_password": user.MustChangePassword,
 		},
 	})
 }
@@ -186,8 +188,9 @@ func (h *AuthHandler) Me(c *gin.Context) {
 		"display_name": user.DisplayName,
 		"avatar_url":   user.AvatarURL,
 		"bio":          user.Bio,
-		"role":         user.Role,
-		"totp_enabled": user.TOTPEnabled,
+		"role":                user.Role,
+		"totp_enabled":        user.TOTPEnabled,
+		"must_change_password": user.MustChangePassword,
 	})
 }
 
@@ -304,7 +307,10 @@ func (h *AuthHandler) ChangePassword(c *gin.Context) {
 		return
 	}
 
-	if err := h.db.Model(&user).Update("password_hash", hash).Error; err != nil {
+	if err := h.db.Model(&user).Updates(map[string]interface{}{
+		"password_hash":       hash,
+		"must_change_password": false,
+	}).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "修改失败"})
 		return
 	}
@@ -450,7 +456,8 @@ func (h *AuthHandler) PasskeyRegisterVerify(c *gin.Context) {
 	}
 
 	if err := utils.VerifyPasskeyRegistration(h.db, uid, rawBody); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		utils.LogError("passkey register verify failed", "error", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "验证失败"})
 		return
 	}
 

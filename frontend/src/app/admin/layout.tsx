@@ -54,7 +54,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const { theme, setTheme } = useTheme();
 
   useEffect(() => {
-    api.getMe().then(setUser).catch(() => {
+    api.getMe().then(u => {
+      setUser(u);
+      // Force redirect to profile page if password must be changed
+      if ((u as any).must_change_password && !pathname.includes('/admin/profile') && !pathname.includes('/admin/login')) {
+        window.location.href = '/admin/profile?force_password=1';
+      }
+    }).catch(() => {
       if (!pathname.includes('/admin/login')) {
         window.location.href = '/admin/login';
       }

@@ -19,9 +19,10 @@ type User struct {
 	TOTPEnabled  bool      `gorm:"default:false" json:"totp_enabled"`
 	ResetToken   string    `gorm:"size:500" json:"-"`
 	TokenVersion int       `gorm:"default:0" json:"-"`
-	Role         string    `gorm:"size:20;default:user" json:"role"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	Role                string    `gorm:"size:20;default:user" json:"role"`
+	MustChangePassword  bool      `gorm:"default:false" json:"-"`
+	CreatedAt           time.Time `json:"created_at"`
+	UpdatedAt           time.Time `json:"updated_at"`
 }
 
 type Passkey struct {

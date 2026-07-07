@@ -186,6 +186,7 @@ func (h *PostHandler) VerifyPassword(c *gin.Context) {
 
 	cookieKey := "post_access_" + post.ID.String()
 	secure := c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https"
+	c.SetSameSite(http.SameSiteStrictMode)
 	c.SetCookie(cookieKey, "granted", 7*24*3600, "/", "", secure, true)
 
 	c.JSON(http.StatusOK, gin.H{"verified": true})
@@ -216,7 +217,7 @@ func (h *PostHandler) GeneratePreviewToken(c *gin.Context) {
 		return
 	}
 
-	token := uuid.New().String()[:16]
+	token := uuid.New().String()
 	if err := h.repo.Update(id, map[string]interface{}{"preview_token": token}); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "生成预览链接失败"})
 		return

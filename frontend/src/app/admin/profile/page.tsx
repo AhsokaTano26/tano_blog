@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { api } from '@/lib/api';
 import QRCode from 'qrcode';
-import { Save, Lock, User, Shield, KeyRound, Trash2, Plus } from 'lucide-react';
+import { Save, Lock, User, Shield, KeyRound, Trash2, Plus, AlertTriangle } from 'lucide-react';
 import { Loading } from '@/components/Loading';
 import { useConfirm } from '@/components/ConfirmDialog';
 import { MediaField } from '@/components/MediaField';
@@ -16,6 +16,7 @@ export default function AdminProfile() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [tab, setTab] = useState<'profile' | 'password' | 'totp' | 'passkey'>('profile');
+  const forcePassword = typeof window !== 'undefined' && window.location.search.includes('force_password=1');
 
   // TOTP fields
   const [totpEnabled, setTotpEnabled] = useState(false);
@@ -46,6 +47,10 @@ export default function AdminProfile() {
       setAvatarUrl(u.avatar_url || '');
       setBio(u.bio || '');
       setTotpEnabled(u.totp_enabled || false);
+      // Force password tab if redirected from MustChangePassword check
+      if ((u as any).must_change_password || forcePassword) {
+        setTab('password');
+      }
     }).finally(() => setLoading(false));
   }, []);
 
@@ -88,6 +93,12 @@ export default function AdminProfile() {
       setOldPassword('');
       setNewPassword('');
       setConfirmPassword('');
+      // Clear forced password change flag in local state
+      setUser((prev: any) => prev ? { ...prev, must_change_password: false } : prev);
+      // Clean up force_password param from URL
+      if (window.location.search.includes('force_password=1')) {
+        window.history.replaceState({}, document.title, '/admin/profile');
+      }
       setTimeout(() => setMessage(''), 3000);
     } catch (e: any) {
       setMessage(e.message || '修改失败');
@@ -304,6 +315,15 @@ export default function AdminProfile() {
 
           {tab === 'password' && (
             <div className="space-y-5 max-w-md">
+              {((user as any)?.must_change_password || forcePassword) && (
+                <div className="flex items-start gap-3 p-4 rounded-xl" style={{ background: 'rgba(255, 187, 0, 0.1)', border: '1px solid rgba(255, 187, 0, 0.3)' }}>
+                  <AlertTriangle className="w-5 h-5 mt-0.5 flex-shrink-0" style={{ color: '#ffbb00' }} />
+                  <div>
+                    <p className="text-sm font-medium" style={{ color: '#ffbb00' }}>首次登录</p>
+                    <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>这是您首次登录，请立即修改密码以确保账户安全。</p>
+                  </div>
+                </div>
+              )}
               <div>
                 <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>旧密码</label>
                 <input type="password" value={oldPassword} onChange={e => setOldPassword(e.target.value)}

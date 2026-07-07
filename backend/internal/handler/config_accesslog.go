@@ -91,6 +91,16 @@ func (h *SiteConfigHandler) Update(c *gin.Context) {
 		if !allowedKeys[key] {
 			continue
 		}
+
+		// Audit log for injection/sensitive keys
+		if _, ok := map[string]struct{}{"head_injection": {}, "content_head_injection": {}, "footer_injection": {}}[key]; ok {
+			adminID := c.GetString("user_id")
+			utils.LogInfo("sensitive config updated",
+				"key", key,
+				"admin_id", adminID,
+			)
+		}
+
 		if err := h.repo.Upsert(key, value, "string"); err != nil {
 			utils.LogWarn("failed to update config", "key", key, "error", err)
 		}
@@ -114,7 +124,8 @@ func (h *SiteConfigHandler) TestEmail(c *gin.Context) {
 	}
 
 	if err := h.emailService.SendTestEmail(input.To); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		utils.LogError("test email send failed", "to", input.To, "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "发送测试邮件失败"})
 		return
 	}
 

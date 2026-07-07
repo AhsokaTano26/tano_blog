@@ -23,19 +23,28 @@ import (
 )
 
 var restoreSafeColumns = map[string][]string{
-	"users":           {"id", "username", "email", "display_name", "avatar_url", "bio", "role", "created_at", "updated_at"},
-	"categories":      {"id", "name", "slug", "description", "sort_order", "created_at"},
-	"tags":            {"id", "name", "slug", "created_at"},
-	"media_tags":      {"id", "name", "created_at"},
-	"site_configs":    {"id", "key", "value", "type", "created_at", "updated_at"},
-	"posts":           {"id", "title", "slug", "content", "excerpt", "cover_image", "status", "is_top", "allow_comment", "author_name", "author_id", "editor_id", "category_id", "view_count", "published_at", "preview_token", "created_at", "updated_at"},
-	"post_tags":       {"post_id", "tag_id"},
-	"comments":        {"id", "post_id", "parent_id", "nickname", "email", "website", "content", "status", "ip_address", "user_agent", "country", "city", "created_at"},
-	"media":           {"id", "filename", "original_name", "mime_type", "size", "url", "created_at"},
-	"media_tag_links": {"media_id", "media_tag_id"},
-	"passkeys":        {"id", "user_id", "nickname", "created_at"},
-	"post_revisions":  {"id", "post_id", "title", "content", "excerpt", "editor_id", "created_at"},
-	"access_logs":     {"id", "path", "method", "ip_address", "user_agent", "status_code", "response_time", "referer", "query_params", "device_type", "browser", "os", "country", "city", "created_at"},
+	"users":             {"id", "username", "email", "display_name", "avatar_url", "bio", "role", "created_at", "updated_at"},
+	"categories":        {"id", "name", "slug", "description", "sort_order", "created_at"},
+	"tags":              {"id", "name", "slug", "created_at"},
+	"media_tags":        {"id", "name", "created_at"},
+	"site_configs":      {"id", "key", "value", "type", "created_at", "updated_at"},
+	"posts":             {"id", "title", "slug", "content", "excerpt", "cover_image", "status", "is_top", "allow_comment", "author_name", "author_id", "editor_id", "category_id", "view_count", "published_at", "preview_token", "created_at", "updated_at"},
+	"post_tags":         {"post_id", "tag_id"},
+	"comments":          {"id", "post_id", "parent_id", "nickname", "email", "website", "content", "status", "ip_address", "user_agent", "country", "city", "created_at"},
+	"media":             {"id", "filename", "original_name", "mime_type", "size", "url", "created_at"},
+	"media_tag_links":   {"media_id", "media_tag_id"},
+	"passkeys":          {"id", "user_id", "nickname", "created_at"},
+	"post_revisions":    {"id", "post_id", "title", "content", "excerpt", "editor_id", "created_at"},
+	"access_logs":       {"id", "path", "method", "ip_address", "user_agent", "status_code", "response_time", "referer", "query_params", "device_type", "browser", "os", "country", "city", "created_at"},
+	"series":            {"id", "name", "slug", "description", "cover_image", "sort_order", "created_at", "updated_at"},
+	"post_series":       {"series_id", "post_id", "sort_order"},
+	"comment_reactions": {"id", "comment_id", "emoji", "ip_address", "created_at"},
+	"comment_revisions": {"id", "comment_id", "content", "edited_at"},
+	"post_reactions":    {"id", "post_id", "emoji", "ip_address", "created_at"},
+	"friend_links":      {"id", "name", "url", "description", "avatar", "email", "status", "sort_order", "created_at", "updated_at"},
+	"nav_links":         {"id", "title", "url", "sort_order", "created_at", "updated_at"},
+	"commenter_blocks":  {"id", "email", "ip_address", "reason", "created_by", "created_at"},
+	"notifications":     {"id", "user_id", "type", "title", "content", "link", "is_read", "created_at"},
 }
 
 // safeColumnName ensures a column name contains only safe characters
@@ -62,16 +71,19 @@ type backupData struct {
 
 // backupTables ordered by dependency (parents first)
 var backupTables = []string{
-	"users", "categories", "tags", "media_tags", "site_configs",
-	"posts", "post_tags", "comments", "media", "media_tag_links",
+	"users", "categories", "tags", "media_tags", "series", "site_configs",
+	"posts", "post_tags", "post_series", "comments", "comment_reactions", "comment_revisions",
+	"post_reactions", "media", "media_tag_links",
 	"passkeys", "post_revisions", "access_logs",
+	"friend_links", "nav_links", "commenter_blocks", "notifications",
 }
 
 // truncateOrder drops children first to avoid FK violations
 var truncateOrder = []string{
-	"post_revisions", "media_tag_links", "post_tags", "comments",
-	"media", "media_tags", "posts", "passkeys", "categories", "tags",
-	"site_configs", "access_logs", "users",
+	"notifications", "commenter_blocks", "nav_links", "friend_links",
+	"access_logs", "post_revisions", "passkeys", "media_tag_links", "media",
+	"post_reactions", "comment_revisions", "comment_reactions", "comments",
+	"post_series", "post_tags", "posts", "site_configs", "series", "media_tags", "tags", "categories", "users",
 }
 
 // generateBackup builds the backup data and returns the zip bytes
