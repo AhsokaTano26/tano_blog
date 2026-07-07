@@ -20,11 +20,11 @@ interface BlobCfg {
 }
 
 const BLOBS: BlobCfg[] = [
-  { color: [99, 102, 241], x: 0.42, y: 0.38, radius: 0.22, speed: 0.78, phase: 0.1, alpha: 0.85 },
-  { color: [168, 85, 247], x: 0.43, y: 0.61, radius: 0.25, speed: 0.66, phase: 1.4, alpha: 0.65 },
-  { color: [59, 130, 246], x: 0.62, y: 0.54, radius: 0.28, speed: 0.54, phase: 2.2, alpha: 0.55 },
-  { color: [236, 72, 153], x: 0.52, y: 0.48, radius: 0.23, speed: 0.72, phase: 3.0, alpha: 0.50 },
-  { color: [251, 146, 60], x: 0.47, y: 0.43, radius: 0.18, speed: 0.60, phase: 4.1, alpha: 0.40 },
+  { color: [99, 102, 241], x: 0.42, y: 0.38, radius: 0.18, speed: 0.78, phase: 0.1, alpha: 0.85 },
+  { color: [168, 85, 247], x: 0.43, y: 0.61, radius: 0.20, speed: 0.66, phase: 1.4, alpha: 0.65 },
+  { color: [59, 130, 246], x: 0.62, y: 0.54, radius: 0.22, speed: 0.54, phase: 2.2, alpha: 0.55 },
+  { color: [236, 72, 153], x: 0.52, y: 0.48, radius: 0.18, speed: 0.72, phase: 3.0, alpha: 0.50 },
+  { color: [251, 146, 60], x: 0.47, y: 0.43, radius: 0.14, speed: 0.60, phase: 4.1, alpha: 0.40 },
 ];
 
 interface Particle {
@@ -79,25 +79,89 @@ export function WelcomeAnimation({ user, onEnd }: WelcomeAnimationProps) {
     ctxRef.current = ctx;
   };
 
-  const spawnParticles = (cx: number, cy: number, count: number, colors: Color3[], intensity: number) => {
-    if (reduced.current) return;
-    const n = Math.floor(count * intensity);
-    for (let i = 0; i < n; i++) {
-      const angle = Math.random() * Math.PI * 2;
-      const speed = 0.4 + Math.random() * 1.5;
-      const color = colors[Math.floor(Math.random() * colors.length)];
+  // Constellation: spawn stars
+  let spawnTimer = 0;
+  const spawnStars = (p: number, es: number) => {
+    if (reduced.current || p > 0.88) return;
+    spawnTimer += 0.016;
+    if (spawnTimer < 0.08) return;
+    spawnTimer = 0;
+    for (let s = 0; s < 4; s++) {
+      const i = Math.floor(Math.random() * BLOBS.length);
+      const b = BLOBS[i];
+      const color = b.color;
+      const x = Math.random() * cw.current;
+      const y = Math.random() * ch.current;
+      const size = 1.5 + Math.random() * 3;
       ptsRef.current.push({
-        x: cx + (Math.random() - 0.5) * 30,
-        y: cy + (Math.random() - 0.5) * 30,
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed,
-        size: 1 + Math.random() * 2.5,
+        x, y,
+        vx: (Math.random() - 0.5) * 0.12,
+        vy: (Math.random() - 0.5) * 0.12 - 0.03,
+        size,
         alpha: 0.5 + Math.random() * 0.5,
         life: 0,
-        maxLife: 30 + Math.random() * 60,
+        maxLife: 100 + Math.random() * 120,
         color,
       });
     }
+    // Keep star count manageable
+    if (ptsRef.current.length > 1200) ptsRef.current.splice(0, ptsRef.current.length - 1200);
+  };
+
+  const drawStarsAndConnections = () => {
+    const ctx = ctxRef.current!;
+    const pts = ptsRef.current;
+    const maxDist = Math.min(cw.current, ch.current) * 0.25;
+
+    // Update & draw stars (with glow)
+    for (let i = pts.length - 1; i >= 0; i--) {
+      const pt = pts[i];
+      pt.life++;
+      if (pt.life >= pt.maxLife) { pts.splice(i, 1); continue; }
+      pt.x += pt.vx;
+      pt.y += pt.vy;
+      const lr = pt.life / pt.maxLife;
+      const fade = lr < 0.1 ? lr / 0.1 : (lr > 0.85 ? (1 - lr) / 0.15 : 1);
+      const a = pt.alpha * fade;
+      // Glow
+      ctx.globalAlpha = a * 0.08;
+      ctx.fillStyle = rgba(pt.color, 1);
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, pt.size * 2.5, 0, Math.PI * 2);
+      ctx.fill();
+      // Star
+      ctx.globalAlpha = a;
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, pt.size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Draw connection lines between nearby stars
+    ctx.lineWidth = 1;
+    for (let i = 0; i < pts.length; i++) {
+      for (let j = i + 1; j < pts.length; j++) {
+        const dx = pts[i].x - pts[j].x;
+        const dy = pts[i].y - pts[j].y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < maxDist) {
+          const alpha = (1 - dist / maxDist) * 0.35;
+          ctx.globalAlpha = alpha * Math.min(pts[i].alpha, pts[j].alpha);
+          ctx.strokeStyle = rgba(
+            [
+              Math.floor((pts[i].color[0] + pts[j].color[0]) / 2),
+              Math.floor((pts[i].color[1] + pts[j].color[1]) / 2),
+              Math.floor((pts[i].color[2] + pts[j].color[2]) / 2),
+            ],
+            1,
+          );
+          ctx.beginPath();
+          ctx.moveTo(pts[i].x, pts[i].y);
+          ctx.lineTo(pts[j].x, pts[j].y);
+          ctx.stroke();
+        }
+      }
+    }
+    ctx.globalAlpha = 1;
   };
 
   const drawBlob = (b: BlobCfg, p: number, es: number) => {
@@ -124,32 +188,6 @@ export function WelcomeAnimation({ user, onEnd }: WelcomeAnimationProps) {
     ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI * 2);
     ctx.fill();
-
-    // Occasionally spawn particles from blob centers
-    if (p < 0.85 && !reduced.current && Math.random() < 0.2) {
-      spawnParticles(x, y, 3, [b.color], clamp(p * 1.5, 0.3, 1));
-    }
-  };
-
-  const drawParticles = () => {
-    const ctx = ctxRef.current!;
-    const pts = ptsRef.current;
-    for (let i = pts.length - 1; i >= 0; i--) {
-      const pt = pts[i];
-      pt.life++;
-      if (pt.life >= pt.maxLife) { pts.splice(i, 1); continue; }
-      pt.x += pt.vx;
-      pt.y += pt.vy;
-      pt.vx *= 0.97;
-      pt.vy *= 0.97;
-      const lr = pt.life / pt.maxLife;
-      ctx.globalAlpha = pt.alpha * (1 - lr);
-      ctx.fillStyle = rgba(pt.color, 1);
-      ctx.beginPath();
-      ctx.arc(pt.x, pt.y, pt.size * (1 - lr * 0.5), 0, Math.PI * 2);
-      ctx.fill();
-    }
-    ctx.globalAlpha = 1;
   };
 
   const frame = (now: number) => {
@@ -164,18 +202,8 @@ export function WelcomeAnimation({ user, onEnd }: WelcomeAnimationProps) {
     ctx.fillRect(0, 0, cw.current, ch.current);
 
     BLOBS.forEach(b => drawBlob(b, p, es));
-    drawParticles();
-
-    // Subtle scan line overlay
-    if (!reduced.current && p < 0.85) {
-      const scanY = ((elapsed * 0.08) % (ch.current + 40)) - 20;
-      const sg = ctx.createLinearGradient(0, scanY - 20, 0, scanY + 20);
-      sg.addColorStop(0, 'rgba(255,255,255,0)');
-      sg.addColorStop(0.5, 'rgba(255,255,255,0.015)');
-      sg.addColorStop(1, 'rgba(255,255,255,0)');
-      ctx.fillStyle = sg;
-      ctx.fillRect(0, scanY - 20, cw.current, 40);
-    }
+    spawnStars(p, es);
+    drawStarsAndConnections();
 
     // Vignette
     const vg = ctx.createRadialGradient(
@@ -231,6 +259,18 @@ export function WelcomeAnimation({ user, onEnd }: WelcomeAnimationProps) {
         aria-hidden="true"
       />
 
+      {/* Unified light sweep overlay */}
+      <div
+        className="absolute inset-0 z-20 pointer-events-none"
+        style={{
+          mixBlendMode: 'overlay',
+          background: 'linear-gradient(90deg, transparent 0%, transparent 20%, hsla(225,60%,70%,0.07) 30%, hsla(0,0%,100%,0.12) 38%, hsla(0,0%,100%,0.15) 42%, hsla(0,0%,100%,0.15) 58%, hsla(0,0%,100%,0.12) 62%, hsla(225,60%,70%,0.07) 70%, transparent 80%, transparent 100%)',
+          backgroundSize: '200% 100%',
+          animation: 'wa-shine 2.8s cubic-bezier(0.65, 0, 0.35, 1) infinite',
+          animationDelay: '0.3s',
+        }}
+      />
+
       {/* Avatar with animated rings */}
       <div
         className="relative z-10 mb-10"
@@ -265,13 +305,13 @@ export function WelcomeAnimation({ user, onEnd }: WelcomeAnimationProps) {
         style={{ animation: 'wa-text-in 1s cubic-bezier(0.22, 1, 0.36, 1) both', animationDelay: '0.2s' }}
       >
         <h1
-          className="text-[clamp(28px,5vw,52px)] font-black leading-none tracking-tight"
+          className="text-[clamp(32px,5.5vw,56px)] font-black leading-none tracking-tight"
           style={{
             background: 'linear-gradient(135deg, hsl(225,55%,65%), hsl(270,55%,65%), hsl(320,55%,60%))',
             WebkitBackgroundClip: 'text',
             WebkitTextFillColor: 'transparent',
             backgroundClip: 'text',
-            filter: 'drop-shadow(0 0 30px hsla(225,60%,55%,0.15))',
+            filter: 'drop-shadow(0 0 40px hsla(225,60%,55%,0.25))',
           }}
         >
           Welcome, {user.display_name || user.username}
@@ -324,6 +364,11 @@ export function WelcomeAnimation({ user, onEnd }: WelcomeAnimationProps) {
         @keyframes wa-line-in {
           0% { opacity: 0; transform: scaleX(0); }
           100% { opacity: 1; transform: scaleX(1); }
+        }
+        @keyframes wa-shine {
+          0% { background-position: 0% 50%; }
+          40% { background-position: 100% 50%; }
+          100% { background-position: 100% 50%; }
         }
       `}</style>
     </div>
