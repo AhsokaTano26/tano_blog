@@ -64,6 +64,10 @@
   --color-success: hsl(142, 60%, 45%);
 }
 
+button, label, [role="button"], [type="button"], [type="submit"], [type="reset"] {
+  cursor: pointer;
+}
+
 body {
   background: var(--color-bg);
   color: var(--text-primary);

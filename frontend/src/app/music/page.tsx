@@ -45,6 +45,7 @@ export default function MusicPage() {
   const [volume, setVolume] = useState(0.5);
   const [showPlaylist, setShowPlaylist] = useState(true);
   const [showParticles, setShowParticles] = useState(true);
+  const [showPlaylistSelector, setShowPlaylistSelector] = useState(false);
   const [currentPlaylistIndex, setCurrentPlaylistIndex] = useState(0);
   const [bgHue, setBgHue] = useState(225);
   const [trackTransition, setTrackTransition] = useState(false);
@@ -247,6 +248,7 @@ export default function MusicPage() {
     let prevSplashDone = false;
     let burstStart = -1;
     let exitStart = -1;
+    let prevAvgFreq = 0;
 
     const animate = () => {
       const now = performance.now();
@@ -336,6 +338,13 @@ export default function MusicPage() {
           const speedMul = 1 + avgFreq * 1.8;
           p.x += p.speedX * speedMul;
           p.y += p.speedY * speedMul;
+          // Bass vibration — low frequencies shake particles in place
+          // Rhythm onset — sudden energy spike across all frequencies
+          const onset = isPlaying ? Math.max(0, avgFreq - prevAvgFreq) * 6 : 0;
+          prevAvgFreq = avgFreq;
+          const bassShake = (bass + onset) * 4;
+          p.x += Math.sin(time * 0.15 + p.noiseOffset) * bassShake;
+          p.y += Math.cos(time * 0.15 + p.noiseOffset * 1.3) * bassShake;
           // Gentle frequency wave — particles undulate in their area
           const bandPhase = (p.freqBand / barCount) * Math.PI * 2;
           const waveForce = Math.sin(time * 0.02 + bandPhase) * binVal * 0.8;
@@ -882,28 +891,48 @@ export default function MusicPage() {
           <div className="flex items-center gap-2 mb-3 px-1">
             <ListMusic className="w-4 h-4 text-white/50 flex-shrink-0" />
             {playerConfig.playlists.length > 1 ? (
-              <select value={currentPlaylistIndex} onChange={e => {
-                const pi = Number(e.target.value);
-                if (pi !== currentPlaylistIndex) {
-                  setCurrentPlaylistIndex(pi);
-                  setCurrentIndex(0);
-                  setPlaying(false);
-                  if (audioRef.current) {
-                    audioRef.current.pause();
-                    audioRef.current.src = '';
-                  }
-                }
-              }}
-                className="flex-1 text-xs font-medium bg-transparent outline-none cursor-pointer"
-                style={{ color: 'rgba(255,255,255,0.7)' }}>
-                {playerConfig.playlists.map((pl, pi) => (
-                  <option key={pl.id} value={pi} style={{ background: '#222', color: '#fff' }}>
-                    {pl.name} ({pl.tracks.length} 首)
-                  </option>
-                ))}
-              </select>
+              <div className="relative flex-1">
+                <button
+                  onClick={() => setShowPlaylistSelector(!showPlaylistSelector)}
+                  className="w-full text-xs font-medium bg-transparent outline-none cursor-pointer text-left hover:opacity-80 transition-opacity"
+                  style={{ color: 'rgba(255,255,255,0.7)' }}>
+                  {currentPlaylist?.name || '播放列表'}
+                </button>
+                {showPlaylistSelector && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setShowPlaylistSelector(false)} />
+                    <div className="absolute top-full left-0 mt-1 min-w-[160px] rounded-xl shadow-2xl py-1 z-50"
+                      style={{
+                        background: 'rgba(30,30,40,0.95)',
+                        border: '1px solid rgba(255,255,255,0.1)',
+                        backdropFilter: 'blur(24px)',
+                      }}>
+                      {playerConfig.playlists.map((pl, pi) => (
+                        <button key={pl.id} onClick={() => {
+                          setShowPlaylistSelector(false);
+                          if (pi === currentPlaylistIndex) return;
+                          setCurrentPlaylistIndex(pi);
+                          setCurrentIndex(0);
+                          setPlaying(false);
+                          if (audioRef.current) {
+                            audioRef.current.pause();
+                            audioRef.current.src = '';
+                          }
+                        }}
+                          className="w-full px-3 py-2 text-xs text-left transition-colors hover:bg-white/5 flex items-center justify-between"
+                          style={{
+                            color: pi === currentPlaylistIndex ? 'var(--primary)' : 'rgba(255,255,255,0.6)',
+                          }}>
+                          <span>{pl.name}</span>
+                          <span className="text-[10px] opacity-50">{pl.tracks.length}首</span>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
             ) : (
-              <span className="text-xs font-medium" style={{ color: 'rgba(255,255,255,0.7)' }}>
+              <span className="text-xs font-medium flex-1" style={{ color: 'rgba(255,255,255,0.7)' }}>
                 {currentPlaylist?.name || '播放列表'}
               </span>
             )}

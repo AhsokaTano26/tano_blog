@@ -120,6 +120,18 @@ func main() {
 	r.Static("/uploads", cfg.Upload.Dir)
 
 	api := r.Group("/api/v1")
+
+	// Restore endpoints (exempt from maxBodySize to allow large uploads up to 500MB)
+	restoreGroup := api.Group("/admin/restore")
+	restoreGroup.Use(middleware.AuthRequired(&cfg.JWT, db))
+	restoreGroup.Use(middleware.CSRF())
+	restoreGroup.Use(middleware.RoleRequired("admin"))
+	{
+		restoreGroup.POST("/upload", backupHandler.RestoreUpload)
+		restoreGroup.POST("/url", backupHandler.RestoreURL)
+		restoreGroup.POST("/local", backupHandler.RestoreLocal)
+	}
+
 	api.Use(maxBodySize(50 << 20))
 	{
 		// Public auth endpoints (with rate limiting)
@@ -282,12 +294,6 @@ func main() {
 				admin.GET("/backups/:filename/download", backupHandler.DownloadBackup)
 				admin.DELETE("/backups/:filename", backupHandler.DeleteBackup)
 
-				// Restore
-				admin.POST("/restore/upload", backupHandler.RestoreUpload)
-				admin.POST("/restore/url", backupHandler.RestoreURL)
-				admin.POST("/restore/local", backupHandler.RestoreLocal)
-
-				// Friend links
 				admin.GET("/links", friendLinkHandler.AdminList)
 				admin.POST("/links", friendLinkHandler.AdminCreate)
 				admin.PUT("/links/:id", friendLinkHandler.AdminUpdate)

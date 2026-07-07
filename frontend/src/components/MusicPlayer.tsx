@@ -72,6 +72,7 @@ export function MusicPlayer() {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [showPlaylist, setShowPlaylist] = useState(false);
+  const [showPlaylistSelector, setShowPlaylistSelector] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
   const [mounted, setMounted] = useState(false);
   const seekBarRef = useRef<HTMLDivElement>(null);
@@ -456,24 +457,46 @@ export function MusicPlayer() {
             <div className="flex items-center gap-2 px-2.5 py-1.5">
               <ChevronDown className="w-3 h-3" style={{ color: 'var(--text-info)' }} />
               {playlists.length > 1 ? (
-                <select
-                  value={currentPlaylistIndex}
-                  onChange={e => {
-                    const idx = parseInt(e.target.value);
-                    setCurrentPlaylistIndex(idx);
-                    setCurrentIndex(0);
-                    setPlaying(false);
-                    if (audioRef.current) {
-                      audioRef.current.src = '';
-                      audioRef.current.removeAttribute('data-src');
-                    }
-                  }}
-                  className="text-[10px] font-medium bg-transparent border-none outline-none appearance-none cursor-pointer"
-                  style={{ color: 'var(--text-info)' }}>
-                  {playlists.map((pl, i) => (
-                    <option key={pl.id} value={i}>{pl.name} ({pl.tracks.length}首)</option>
-                  ))}
-                </select>
+                <div className="relative">
+                  <button
+                    onClick={() => setShowPlaylistSelector(!showPlaylistSelector)}
+                    className="text-[10px] font-medium bg-transparent border-none outline-none cursor-pointer hover:opacity-80 transition-opacity"
+                    style={{ color: 'var(--text-info)' }}>
+                    {currentPlaylist?.name || '播放列表'} ({playlist.length}首)
+                  </button>
+                  {showPlaylistSelector && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setShowPlaylistSelector(false)} />
+                      <div className="absolute bottom-full left-0 mb-1 min-w-[140px] rounded-xl shadow-2xl py-1 z-50"
+                        style={{
+                          background: 'var(--card-bg)',
+                          border: '1px solid var(--glass-border)',
+                          backdropFilter: 'blur(24px)',
+                        }}>
+                        {playlists.map((pl, i) => (
+                          <button key={pl.id} onClick={() => {
+                            setCurrentPlaylistIndex(i);
+                            setCurrentIndex(0);
+                            setPlaying(false);
+                            if (audioRef.current) {
+                              audioRef.current.src = '';
+                              audioRef.current.removeAttribute('data-src');
+                            }
+                            setShowPlaylistSelector(false);
+                          }}
+                            className="w-full px-3 py-2 text-[10px] text-left transition-colors hover:opacity-80 flex items-center justify-between"
+                            style={{
+                              color: i === currentPlaylistIndex ? 'var(--primary)' : 'var(--text-secondary)',
+                              background: i === currentPlaylistIndex ? 'var(--primary-sub)' : 'transparent',
+                            }}>
+                            <span>{pl.name}</span>
+                            <span className="text-[9px]" style={{ color: 'var(--text-info)' }}>{pl.tracks.length}首</span>
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
               ) : (
                 <span className="text-[10px] font-medium" style={{ color: 'var(--text-info)' }}>
                   {currentPlaylist?.name || '播放列表'}
