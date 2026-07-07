@@ -194,29 +194,6 @@ docker logs tano_blog_app 2>&1 | grep "password"
 
 访问 `http://localhost:3000/admin` 进入管理后台。
 
-### 路由列表
-
-| 路径 | 功能 |
-|------|------|
-| `/admin` | 仪表盘概览 |
-| `/admin/posts` | 文章管理 |
-| `/admin/calendar` | 日历视图 |
-| `/admin/categories` | 分类管理 |
-| `/admin/tags` | 标签管理 |
-| `/admin/comments` | 评论管理 |
-| `/admin/media` | 媒体库 |
-| `/admin/series` | 系列管理 |
-| `/admin/links` | 友链管理 |
-| `/admin/nav-links` | 导航管理 |
-| `/admin/music-page` | 音乐馆配置 |
-| `/admin/profile` | 个人信息 |
-| `/admin/settings` | 站点设置 |
-| `/admin/access-logs` | 访问日志 |
-| `/admin/analytics` | 统计分析 |
-| `/admin/backup` | 备份与恢复 |
-| `/admin/notifications` | 消息通知 |
-| `/admin/help` | 帮助中心 |
-
 ## Default Admin
 
 首次启动自动创建管理员账号：

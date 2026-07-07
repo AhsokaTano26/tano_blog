@@ -26,3 +26,4 @@ pgdata/
 .claude/
 /文档/
 /.next/
+/qodana.yaml
