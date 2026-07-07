@@ -33,8 +33,10 @@ type JWTConfig struct {
 }
 
 type UploadConfig struct {
-	Dir   string
-	MaxMB int64
+	Dir         string
+	MaxImageMB  int64
+	MaxAudioMB  int64
+	MaxVideoMB  int64
 }
 
 func Load() *Config {
@@ -66,8 +68,10 @@ func Load() *Config {
 			RememberMeExpiration: 7 * 24 * time.Hour,
 		},
 		Upload: UploadConfig{
-			Dir:   getEnv("UPLOAD_DIR", "./uploads"),
-			MaxMB: getEnvInt64("UPLOAD_MAX_MB", 100),
+			Dir:         getEnv("UPLOAD_DIR", "./uploads"),
+			MaxImageMB:  getEnvInt64("UPLOAD_MAX_IMAGE_MB", 50),
+			MaxAudioMB:  getEnvInt64("UPLOAD_MAX_AUDIO_MB", 200),
+			MaxVideoMB:  getEnvInt64("UPLOAD_MAX_VIDEO_MB", 2048),
 		},
 		BackupDir:     getEnv("BACKUP_DIR", "./backups"),
 		AdminPassword: adminPassword,

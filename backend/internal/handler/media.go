@@ -34,13 +34,33 @@ func (h *MediaHandler) Upload(c *gin.Context) {
 		return
 	}
 
-	if file.Size > h.cfg.MaxMB*1024*1024 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("文件大小超过限制（最大%dMB）", h.cfg.MaxMB)})
+	// Determine type-specific size limit before validation
+	ext := strings.ToLower(filepath.Ext(file.Filename))
+	imageExts := map[string]bool{".jpg": true, ".jpeg": true, ".png": true, ".gif": true, ".webp": true, ".ico": true, ".bmp": true, ".svg": true}
+	audioExts := map[string]bool{".mp3": true, ".wav": true, ".flac": true, ".aac": true, ".m4a": true, ".ogg": true}
+	videoExts := map[string]bool{".mp4": true, ".webm": true, ".mov": true, ".avi": true, ".mkv": true}
+
+	var maxBytes int64
+	var limitName string
+	switch {
+	case imageExts[ext]:
+		maxBytes = h.cfg.MaxImageMB * 1024 * 1024
+		limitName = fmt.Sprintf("%dMB", h.cfg.MaxImageMB)
+	case audioExts[ext]:
+		maxBytes = h.cfg.MaxAudioMB * 1024 * 1024
+		limitName = fmt.Sprintf("%dMB", h.cfg.MaxAudioMB)
+	case videoExts[ext]:
+		maxBytes = h.cfg.MaxVideoMB * 1024 * 1024
+		limitName = fmt.Sprintf("%dMB", h.cfg.MaxVideoMB)
+	default:
+		maxBytes = h.cfg.MaxImageMB * 1024 * 1024
+		limitName = fmt.Sprintf("%dMB", h.cfg.MaxImageMB)
+	}
+	if file.Size > maxBytes {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("文件大小超过限制（最大%s）", limitName)})
 		return
 	}
 
-	// Validate file type
-	ext := strings.ToLower(filepath.Ext(file.Filename))
 	allowedExts := map[string]bool{
 		".jpg": true, ".jpeg": true, ".png": true, ".gif": true,
 		".webp": true, ".ico": true, ".bmp": true, ".svg": true,
