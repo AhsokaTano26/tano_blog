@@ -46,8 +46,13 @@ function useInjectionConfig() {
  * Handles <script> tags properly (innerHTML doesn't execute scripts).
  */
 function injectIntoHead(html: string, dataAttr: string): (() => void) {
+  // Sanitize with DOMPurify allowing script/style tags needed for analytics/custom CSS
+  const clean = DOMPurify.sanitize(html, {
+    ADD_TAGS: ['script', 'style'],
+    ADD_ATTR: ['async', 'defer', 'crossorigin', 'integrity', 'nomodule', 'target'],
+  });
   const wrapper = document.createElement('div');
-  wrapper.innerHTML = html;
+  wrapper.innerHTML = clean;
   const injected: Element[] = [];
 
   while (wrapper.firstChild) {

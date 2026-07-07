@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import DOMPurify from 'dompurify';
 import { api } from '@/lib/api';
 
 export function Footer() {
@@ -23,7 +24,7 @@ export function Footer() {
       <p
         className="text-xs leading-relaxed"
         style={{ color: 'var(--text-info)' }}
-        dangerouslySetInnerHTML={{ __html: text }}
+        dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(text, { ALLOWED_TAGS: ['a', 'b', 'i', 'em', 'strong', 'br', 'span', 'code'] }) }}
       />
     </footer>
   );

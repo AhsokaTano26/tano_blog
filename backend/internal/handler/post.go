@@ -121,7 +121,7 @@ func (h *PostHandler) GetBySlug(c *gin.Context) {
 	}
 
 	// Only return published posts for public API
-	if c.GetString("user_id") == "" && post.Status != "published" {
+	if c.GetString("role") != "admin" && post.Status != "published" {
 		c.JSON(http.StatusNotFound, gin.H{"error": "文章不存在"})
 		return
 	}

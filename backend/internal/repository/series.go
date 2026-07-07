@@ -23,8 +23,9 @@ func (r *SeriesRepo) List() ([]model.Series, error) {
 func (r *SeriesRepo) ListWithCount() ([]map[string]interface{}, error) {
 	var results []map[string]interface{}
 	err := r.db.Model(&model.Series{}).
-		Select("series.*, COUNT(post_series.post_id) as post_count").
+		Select("series.*, COUNT(post_series.post_id) FILTER (WHERE posts.status = 'published') as post_count").
 		Joins("LEFT JOIN post_series ON post_series.series_id = series.id").
+		Joins("LEFT JOIN posts ON posts.id = post_series.post_id").
 		Group("series.id").
 		Order("series.sort_order ASC, series.created_at DESC").
 		Find(&results).Error

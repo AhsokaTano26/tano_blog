@@ -99,6 +99,22 @@ func (h *MediaHandler) Upload(c *gin.Context) {
 	f.Close()
 	mimeType := http.DetectContentType(buf[:n])
 
+	// Verify detected MIME matches extension category
+	imageMimes := []string{"image/"}
+	audioMimes := []string{"audio/"}
+	videoMimes := []string{"video/"}
+	switch {
+	case imageExts[ext] && !hasAnyPrefix(mimeType, imageMimes...):
+		c.JSON(http.StatusBadRequest, gin.H{"error": "文件内容与扩展名不匹配，请检查文件"})
+		return
+	case audioExts[ext] && !hasAnyPrefix(mimeType, audioMimes...):
+		c.JSON(http.StatusBadRequest, gin.H{"error": "文件内容与扩展名不匹配，请检查文件"})
+		return
+	case videoExts[ext] && !hasAnyPrefix(mimeType, videoMimes...):
+		c.JSON(http.StatusBadRequest, gin.H{"error": "文件内容与扩展名不匹配，请检查文件"})
+		return
+	}
+
 	// Extract embedded album art from audio files
 	var thumbnailURL string
 	if strings.HasPrefix(mimeType, "audio/") {
@@ -381,4 +397,14 @@ func extractAudioCover(filePath, uploadDir, filename string) (string, error) {
 	}
 
 	return "/uploads/" + thumbFilename, nil
+}
+
+// hasAnyPrefix checks if s has any of the given prefixes
+func hasAnyPrefix(s string, prefixes ...string) bool {
+	for _, p := range prefixes {
+		if strings.HasPrefix(s, p) {
+			return true
+		}
+	}
+	return false
 }

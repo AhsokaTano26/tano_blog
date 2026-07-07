@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { api } from '@/lib/api';
 import {
   Plus, Pencil, Trash2, ExternalLink, Eye, Search, X, Check, FileText,
@@ -111,7 +112,10 @@ export default function AdminPosts() {
   const totalPages = Math.ceil(total / 20);
 
   if (editing !== undefined) {
-    return <PostEditor post={editing} onClose={() => { setEditing(undefined); load(); }} />;
+    return createPortal(
+      <PostEditor post={editing} onClose={() => { setEditing(undefined); load(); }} />,
+      document.body
+    );
   }
 
   return (

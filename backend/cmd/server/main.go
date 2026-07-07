@@ -102,7 +102,7 @@ func main() {
 
 	// Setup router
 	r := gin.New()
-	r.MaxMultipartMemory = 32 << 20 // 32 MB
+	r.MaxMultipartMemory = 2 << 30 // 2 GB
 	r.Use(gin.Recovery())
 	r.Use(middleware.AccessLogger(db))
 
@@ -135,11 +135,11 @@ func main() {
 		api.GET("/posts", postHandler.ListPublic)
 		api.GET("/posts/top", postHandler.TopPosts)
 		api.GET("/posts/top-viewed", postHandler.TopViewed)
-		api.POST("/posts/:slug/reactions", postHandler.ToggleReaction)
+		api.POST("/posts/:slug/reactions", middleware.RateLimit(30, 60*time.Second), postHandler.ToggleReaction)
 		api.GET("/posts/:slug/adjacent", postHandler.AdjacentPosts)
 		api.GET("/posts/:slug/related", postHandler.RelatedPosts)
 		api.POST("/posts/:slug/verify-password", middleware.RateLimit(5, 60*time.Second), postHandler.VerifyPassword)
-		api.GET("/posts/preview", postHandler.GetByPreviewToken)
+		api.GET("/posts/preview", middleware.RateLimit(30, 60*time.Second), postHandler.GetByPreviewToken)
 		api.GET("/posts/calendar", postHandler.CalendarPostsPublic)
 
 		// Password reset (public, with rate limiting)
@@ -166,7 +166,7 @@ func main() {
 
 		api.GET("/posts/:slug/comments", commentHandler.ListByPost)
 		api.POST("/posts/:slug/comments", middleware.RateLimit(5, 60*time.Second), commentHandler.Create)
-		api.POST("/posts/:slug/comments/:id/reactions", commentHandler.ToggleReaction)
+		api.POST("/posts/:slug/comments/:id/reactions", middleware.RateLimit(30, 60*time.Second), commentHandler.ToggleReaction)
 
 		// Authenticated endpoints (CSRF protected)
 		authRequired := api.Group("")

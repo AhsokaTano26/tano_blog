@@ -81,7 +81,6 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	h.sendLoginNotify(c, user)
 
 	c.JSON(http.StatusOK, gin.H{
-		"token": token,
 		"user": gin.H{
 			"id":           user.ID,
 			"username":     user.Username,
@@ -142,7 +141,6 @@ func (h *AuthHandler) LoginWithTOTP(c *gin.Context) {
 	h.sendLoginNotify(c, user)
 
 	c.JSON(http.StatusOK, gin.H{
-		"token": token,
 		"user": gin.H{
 			"id":           user.ID,
 			"username":     user.Username,
@@ -500,7 +498,6 @@ func (h *AuthHandler) PasskeyLoginVerify(c *gin.Context) {
 	h.sendLoginNotify(c, user)
 
 	c.JSON(http.StatusOK, gin.H{
-		"token": token,
 		"user": gin.H{
 			"id":           user.ID,
 			"username":     user.Username,

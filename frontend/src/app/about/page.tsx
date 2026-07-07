@@ -5,7 +5,7 @@ import { api } from '@/lib/api';
 import { Loading } from '@/components/Loading';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import rehypeRaw from 'rehype-raw';
+
 import rehypeSlug from 'rehype-slug';
 import {
   Mail, Globe, Send,
@@ -350,7 +350,7 @@ export default function AboutPage() {
           >
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
-              rehypePlugins={[rehypeRaw, rehypeSlug]}
+              rehypePlugins={[rehypeSlug]}
               components={{
                 a: ({ href, children }) => (
                   <a href={href} target="_blank" rel="noopener noreferrer"
