@@ -27,6 +27,7 @@ export default function LoginPage() {
         setTotpRequired(true);
         setUserId(res.user_id);
       } else {
+        sessionStorage.setItem('jl', '1');
         window.location.href = '/admin';
       }
     } catch (err: any) {
@@ -40,6 +41,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await api.loginWithTOTP({ user_id: userId, code: totpCode, remember_me: rememberMe });
+      sessionStorage.setItem('jl', '1');
       window.location.href = '/admin';
     } catch (err: any) {
       setError(err.message);
@@ -73,6 +75,7 @@ export default function LoginPage() {
           userHandle: assertion.response.userHandle ? bufferToBase64url(assertion.response.userHandle) : null,
         },
       });
+      sessionStorage.setItem('jl', '1');
       window.location.href = '/admin';
     } catch (err: any) {
       setError(err.name === 'NotAllowedError' ? 'Passkey 验证已取消' : (err.message || 'Passkey 登录失败'));

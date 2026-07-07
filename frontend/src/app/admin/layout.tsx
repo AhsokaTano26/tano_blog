@@ -12,6 +12,7 @@ import { usePathname } from 'next/navigation';
 import NavLink from 'next/link';
 import { Loading } from '@/components/Loading';
 import { ConfirmProvider } from '@/components/ConfirmDialog';
+import { WelcomeAnimation } from '@/components/WelcomeAnimation';
 
 const navSections = [
   {
@@ -46,6 +47,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [collapsed, setCollapsed] = useState(false);
+  const [showWelcome, setShowWelcome] = useState(false);
   const [pendingCounts, setPendingCounts] = useState<Record<string, number>>({});
   const [notifCount, setNotifCount] = useState(0);
   const pathname = usePathname();
@@ -58,6 +60,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       }
     }).finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (user && sessionStorage.getItem('jl')) {
+      sessionStorage.removeItem('jl');
+      setShowWelcome(true);
+    }
+  }, [user]);
 
   useEffect(() => {
     if (!user) return;
@@ -119,8 +128,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     );
   }
 
+  // Show welcome animation fullscreen on fresh login, no admin layout underneath
+  if (showWelcome) {
+    return <WelcomeAnimation user={user} onEnd={() => setShowWelcome(false)} />;
+  }
+
   return (
-    <div className="min-h-screen flex" style={{ background: 'var(--color-bg)' }}>
+      <div className="min-h-screen flex" style={{ background: 'var(--color-bg)' }}>
       {/* Sidebar */}
       <aside className={`fixed top-0 left-0 h-full z-50 flex flex-col transition-all duration-200 ${collapsed ? 'w-[60px]' : 'w-[220px]'}`}
         style={{

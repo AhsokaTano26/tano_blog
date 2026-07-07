@@ -11,9 +11,10 @@ interface MediaFieldProps {
   placeholder?: string;
   previewSize?: number;
   rounded?: 'square' | 'circle';
+  filterType?: 'image' | 'video' | 'audio' | 'document';
 }
 
-export function MediaField({ value, onChange, accept, placeholder, previewSize = 64, rounded = 'square' }: MediaFieldProps) {
+export function MediaField({ value, onChange, accept, placeholder, previewSize = 64, rounded = 'square', filterType }: MediaFieldProps) {
   const [showPicker, setShowPicker] = useState(false);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -87,6 +88,7 @@ export function MediaField({ value, onChange, accept, placeholder, previewSize =
           triggerRect={mediaBtnRef.current?.getBoundingClientRect()}
           onSelect={(url) => { onChange(url); setShowPicker(false); }}
           onClose={() => setShowPicker(false)}
+          filterType={filterType}
         />
       )}
     </div>
@@ -108,13 +110,13 @@ const typeTabs = [
   { key: 'document', label: '文档' },
 ];
 
-export function MediaPickerModal({ onSelect, onClose, onUpload, triggerRect }: { onSelect: (url: string, originalName?: string, thumbnailUrl?: string) => void; onClose: () => void; onUpload?: () => void; triggerRect?: DOMRect }) {
+export function MediaPickerModal({ onSelect, onClose, onUpload, triggerRect, filterType }: { onSelect: (url: string, originalName?: string, thumbnailUrl?: string) => void; onClose: () => void; onUpload?: () => void; triggerRect?: DOMRect; filterType?: 'image' | 'video' | 'audio' | 'document' | '' }) {
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [tagFilter, setTagFilter] = useState('');
-  const [typeFilter, setTypeFilter] = useState('');
+  const [typeFilter, setTypeFilter] = useState(filterType || '');
   const [mediaTags, setMediaTags] = useState<{ id: string; name: string }[]>([]);
   const pageSize = 30;
 
@@ -169,19 +171,21 @@ export function MediaPickerModal({ onSelect, onClose, onUpload, triggerRect }: {
         </div>
       </div>
 
-      {/* Type filter */}
-      <div className="flex items-center gap-1 mb-2 flex-shrink-0">
-        {typeTabs.map(tab => (
-          <button key={tab.key} onClick={() => setTypeFilter(tab.key)}
-            className="px-3 py-1 rounded-lg text-xs font-medium transition-all"
-            style={{
-              background: typeFilter === tab.key ? 'var(--primary-sub)' : 'transparent',
-              color: typeFilter === tab.key ? 'var(--primary)' : 'var(--text-secondary)',
-            }}>
-            {tab.label}
-          </button>
-        ))}
-      </div>
+      {/* Type filter — hidden when filterType is forced */}
+      {!filterType && (
+        <div className="flex items-center gap-1 mb-2 flex-shrink-0">
+          {typeTabs.map(tab => (
+            <button key={tab.key} onClick={() => setTypeFilter(tab.key)}
+              className="px-3 py-1 rounded-lg text-xs font-medium transition-all"
+              style={{
+                background: typeFilter === tab.key ? 'var(--primary-sub)' : 'transparent',
+                color: typeFilter === tab.key ? 'var(--primary)' : 'var(--text-secondary)',
+              }}>
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Tag filter */}
       {mediaTags.length > 0 && (

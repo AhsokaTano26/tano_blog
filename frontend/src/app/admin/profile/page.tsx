@@ -271,7 +271,7 @@ export default function AdminProfile() {
 
               <div>
                 <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>头像</label>
-                <MediaField value={avatarUrl} onChange={setAvatarUrl} rounded="circle" placeholder="https://example.com/avatar.png" />
+                <MediaField value={avatarUrl} onChange={setAvatarUrl} rounded="circle" placeholder="https://example.com/avatar.png" filterType="image" />
               </div>
 
               <div>

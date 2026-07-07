@@ -151,7 +151,7 @@ export default function AdminSeries() {
                 style={{ color: 'var(--text-primary)' }} rows={3} />
               <div>
                 <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-info)' }}>封面图</label>
-                <MediaField value={form.cover_image} onChange={url => setForm({ ...form, cover_image: url })} placeholder="封面图 URL" />
+                <MediaField value={form.cover_image} onChange={url => setForm({ ...form, cover_image: url })} placeholder="封面图 URL" filterType="image" />
               </div>
               <input type="number" placeholder="排序权重" value={form.sort_order}
                 onChange={e => setForm({ ...form, sort_order: parseInt(e.target.value) || 0 })}

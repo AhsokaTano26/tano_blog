@@ -403,6 +403,7 @@ export default function AdminMusicPage() {
             setBgPickerOpen(false);
           }}
           onClose={() => setBgPickerOpen(false)}
+          filterType="image"
         />
       )}
 
@@ -419,6 +420,7 @@ export default function AdminMusicPage() {
             setTrackPickerTarget(null);
           }}
           onClose={() => setTrackPickerTarget(null)}
+          filterType={trackPickerTarget.field === 'url' ? 'audio' : 'image'}
         />
       )}
 

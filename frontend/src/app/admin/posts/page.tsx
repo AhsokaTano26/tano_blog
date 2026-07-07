@@ -548,7 +548,7 @@ function PostDetailDialog({ post, categories, tags, seriesList, onSave, onClose 
           {/* Cover image */}
           <div>
             <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-info)' }}>封面图</label>
-            <MediaField value={coverImage} onChange={setCoverImage} placeholder="https://..." />
+            <MediaField value={coverImage} onChange={setCoverImage} placeholder="https://..." filterType="image" />
           </div>
 
           {/* Excerpt */}
@@ -1186,6 +1186,7 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
                   onSelect={(url) => insertMedia(url, mediaPickerType)}
                   onClose={() => setMediaPickerType(null)}
                   onUpload={() => mediaFileRef.current?.click()}
+                  filterType={mediaPickerType}
                 />
               )}
             </div>

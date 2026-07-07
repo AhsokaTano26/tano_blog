@@ -116,7 +116,7 @@ export default function AdminSettings() {
             <div className="space-y-5 max-w-2xl">
               <div>
                 <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>头像</label>
-                <MediaField value={config.profile_avatar || ''} onChange={url => setConfig({ ...config, profile_avatar: url })} rounded="circle" placeholder="/aimi.png" />
+                <MediaField value={config.profile_avatar || ''} onChange={url => setConfig({ ...config, profile_avatar: url })} rounded="circle" placeholder="/aimi.png" filterType="image" />
                 <p className="text-xs mt-1" style={{ color: 'var(--text-info)' }}>图片路径或 URL</p>
               </div>
               <div>
@@ -216,7 +216,7 @@ export default function AdminSettings() {
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>站点 Favicon</label>
-                <MediaField value={config.site_favicon || ''} onChange={url => setConfig({ ...config, site_favicon: url })} previewSize={32} placeholder="/favicon.ico" />
+                <MediaField value={config.site_favicon || ''} onChange={url => setConfig({ ...config, site_favicon: url })} previewSize={32} placeholder="/favicon.ico" filterType="image" />
                 <p className="text-xs mt-1" style={{ color: 'var(--text-info)' }}>建议尺寸 32×32，支持 .ico / .png / .svg</p>
               </div>
             </div>
