@@ -151,12 +151,12 @@ export function MediaPickerModal({ onSelect, onClose, onUpload }: { onSelect: (u
 
   return (
     <div
-      className="fixed inset-0 z-[300] flex items-center justify-center p-4"
+      className="fixed inset-0 z-[300] flex items-center justify-center p-4 animate-fade-in"
       style={{ background: 'rgba(0,0,0,0.5)' }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div
-        className="w-full max-w-2xl rounded-2xl p-4 shadow-2xl flex flex-col"
+        className="w-full max-w-2xl rounded-2xl p-4 shadow-2xl flex flex-col animate-fade-scale-in"
         style={{
           background: 'var(--card-bg)',
           border: '1px solid var(--glass-border)',

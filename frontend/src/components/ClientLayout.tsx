@@ -6,6 +6,7 @@ import { Banner } from '@/components/Banner';
 import { PageTransition } from '@/components/PageTransition';
 import { GlobalHeadInjection, FooterInjection } from '@/components/HtmlInjection';
 import { KeyboardShortcuts } from '@/components/KeyboardShortcuts';
+import { Footer } from '@/components/Footer';
 import { BackToTop } from '@/components/BackToTop';
 
 export function ClientLayout({ children }: { children: React.ReactNode }) {
@@ -23,6 +24,7 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
         {isAdmin ? children : <PageTransition>{children}</PageTransition>}
       </main>
       {!isAdmin && !isHome && <FooterInjection />}
+      {!isAdmin && <Footer />}
       {!isAdmin && <BackToTop />}
     </>
   );

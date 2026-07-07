@@ -35,7 +35,7 @@ func (h *SiteConfigHandler) GetPublic(c *gin.Context) {
 		"footer_text", "comment_enabled", "default_theme",
 		"accent_color", "head_injection", "content_head_injection", "footer_injection",
 		"profile_avatar", "profile_name", "profile_bio", "profile_contacts",
-		"site_favicon",
+		"site_favicon", "about_content",
 	}
 
 	configs, err := h.repo.GetByKeys(publicKeys)
@@ -84,7 +84,7 @@ func (h *SiteConfigHandler) Update(c *gin.Context) {
 		"email_smtp_host": true, "email_smtp_port": true,
 		"email_smtp_username": true, "email_smtp_password": true,
 		"profile_avatar": true, "profile_name": true, "profile_bio": true, "profile_contacts": true,
-		"site_favicon": true,
+		"site_favicon": true, "about_content": true,
 	}
 
 	for key, value := range input {

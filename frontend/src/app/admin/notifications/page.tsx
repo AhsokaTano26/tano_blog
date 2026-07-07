@@ -2,13 +2,15 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '@/lib/api';
-import { Bell, CheckCheck, MessageSquare, Link as LinkIcon, ExternalLink } from 'lucide-react';
+import { Bell, CheckCheck, MessageSquare, Link as LinkIcon, ExternalLink, LogIn, KeyRound } from 'lucide-react';
 
 const typeIcons: Record<string, any> = {
   new_comment: MessageSquare,
   link_apply: LinkIcon,
   reply: MessageSquare,
   comment_approved: MessageSquare,
+  login: LogIn,
+  password_reset: KeyRound,
 };
 
 const typeLabels: Record<string, string> = {
@@ -16,6 +18,8 @@ const typeLabels: Record<string, string> = {
   link_apply: '友链申请',
   reply: '回复',
   comment_approved: '评论通过',
+  login: '登录',
+  password_reset: '密码重置',
 };
 
 export default function NotificationsPage() {
@@ -57,7 +61,7 @@ export default function NotificationsPage() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">通知中心</h1>
         <button onClick={handleMarkAllRead}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 transition-colors text-sm">
+          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 transition-colors text-sm btn-press">
           <CheckCheck className="w-4 h-4" />
           全部标记已读
         </button>
@@ -76,9 +80,10 @@ export default function NotificationsPage() {
             const Icon = typeIcons[n.type] || Bell;
             return (
               <div key={n.id}
-                className={`flex items-start gap-4 p-4 rounded-xl transition-colors ${
-                  n.is_read ? 'bg-white/5' : 'bg-blue-500/10 border border-blue-500/20'
-                }`}>
+                className={`flex items-start gap-4 p-4 rounded-xl transition-colors cursor-pointer ${
+                  n.is_read ? 'bg-white/5 hover:bg-white/10' : 'bg-blue-500/10 border border-blue-500/20 hover:bg-blue-500/15'
+                }`}
+                onClick={() => { if (n.link) window.location.href = n.link; }}>
                 <div className={`p-2 rounded-lg ${
                   n.is_read ? 'bg-white/10' : 'bg-blue-500/20'
                 }`}>
@@ -103,15 +108,15 @@ export default function NotificationsPage() {
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   {!n.is_read && (
-                    <button onClick={() => handleMarkRead(n.id)}
-                      className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+                    <button onClick={(e) => { e.stopPropagation(); handleMarkRead(n.id); }}
+                      className="p-2 hover:bg-white/10 rounded-lg transition-colors btn-press"
                       title="标记已读">
                       <CheckCheck className="w-4 h-4 text-gray-400" />
                     </button>
                   )}
                   {n.link && (
-                    <a href={n.link}
-                      className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+                    <a href={n.link} onClick={(e) => e.stopPropagation()}
+                      className="p-2 hover:bg-white/10 rounded-lg transition-colors btn-press"
                       title="查看详情">
                       <ExternalLink className="w-4 h-4 text-gray-400" />
                     </a>

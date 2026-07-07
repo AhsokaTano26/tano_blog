@@ -206,12 +206,71 @@ html {
   to { opacity: 1; }
 }
 
+@keyframes fade-scale-in {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slide-down {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse-subtle {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
 .animate-fade-in-up {
   animation: fade-in-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 .animate-fade-in {
-  animation: fade-in 0.5s ease-out forwards;
+  animation: fade-in 0.3s ease-out forwards;
+}
+
+.animate-fade-scale-in {
+  animation: fade-scale-in 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-slide-up {
+  animation: slide-up 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-slide-down {
+  animation: slide-down 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-pulse-subtle {
+  animation: pulse-subtle 2s ease-in-out infinite;
+}
+
+.animate-shimmer {
+  background: linear-gradient(90deg,
+    var(--btn-card-bg) 25%,
+    var(--glass-border) 50%,
+    var(--btn-card-bg) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+/* Interactive press effect */
+.btn-press {
+  transition: transform 0.1s ease;
+  cursor: pointer;
+}
+.btn-press:active {
+  transform: scale(0.97);
 }
 
 /* ===== Stagger Animation Delays ===== */
@@ -285,6 +344,16 @@ html {
   }
   .page-transition {
     animation: none;
+  }
+  .animate-fade-scale-in,
+  .animate-slide-up,
+  .animate-slide-down,
+  .animate-pulse-subtle,
+  .animate-shimmer {
+    animation: none;
+  }
+  .btn-press:active {
+    transform: none;
   }
   .card-base:hover,
   .card-hover:hover {
@@ -361,6 +430,14 @@ html {
 }
 .light :where(pre):not(:where([class~="not-prose"], [class~="not-prose"] *)) {
   background: rgba(0, 0, 0, 0.06) !important;
+}
+
+/* ===== Table row hover ===== */
+.admin-table-row {
+  transition: background 0.2s ease;
+}
+.admin-table-row:hover {
+  background: rgba(255, 255, 255, 0.05);
 }
 
 /* ===== Selection ===== */

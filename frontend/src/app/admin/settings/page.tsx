@@ -171,6 +171,23 @@ export default function AdminSettings() {
                   添加联系方式
                 </button>
               </div>
+
+              {/* About page content */}
+              <div className="pt-4" style={{ borderTop: '1px solid var(--glass-border)' }}>
+                <div className="flex items-center gap-2 mb-3">
+                  <FileText className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
+                  <span className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>关于页面</span>
+                </div>
+                <p className="text-xs mb-2" style={{ color: 'var(--text-info)' }}>支持 Markdown 格式，将显示在关于页面头像/简介下方</p>
+                <textarea
+                  value={config.about_content || ''}
+                  onChange={e => setConfig({ ...config, about_content: e.target.value })}
+                  rows={12}
+                  placeholder="在此编写关于页面的详细内容，支持 Markdown 格式..."
+                  className={`${inputClass} resize-y font-mono text-sm leading-relaxed`}
+                  style={inputStyle}
+                />
+              </div>
             </div>
           )}
 

@@ -67,7 +67,7 @@ export function Header() {
       <nav className="hidden md:flex items-center gap-0.5">
         {navLinks.map((link) => (
           <Link key={link.href} href={link.href}
-            className="px-3 py-1.5 rounded-xl text-sm transition-all hover:bg-white/5 dark:hover:bg-white/5"
+            className="px-3 py-1.5 rounded-xl text-sm transition-all hover:bg-white/5 dark:hover:bg-white/5 hover:scale-[1.02]"
             style={{ color: 'var(--text-secondary)' }}>
             {link.label}
           </Link>
@@ -93,7 +93,7 @@ export function Header() {
         </button>
 
         {hueOpen && (
-          <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3 rounded-xl p-3 w-48"
+          <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3 rounded-xl p-3 w-48 animate-slide-up"
             style={{
               background: 'var(--glass-bg)',
               border: '1px solid var(--glass-border)',
@@ -127,7 +127,7 @@ export function Header() {
       {/* Theme toggle */}
       <button
         onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-        className="p-2 rounded-xl transition-all hover:bg-white/5 dark:hover:bg-white/5"
+        className="p-2 rounded-xl transition-all hover:bg-white/5 dark:hover:bg-white/5 btn-press"
         style={{ color: 'var(--text-secondary)' }}
         aria-label="切换主题"
       >
@@ -137,7 +137,7 @@ export function Header() {
       {/* Mobile menu */}
       <button
         onClick={() => setMenuOpen(!menuOpen)}
-        className="md:hidden p-2 rounded-xl transition-all hover:bg-white/5 dark:hover:bg-white/5"
+        className="md:hidden p-2 rounded-xl transition-all hover:bg-white/5 dark:hover:bg-white/5 btn-press"
         style={{ color: 'var(--text-secondary)' }}
         aria-label="菜单"
       >
@@ -146,7 +146,7 @@ export function Header() {
 
       {/* Mobile dropdown */}
       {menuOpen && (
-        <div className="md:hidden absolute top-full left-0 right-0 mt-2 rounded-2xl p-4"
+        <div className="md:hidden absolute top-full left-0 right-0 mt-2 rounded-2xl p-4 animate-slide-down"
           style={{
             background: 'var(--glass-bg)',
             border: '1px solid var(--glass-border)',

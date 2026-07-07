@@ -34,18 +34,18 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
     <ConfirmContext.Provider value={confirm}>
       {children}
       {state && (
-        <div className="fixed inset-0 z-[300] flex items-center justify-center p-4"
+        <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 animate-fade-in"
           style={{ background: 'rgba(0,0,0,0.5)' }}
           onClick={(e) => { if (e.target === e.currentTarget) handleCancel(); }}>
-          <div className="w-full max-w-sm rounded-2xl p-6 shadow-2xl"
+          <div className="w-full max-w-sm rounded-2xl p-6 shadow-2xl animate-fade-scale-in"
             style={{ background: 'var(--card-bg)', border: '1px solid var(--glass-border)', backdropFilter: 'blur(24px)' }}>
             <p className="text-sm mb-6" style={{ color: 'var(--text-primary)' }}>{state.message}</p>
             <div className="flex justify-end gap-2">
               <button onClick={handleCancel}
-                className="px-4 py-2 rounded-xl text-sm btn-glass"
+                className="px-4 py-2 rounded-xl text-sm btn-glass btn-press"
                 style={{ color: 'var(--text-secondary)' }}>取消</button>
               <button onClick={handleConfirm}
-                className="px-4 py-2 rounded-xl text-sm font-medium text-white"
+                className="px-4 py-2 rounded-xl text-sm font-medium text-white btn-press"
                 style={{ background: 'var(--primary)' }}>确定</button>
             </div>
           </div>

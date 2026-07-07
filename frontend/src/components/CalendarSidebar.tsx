@@ -34,11 +34,13 @@ export function CalendarSidebar() {
   const prevMonth = () => {
     if (month === 1) { setYear(y => y - 1); setMonth(12); }
     else { setMonth(m => m - 1); }
+    setSelectedDate(null);
   };
 
   const nextMonth = () => {
     if (month === 12) { setYear(y => y + 1); setMonth(1); }
     else { setMonth(m => m + 1); }
+    setSelectedDate(null);
   };
 
   const firstDay = new Date(year, month - 1, 1).getDay();
@@ -49,6 +51,12 @@ export function CalendarSidebar() {
     if (!postsByDate[p.date]) postsByDate[p.date] = [];
     postsByDate[p.date].push(p);
   });
+
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+
+  const displayedPosts = selectedDate
+    ? (postsByDate[selectedDate] || [])
+    : posts.slice(0, 5);
 
   return (
     <div className="card-base p-4 rounded-2xl">
@@ -85,17 +93,27 @@ export function CalendarSidebar() {
 
           return (
             <div key={day} className="relative py-1">
-              <span
-                className={`inline-flex items-center justify-center w-6 h-6 text-xs rounded-full ${
-                  isToday ? 'ring-1 ring-inset' : ''
-                } ${hasPosts ? 'font-bold' : ''}`}
-                style={{
-                  color: isToday ? 'var(--primary)' : hasPosts ? 'var(--text-primary)' : 'var(--text-info)',
-                  background: hasPosts ? 'var(--primary-sub)' : 'transparent',
+              <button
+                onClick={() => {
+                  if (hasPosts) {
+                    setSelectedDate(selectedDate === dateKey ? null : dateKey);
+                  }
                 }}
+                className={`inline-flex items-center justify-center w-6 h-6 text-xs rounded-full transition-all ${
+                  hasPosts ? 'cursor-pointer hover:scale-110' : 'cursor-default'
+                } ${isToday && selectedDate !== dateKey ? 'ring-1 ring-inset' : ''}
+                  ${selectedDate === dateKey ? 'ring-2 ring-inset scale-110' : ''}`}
+                style={{
+                  color: selectedDate === dateKey ? '#fff'
+                    : isToday ? 'var(--primary)'
+                    : hasPosts ? 'var(--text-primary)' : 'var(--text-info)',
+                  background: selectedDate === dateKey ? 'var(--primary)'
+                    : hasPosts && selectedDate !== dateKey ? 'var(--primary-sub)' : 'transparent',
+                }}
+                title={hasPosts ? `点击查看 ${dateKey} 的文章` : ''}
               >
                 {day}
-              </span>
+              </button>
               {dayPosts.length > 0 && (
                 <div className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 flex gap-0.5">
                   {dayPosts.slice(0, 3).map((p: any) => (
@@ -114,14 +132,28 @@ export function CalendarSidebar() {
 
       {!loading && posts.length > 0 && (
         <div className="mt-2 pt-2 space-y-1" style={{ borderTop: '1px solid var(--glass-border)' }}>
-          {posts.slice(0, 5).map((p: any) => (
-            <Link key={p.id} href={`/posts/${p.slug}`}
-              className="block text-xs px-1.5 py-1 rounded truncate hover:bg-white/5 transition-colors"
-              style={{ color: 'var(--text-secondary)' }}
-              title={p.title}>
-              {p.title}
-            </Link>
-          ))}
+          {selectedDate && (
+            <div className="text-[10px] font-medium px-1.5 py-1" style={{ color: 'var(--primary)' }}>
+              {selectedDate}（{displayedPosts.length} 篇）
+            </div>
+          )}
+          {!selectedDate && displayedPosts.length === 0 && (
+            <div className="text-xs px-1.5 py-1" style={{ color: 'var(--text-info)' }}>暂无文章</div>
+          )}
+          {displayedPosts.length === 0 ? (
+            selectedDate && (
+              <div className="text-xs px-1.5 py-1" style={{ color: 'var(--text-info)' }}>该日无文章</div>
+            )
+          ) : (
+            displayedPosts.map((p: any) => (
+              <Link key={p.id} href={`/posts/${p.slug}`}
+                className="block text-xs px-1.5 py-1 rounded truncate hover:bg-white/5 transition-colors"
+                style={{ color: 'var(--text-secondary)' }}
+                title={p.title}>
+                {p.title}
+              </Link>
+            ))
+          )}
         </div>
       )}
     </div>

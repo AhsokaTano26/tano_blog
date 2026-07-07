@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"fmt"
 	"net/http"
 	"net/mail"
 	"time"
@@ -11,6 +12,7 @@ import (
 
 	"tano_blog/backend/internal/config"
 	"tano_blog/backend/internal/model"
+	"tano_blog/backend/internal/repository"
 	"tano_blog/backend/internal/service"
 	"tano_blog/backend/internal/utils"
 )
@@ -613,6 +615,22 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 		}
 	}
 
+	// Create site notification for password reset request
+	var adminUser model.User
+	h.db.Where("role = ?", "admin").First(&adminUser)
+	if adminUser.ID != uuid.Nil {
+		go func() {
+			notifRepo := repository.NewNotificationRepo(h.db)
+			notifRepo.Create(&model.Notification{
+				UserID:  adminUser.ID,
+				Type:    "password_reset",
+				Title:   "密码重置申请",
+				Content: fmt.Sprintf("用户 %s 申请了密码重置（邮箱: %s）", user.Username, user.Email),
+				Link:    "/admin/settings",
+			})
+		}()
+	}
+
 	c.JSON(http.StatusOK, gin.H{"message": "如果该邮箱已注册，重置链接将发送到您的邮箱"})
 }
 
@@ -663,21 +681,38 @@ func (h *AuthHandler) ResetPassword(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "密码已重置"})
 }
 
-// sendLoginNotify sends a login notification email to the user (fire-and-forget)
+// sendLoginNotify sends a login notification email and site notification to the user (fire-and-forget)
 func (h *AuthHandler) sendLoginNotify(c *gin.Context, user model.User) {
-	if h.emailService == nil || user.Email == "" {
-		return
-	}
 	loginIP := c.ClientIP()
 	loginTime := time.Now().In(time.FixedZone("CST", 8*3600)).Format("2006-01-02 15:04:05")
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				utils.LogError("panic in login notify", "error", r)
-			}
+
+	// Email notification
+	if h.emailService != nil && user.Email != "" {
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					utils.LogError("panic in login notify", "error", r)
+				}
+			}()
+			h.emailService.SendLoginNotifyEmail(user.Email, user.Username, loginIP, loginTime)
 		}()
-		h.emailService.SendLoginNotifyEmail(user.Email, user.Username, loginIP, loginTime)
-	}()
+	}
+
+	// Site notification
+	var adminUser model.User
+	h.db.Where("role = ?", "admin").First(&adminUser)
+	if adminUser.ID != uuid.Nil {
+		go func() {
+			notifRepo := repository.NewNotificationRepo(h.db)
+			notifRepo.Create(&model.Notification{
+				UserID:  adminUser.ID,
+				Type:    "login",
+				Title:   "后台登录成功",
+				Content: fmt.Sprintf("用户 %s 于 %s 登录（IP: %s）", user.Username, loginTime, loginIP),
+				Link:    "/admin/access-logs",
+			})
+		}()
+	}
 }
 
 func setJWTCookie(c *gin.Context, token string, expiration time.Duration) {

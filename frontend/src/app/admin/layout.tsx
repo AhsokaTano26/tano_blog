@@ -129,14 +129,20 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           WebkitBackdropFilter: 'blur(var(--glass-blur))',
         }}>
         {/* Logo */}
-        <div className="h-14 flex items-center px-4 flex-shrink-0"
+        <div className="h-14 flex items-center justify-between px-4 flex-shrink-0"
           style={{ borderBottom: '1px solid var(--glass-border)' }}>
-          <NavLink href="/admin" className="flex items-center gap-2 overflow-hidden">
-            <img src="/aimi.png" alt="T" className="w-8 h-8 rounded-lg object-cover flex-shrink-0" />
+          <NavLink href="/admin" className="flex items-center gap-2 overflow-hidden group">
+            <img src="/aimi.png" alt="T" className="w-8 h-8 rounded-lg object-cover flex-shrink-0 transition-transform group-hover:scale-110" />
             {!collapsed && (
               <span className="text-base font-bold truncate" style={{ color: 'var(--text-primary)' }}>管理后台</span>
             )}
           </NavLink>
+          <button onClick={() => setCollapsed(!collapsed)}
+            className="p-1.5 rounded-lg hover:bg-white/10 transition-all hover:scale-110"
+            style={{ color: 'var(--text-info)' }}
+            title={collapsed ? '展开侧边栏' : '收起侧边栏'}>
+            <Menu className="w-4 h-4 transition-transform duration-200" style={{ transform: collapsed ? 'rotate(180deg)' : 'rotate(0deg)' }} />
+          </button>
         </div>
 
         {/* Navigation */}
@@ -174,11 +180,15 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                   : item.href === '/admin/links' ? pendingCounts.links : 0;
                 return (
                   <NavLink key={item.href} href={item.href}
-                    className={`flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-all mb-0.5 ${collapsed && badgeCount > 0 ? 'relative' : ''}`}
+                    className={`flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-all mb-0.5 relative ${collapsed && badgeCount > 0 ? 'relative' : ''}`}
                     style={{
                       background: isActive ? 'var(--primary-sub)' : 'transparent',
                       color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
                     }}>
+                    {isActive && (
+                      <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-full animate-fade-in"
+                        style={{ background: 'var(--primary)' }} />
+                    )}
                     <item.icon className="w-4 h-4 flex-shrink-0" />
                     {!collapsed && (
                       <span className="flex-1 truncate">{item.label}</span>
@@ -205,7 +215,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           {/* Notification bell */}
           <NavLink href="/admin/notifications"
             className={`flex items-center ${collapsed ? 'justify-center' : 'px-1'} mb-2 relative group`}>
-            <div className="relative p-2 hover:bg-white/10 rounded-lg transition-colors">
+            <div className="relative p-2 hover:bg-white/10 rounded-lg transition-colors btn-press">
               <Bell className="w-5 h-5" style={{ color: 'var(--text-info)' }} />
               {notifCount > 0 && (
                 <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] flex items-center justify-center text-[10px] font-bold text-white bg-red-500 rounded-full px-1">
@@ -225,7 +235,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             ]).map((opt) => (
               <button key={opt.value}
                 onClick={() => setTheme(opt.value)}
-                className="p-1.5 rounded-lg transition-all"
+                className="p-1.5 rounded-lg transition-all btn-press"
                 title={opt.label}
                 style={{
                   background: theme === opt.value ? 'var(--primary-sub)' : 'transparent',
@@ -251,7 +261,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             )}
             {!collapsed && (
               <button onClick={async () => { await api.logout(); window.location.href = '/admin/login'; }}
-                className="p-1 transition-colors hover:opacity-80" style={{ color: 'var(--text-info)' }}
+                className="p-1 transition-all hover:opacity-80 btn-press" style={{ color: 'var(--text-info)' }}
                 title="退出登录">
                 <LogOut className="w-4 h-4" />
               </button>
@@ -261,8 +271,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       </aside>
 
       {/* Main content */}
-      <main className={`flex-1 min-w-0 transition-[margin] duration-200 ${collapsed ? 'ml-[60px]' : 'ml-[220px]'}`}>
-        <div className="p-6">
+      <main className={`flex-1 min-w-0 transition-[margin] duration-200 animate-fade-in ${collapsed ? 'ml-[60px]' : 'ml-[220px]'}`}>
+        <div className="p-6 animate-fade-in-up" style={{ animationDelay: '0.1s' }}>
           <ConfirmProvider>
             {children}
           </ConfirmProvider>

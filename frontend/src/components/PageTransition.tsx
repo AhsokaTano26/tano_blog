@@ -24,7 +24,7 @@ export function PageTransition({ children }: { children: React.ReactNode }) {
       timeoutRef.current = setTimeout(() => {
         setShowLoader(false);
         setAnimating(true);
-      }, 800);
+      }, 400);
     }
 
     return () => {

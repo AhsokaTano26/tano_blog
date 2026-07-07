@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { api } from '@/lib/api';
 
 export default function CalendarPage() {
@@ -10,6 +10,7 @@ export default function CalendarPage() {
     const [month, setMonth] = useState(now.getMonth() + 1);
     const [posts, setPosts] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
     const weekDays = ['日', '一', '二', '三', '四', '五', '六'];
 
@@ -117,9 +118,11 @@ export default function CalendarPage() {
                                     </a>
                                 ))}
                                 {dayPosts.length > 3 && (
-                                    <div className="text-xs text-gray-500 px-1">
+                                    <button onClick={() => setSelectedDate(dateKey)}
+                                        className="text-xs px-1 hover:opacity-80 transition-opacity"
+                                        style={{ color: 'var(--primary)' }}>
                                         +{dayPosts.length - 3} 篇
-                                    </div>
+                                    </button>
                                 )}
                             </div>
                         </div>
@@ -137,6 +140,39 @@ export default function CalendarPage() {
                     草稿
                 </div>
             </div>
+
+            {/* Day detail modal */}
+            {selectedDate && (() => {
+                const dayPosts = postsByDate[selectedDate] || [];
+                return (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in"
+                        style={{ background: 'rgba(0,0,0,0.5)' }}
+                        onClick={() => setSelectedDate(null)}>
+                        <div className="w-full max-w-md rounded-2xl p-5 shadow-2xl animate-fade-scale-in"
+                            style={{ background: 'var(--card-bg)', border: '1px solid var(--glass-border)', backdropFilter: 'blur(24px)' }}
+                            onClick={e => e.stopPropagation()}>
+                            <div className="flex items-center justify-between mb-4">
+                                <h2 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{selectedDate}</h2>
+                                <button onClick={() => setSelectedDate(null)}
+                                    className="p-1 rounded-lg hover:bg-white/10 transition-colors">
+                                    <X className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
+                                </button>
+                            </div>
+                            <div className="space-y-1 max-h-[50vh] overflow-y-auto">
+                                {dayPosts.map((p: any) => (
+                                    <a key={p.id} href={`/admin/posts`}
+                                        className="block px-3 py-2 rounded-xl text-sm hover:bg-white/5 transition-colors"
+                                        style={{ color: 'var(--text-primary)' }}
+                                        onClick={() => setSelectedDate(null)}>
+                                        <span className={`inline-block w-1.5 h-1.5 rounded-full mr-2 ${p.status === 'published' ? 'bg-green-500' : 'bg-gray-400'}`} />
+                                        {p.title}
+                                    </a>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
         </div>
     );
 }

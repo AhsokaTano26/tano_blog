@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, RotateCcw } from 'lucide-react';
+import { ChevronLeft, ChevronRight, RotateCcw, X } from 'lucide-react';
 import { api } from '@/lib/api';
 import Link from 'next/link';
 import { Loading } from '@/components/Loading';
@@ -22,6 +22,7 @@ export default function CalendarPage() {
   }, []);
   const [posts, setPosts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
   const weekDays = ['日', '一', '二', '三', '四', '五', '六'];
 
@@ -95,12 +96,12 @@ export default function CalendarPage() {
             <span className="text-base sm:text-lg font-medium" style={{ color: 'var(--text-secondary)' }}>{year}年{month}月</span>
             <div className="flex gap-1">
               <button onClick={prevMonth}
-                className="btn-glass p-2 rounded-lg hover:opacity-80 transition-opacity"
+                className="btn-glass p-2 rounded-lg hover:opacity-80 transition-all btn-press"
                 aria-label="上个月">
                 <ChevronLeft className="w-5 h-5" style={{ color: 'var(--text-secondary)' }} />
               </button>
               <button onClick={nextMonth}
-                className="btn-glass p-2 rounded-lg hover:opacity-80 transition-opacity"
+                className="btn-glass p-2 rounded-lg hover:opacity-80 transition-all btn-press"
                 aria-label="下个月">
                 <ChevronRight className="w-5 h-5" style={{ color: 'var(--text-secondary)' }} />
               </button>
@@ -162,9 +163,11 @@ export default function CalendarPage() {
                     </Link>
                   ))}
                   {dayPosts.length > 3 && (
-                    <div className="text-[10px] sm:text-xs px-1" style={{ color: 'var(--text-info)' }}>
+                    <button onClick={() => setSelectedDate(dateKey)}
+                      className="text-[10px] sm:text-xs px-1 hover:opacity-80 transition-opacity"
+                      style={{ color: 'var(--primary)' }}>
                       +{dayPosts.length - 3} 篇
-                    </div>
+                    </button>
                   )}
                 </div>
               </div>
@@ -174,6 +177,38 @@ export default function CalendarPage() {
       </div>
 
       {loading && <Loading />}
+
+      {/* Day detail modal */}
+      {selectedDate && (() => {
+        const dayPosts = postsByDate[selectedDate] || [];
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in"
+            style={{ background: 'rgba(0,0,0,0.5)' }}
+            onClick={() => setSelectedDate(null)}>
+            <div className="w-full max-w-md rounded-2xl p-5 shadow-2xl animate-fade-scale-in"
+              style={{ background: 'var(--card-bg)', border: '1px solid var(--glass-border)', backdropFilter: 'blur(24px)' }}
+              onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{selectedDate}</h2>
+                <button onClick={() => setSelectedDate(null)}
+                  className="p-1 rounded-lg hover:bg-white/10 transition-colors">
+                  <X className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
+                </button>
+              </div>
+              <div className="space-y-1 max-h-[50vh] overflow-y-auto">
+                {dayPosts.map((p: any) => (
+                  <Link key={p.id} href={`/posts/${p.slug}`}
+                    className="block px-3 py-2 rounded-xl text-sm hover:bg-white/5 transition-colors"
+                    style={{ color: 'var(--text-primary)' }}
+                    onClick={() => setSelectedDate(null)}>
+                    {p.title}
+                  </Link>
+                ))}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
