@@ -18,6 +18,7 @@ import { ReadingProgress } from '@/components/ReadingProgress';
 import { ImageLightbox } from '@/components/ImageLightbox';
 import { Loading } from '@/components/Loading';
 import { MermaidDiagram } from '@/components/MermaidDiagram';
+import { ArticleAudioPlayer } from '@/components/ArticleAudioPlayer';
 import { EmojiPickerButton } from '@/components/EmojiPicker';
 import { ScrollReveal } from '@/components/ScrollReveal';
 
@@ -662,6 +663,7 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
                   return <code className={className} {...props}>{children}</code>;
                 },
                 pre: CodeBlock,
+                audio: ({ src }) => <ArticleAudioPlayer src={src || ''} />,
               }}
             >
               {post.content}

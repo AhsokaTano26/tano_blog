@@ -85,9 +85,8 @@ export default function AdminMusicPage() {
 
   // Track CRUD within a playlist
   function addTrackToPlaylist(plId: string) {
-    updateField('playlists', config.playlists.map(pl =>
-      pl.id === plId ? { ...pl, tracks: [...pl.tracks, { title: '', artist: '', url: '', cover: '', background: '' }] } : pl
-    ));
+    setNewTrack({ title: '', artist: '', url: '', cover: '', background: '' });
+    setEditingTrack({ playlistId: plId, index: -1 });
   }
 
   function updateTrackInPlaylist(plId: string, trackIndex: number, updates: Partial<Track>) {
@@ -155,8 +154,10 @@ export default function AdminMusicPage() {
     anchorRect?: DOMRect;
   } | null>(null);
 
-  // Track detail dialog state
+  // Track detail dialog state. index === -1 means "new track"
   const [editingTrack, setEditingTrack] = useState<{ playlistId: string; index: number } | null>(null);
+  // Local state for new track being created in dialog
+  const [newTrack, setNewTrack] = useState<Track>({ title: '', artist: '', url: '', cover: '', background: '' });
 
   async function handleSave() {
     setSaving(true);
@@ -427,12 +428,37 @@ export default function AdminMusicPage() {
       {/* Track detail dialog */}
       {editingTrack && (() => {
         const pl = config.playlists.find(p => p.id === editingTrack.playlistId);
-        const track = pl?.tracks[editingTrack.index];
+        const isNew = editingTrack.index === -1;
+        const track = isNew ? newTrack : pl?.tracks[editingTrack.index];
         if (!track) return null;
 
         const update = (field: keyof Track, value: string) => {
-          updateTrackInPlaylist(editingTrack.playlistId, editingTrack.index, { [field]: value });
+          if (isNew) {
+            setNewTrack(prev => ({ ...prev, [field]: value }));
+          } else {
+            updateTrackInPlaylist(editingTrack.playlistId, editingTrack.index, { [field]: value });
+          }
         };
+
+        const mediaPickerField = (field: 'cover' | 'url' | 'background') => (e: React.MouseEvent) => {
+          setTrackPickerTarget({
+            playlistId: editingTrack.playlistId,
+            index: editingTrack.index,
+            field,
+            anchorRect: e.currentTarget.getBoundingClientRect(),
+          });
+        };
+
+        function handleConfirmAdd() {
+          if (isNew) {
+            updateField('playlists', config.playlists.map(pl =>
+              pl.id === editingTrack.playlistId
+                ? { ...pl, tracks: [...pl.tracks, { ...newTrack }] }
+                : pl
+            ));
+          }
+          setEditingTrack(null);
+        }
 
         return (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4"
@@ -450,7 +476,7 @@ export default function AdminMusicPage() {
               <div className="flex items-center justify-between px-6 pt-5 pb-3 flex-shrink-0"
                 style={{ borderBottom: '1px solid var(--glass-border)' }}>
                 <h2 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>
-                  歌曲详情
+                  {isNew ? '添加歌曲' : '歌曲详情'}
                 </h2>
                 <button onClick={() => setEditingTrack(null)}
                   className="p-1.5 rounded-lg transition-colors btn-glass">
@@ -490,12 +516,7 @@ export default function AdminMusicPage() {
                       placeholder="封面图 URL"
                       className="flex-1 px-3 py-2.5 rounded-lg text-sm outline-none"
                       style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
-                    <button onClick={(e) => setTrackPickerTarget({
-                      playlistId: editingTrack.playlistId,
-                      index: editingTrack.index,
-                      field: 'cover',
-                      anchorRect: e.currentTarget.getBoundingClientRect(),
-                    })}
+                    <button onClick={mediaPickerField('cover')}
                       className="px-3 py-2.5 rounded-lg text-sm btn-glass flex-shrink-0"
                       style={{ color: 'var(--text-secondary)' }}>
                       <Image className="w-4 h-4" />
@@ -511,12 +532,7 @@ export default function AdminMusicPage() {
                       placeholder="音频 URL"
                       className="flex-1 px-3 py-2.5 rounded-lg text-sm outline-none"
                       style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
-                    <button onClick={(e) => setTrackPickerTarget({
-                      playlistId: editingTrack.playlistId,
-                      index: editingTrack.index,
-                      field: 'url',
-                      anchorRect: e.currentTarget.getBoundingClientRect(),
-                    })}
+                    <button onClick={mediaPickerField('url')}
                       className="px-3 py-2.5 rounded-lg text-sm btn-glass flex-shrink-0"
                       style={{ color: 'var(--text-secondary)' }}>
                       <Headphones className="w-4 h-4" />
@@ -539,12 +555,7 @@ export default function AdminMusicPage() {
                       placeholder="播放此曲时显示此背景（选填）"
                       className="flex-1 px-3 py-2.5 rounded-lg text-sm outline-none"
                       style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
-                    <button onClick={(e) => setTrackPickerTarget({
-                      playlistId: editingTrack.playlistId,
-                      index: editingTrack.index,
-                      field: 'background',
-                      anchorRect: e.currentTarget.getBoundingClientRect(),
-                    })}
+                    <button onClick={mediaPickerField('background')}
                       className="px-3 py-2.5 rounded-lg text-sm btn-glass flex-shrink-0"
                       style={{ color: 'var(--text-secondary)' }}>
                       <Image className="w-4 h-4" />
@@ -558,7 +569,15 @@ export default function AdminMusicPage() {
                 style={{ borderTop: '1px solid var(--glass-border)' }}>
                 <button onClick={() => setEditingTrack(null)}
                   className="px-4 py-2 rounded-lg text-sm btn-glass"
-                  style={{ color: 'var(--text-secondary)' }}>关闭</button>
+                  style={{ color: 'var(--text-secondary)' }}>取消</button>
+                {isNew && (
+                  <button onClick={handleConfirmAdd}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors"
+                    style={{ background: 'var(--primary)' }}>
+                    <Plus className="w-4 h-4" />
+                    确认添加
+                  </button>
+                )}
               </div>
             </div>
           </div>

@@ -166,6 +166,9 @@ func main() {
 		api.GET("/posts/preview", middleware.RateLimit(30, 60*time.Second), postHandler.GetByPreviewToken)
 		api.GET("/posts/calendar", postHandler.CalendarPostsPublic)
 
+		// Media info (public — for article audio player to fetch metadata)
+		api.GET("/media/info", mediaHandler.GetMediaInfo)
+
 		// Password reset (public, with rate limiting)
 		api.POST("/auth/forgot-password", middleware.RateLimit(3, 60*time.Second), authHandler.ForgotPassword)
 		api.POST("/auth/reset-password", middleware.RateLimit(5, 60*time.Second), authHandler.ResetPassword)

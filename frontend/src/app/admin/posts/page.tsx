@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { Loading } from '@/components/Loading';
 import { MermaidDiagram } from '@/components/MermaidDiagram';
+import { ArticleAudioPlayer } from '@/components/ArticleAudioPlayer';
 import { useConfirm, Checkbox, Select } from '@/components/ConfirmDialog';
 import { MediaField, MediaPickerModal } from '@/components/MediaField';
 import ReactMarkdown from 'react-markdown';
@@ -1239,6 +1240,7 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
                       img: ({ src, alt }) => (
                         <img src={src} alt={alt || ''} style={{ maxWidth: '100%', borderRadius: '8px' }} />
                       ),
+                      audio: ({ src }) => <ArticleAudioPlayer src={src || ''} />,
                     }}
                   >
                     {content}

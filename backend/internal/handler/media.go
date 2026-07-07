@@ -154,6 +154,20 @@ func (h *MediaHandler) Upload(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"media": media})
 }
 
+func (h *MediaHandler) GetMediaInfo(c *gin.Context) {
+	url := c.Query("url")
+	if url == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "缺少 url 参数"})
+		return
+	}
+	m, err := h.repo.GetByURL(url)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "没有找到该资源"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"media": m})
+}
+
 func (h *MediaHandler) List(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))

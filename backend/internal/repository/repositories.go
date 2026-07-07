@@ -848,6 +848,12 @@ func (r *MediaRepo) GetByIDs(ids []uuid.UUID) ([]model.Media, error) {
 	return items, err
 }
 
+func (r *MediaRepo) GetByURL(url string) (*model.Media, error) {
+	var m model.Media
+	err := r.db.Where("url = ?", url).First(&m).Error
+	return &m, err
+}
+
 func (r *MediaRepo) UpdateTags(mediaID uuid.UUID, tagIDs []uuid.UUID) error {
 	var m model.Media
 	m.ID = mediaID
