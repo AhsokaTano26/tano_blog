@@ -31,7 +31,7 @@ var restoreSafeColumns = map[string][]string{
 	"posts":             {"id", "title", "slug", "content", "excerpt", "cover_image", "status", "is_top", "allow_comment", "author_name", "author_id", "editor_id", "category_id", "view_count", "published_at", "preview_token", "created_at", "updated_at"},
 	"post_tags":         {"post_id", "tag_id"},
 	"comments":          {"id", "post_id", "parent_id", "nickname", "email", "website", "content", "status", "ip_address", "user_agent", "country", "city", "created_at"},
-	"media":             {"id", "filename", "original_name", "mime_type", "size", "url", "created_at"},
+	"media":             {"id", "filename", "original_name", "mime_type", "size", "url", "thumbnail_url", "alt_text", "title", "artist", "album", "description", "uploaded_by", "created_at"},
 	"media_tag_links":   {"media_id", "media_tag_id"},
 	"passkeys":          {"id", "user_id", "nickname", "created_at"},
 	"post_revisions":    {"id", "post_id", "title", "content", "excerpt", "editor_id", "created_at"},
