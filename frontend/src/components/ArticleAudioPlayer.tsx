@@ -146,7 +146,7 @@ export function ArticleAudioPlayer({ src, ..._rest }: ArticleAudioPlayerProps) {
         display: 'block',
       }}
     >
-      <div
+      <span
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -157,7 +157,7 @@ export function ArticleAudioPlayer({ src, ..._rest }: ArticleAudioPlayerProps) {
         className="dark-media-player"
       >
         {/* Cover art — 80px */}
-        <div
+        <span
           style={{
             width: '80px',
             height: '80px',
@@ -180,14 +180,14 @@ export function ArticleAudioPlayer({ src, ..._rest }: ArticleAudioPlayerProps) {
           ) : (
             <Music style={{ width: '30px', height: '30px', opacity: 0.3 }} />
           )}
-        </div>
+        </span>
 
         {/* Info + controls */}
-        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '6px' }}>
+        <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '6px' }}>
           {/* Title + play button */}
-          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px' }}>
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <div
+          <span style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px' }}>
+            <span style={{ minWidth: 0, flex: 1 }}>
+              <span
                 style={{
                   fontSize: '14px',
                   fontWeight: 700,
@@ -199,9 +199,9 @@ export function ArticleAudioPlayer({ src, ..._rest }: ArticleAudioPlayerProps) {
                 }}
               >
                 {title || '音频'}
-              </div>
+              </span>
               {artist && (
-                <div
+                <span
                   style={{
                     fontSize: '12px',
                     opacity: 0.5,
@@ -213,9 +213,9 @@ export function ArticleAudioPlayer({ src, ..._rest }: ArticleAudioPlayerProps) {
                   }}
                 >
                   {artist}
-                </div>
+                </span>
               )}
-            </div>
+            </span>
             <button
               onClick={togglePlay}
               style={{
@@ -241,11 +241,11 @@ export function ArticleAudioPlayer({ src, ..._rest }: ArticleAudioPlayerProps) {
                 ? <Pause style={{ width: '16px', height: '16px' }} />
                 : <Play style={{ width: '16px', height: '16px', marginLeft: 1 }} />}
             </button>
-          </div>
+          </span>
 
           {/* Seek bar + time */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <div
+          <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span
               ref={seekRef}
               onClick={handleSeek}
               style={{
@@ -258,7 +258,7 @@ export function ArticleAudioPlayer({ src, ..._rest }: ArticleAudioPlayerProps) {
                 overflow: 'hidden',
               }}
             >
-              <div
+              <span
                 style={{
                   position: 'absolute',
                   top: 0,
@@ -270,7 +270,7 @@ export function ArticleAudioPlayer({ src, ..._rest }: ArticleAudioPlayerProps) {
                   transition: 'width 0.1s linear',
                 }}
               />
-            </div>
+            </span>
             <span
               style={{
                 fontSize: '11px',
@@ -282,9 +282,9 @@ export function ArticleAudioPlayer({ src, ..._rest }: ArticleAudioPlayerProps) {
             >
               {formatTime(currentTime)} / {formatTime(duration)}
             </span>
-          </div>
-        </div>
-      </div>
+          </span>
+        </span>
+      </span>
 
       <audio
         ref={audioRef}
