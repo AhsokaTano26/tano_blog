@@ -815,7 +815,7 @@ func (r *MediaRepo) List(page, pageSize int, tagID string, search string) ([]mod
 	}
 	if search != "" {
 		pattern := "%" + strings.NewReplacer("%", "\\%", "_", "\\_").Replace(search) + "%"
-		query = query.Where("original_name ILIKE ? OR filename ILIKE ?", pattern, pattern)
+		query = query.Where("original_name ILIKE ? OR filename ILIKE ? OR title ILIKE ? OR artist ILIKE ?", pattern, pattern)
 	}
 
 	query.Count(&total)

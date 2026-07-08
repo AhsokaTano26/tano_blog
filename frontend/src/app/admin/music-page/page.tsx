@@ -427,23 +427,24 @@ export default function AdminMusicPage() {
 
       {/* Track detail dialog */}
       {editingTrack && (() => {
-        const pl = config.playlists.find(p => p.id === editingTrack.playlistId);
-        const isNew = editingTrack.index === -1;
-        const track = isNew ? newTrack : pl?.tracks[editingTrack.index];
+        const et = editingTrack;
+        const pl = config.playlists.find(p => p.id === et.playlistId);
+        const isNew = et.index === -1;
+        const track = isNew ? newTrack : pl?.tracks[et.index];
         if (!track) return null;
 
         const update = (field: keyof Track, value: string) => {
           if (isNew) {
             setNewTrack(prev => ({ ...prev, [field]: value }));
           } else {
-            updateTrackInPlaylist(editingTrack.playlistId, editingTrack.index, { [field]: value });
+            updateTrackInPlaylist(et.playlistId, et.index, { [field]: value });
           }
         };
 
         const mediaPickerField = (field: 'cover' | 'url' | 'background') => (e: React.MouseEvent) => {
           setTrackPickerTarget({
-            playlistId: editingTrack.playlistId,
-            index: editingTrack.index,
+            playlistId: et.playlistId,
+            index: et.index,
             field,
             anchorRect: e.currentTarget.getBoundingClientRect(),
           });
@@ -452,7 +453,7 @@ export default function AdminMusicPage() {
         function handleConfirmAdd() {
           if (isNew) {
             updateField('playlists', config.playlists.map(pl =>
-              pl.id === editingTrack.playlistId
+              pl.id === et.playlistId
                 ? { ...pl, tracks: [...pl.tracks, { ...newTrack }] }
                 : pl
             ));
