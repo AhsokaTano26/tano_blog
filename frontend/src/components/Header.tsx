@@ -210,7 +210,7 @@ function Clock() {
   }, []);
   if (!time) return null;
   return (
-    <span className="hidden md:inline text-xs font-mono tabular-nums" style={{ color: 'var(--text-primary)' }}>
+    <span className="hidden md:block text-xs font-mono tabular-nums" style={{ color: 'var(--text-primary)' }}>
       {time}
     </span>
   );
