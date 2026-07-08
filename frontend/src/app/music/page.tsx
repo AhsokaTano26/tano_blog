@@ -26,8 +26,25 @@ interface MusicPageConfig {
   playlists: Playlist[];
 }
 
-const barCount = 64;
+const barCount = 128;
 const barHues = Array.from({ length: barCount }).map((_, i) => i * 2.8);
+
+// Logarithmic mapping: 1024 linear FFT bins → 128 visual bars
+function buildLogBinMap(bins: number, bars: number): { start: number; end: number }[] {
+  const map: { start: number; end: number }[] = [];
+  const logMin = Math.log(1);
+  const logMax = Math.log(bins);
+  for (let b = 0; b < bars; b++) {
+    const t = b / bars;
+    const logPos = logMin + t * (logMax - logMin);
+    const center = Math.round(Math.exp(logPos) - 1);
+    const prev = b > 0 ? map[b - 1].end + 1 : 0;
+    const next = b < bars - 1 ? Math.round(Math.exp(logMin + (t + 1 / bars) * (logMax - logMin)) - 1) : bins;
+    map.push({ start: prev, end: Math.max(prev, Math.min(next, bins) - 1) });
+  }
+  return map;
+}
+const logBinMap = buildLogBinMap(1024, barCount);
 
 export default function MusicPage() {
   const router = useRouter();
@@ -47,6 +64,13 @@ export default function MusicPage() {
   const [showParticles, setShowParticles] = useState(true);
   const [showPlaylistSelector, setShowPlaylistSelector] = useState(false);
   const [currentPlaylistIndex, setCurrentPlaylistIndex] = useState(0);
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
   const [bgHue, setBgHue] = useState(225);
   const [trackTransition, setTrackTransition] = useState(false);
   const prevIndexRef = useRef(currentIndex);
@@ -55,6 +79,7 @@ export default function MusicPage() {
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const sourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null);
+  const smoothedRef = useRef(new Float32Array(barCount).fill(0));
 
   const audioRef = useRef<HTMLAudioElement>(null);
 
@@ -133,7 +158,8 @@ export default function MusicPage() {
       const ctx = new AudioContext();
       audioContextRef.current = ctx;
       const analyser = ctx.createAnalyser();
-      analyser.fftSize = 128;
+      analyser.fftSize = 2048;
+      analyser.smoothingTimeConstant = 0.85;
       analyserRef.current = analyser;
       const source = ctx.createMediaElementSource(audioRef.current);
       source.connect(analyser);
@@ -154,7 +180,19 @@ export default function MusicPage() {
       if (!analyserRef.current) return;
       const buf = new Uint8Array(analyserRef.current.frequencyBinCount);
       analyserRef.current.getByteFrequencyData(buf);
-      setFreqData(buf);
+      // Map 1024 linear FFT bins → 128 logarithmic bars
+      const mapped = new Uint8Array(barCount);
+      const smoothed = smoothedRef.current;
+      for (let i = 0; i < barCount; i++) {
+        const { start, end } = logBinMap[i];
+        let sum = 0;
+        for (let j = start; j <= end; j++) sum += buf[j];
+        const avg = sum / (end - start + 1);
+        // One-pole EMA: attack ~0.35, release decays at same rate
+        smoothed[i] = smoothed[i] * 0.65 + avg * 0.35;
+        mapped[i] = Math.round(smoothed[i]);
+      }
+      setFreqData(mapped);
       animFrameRef.current = requestAnimationFrame(update);
     };
     animFrameRef.current = requestAnimationFrame(update);
@@ -187,27 +225,40 @@ export default function MusicPage() {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    let animId: number;
+    let w = window.innerWidth, h = window.innerHeight;
+    const cx = () => w / 2;
+    const cy = () => h / 2;
+
     const mouse = { x: -9999, y: -9999 };
     const onMove = (e: MouseEvent) => { mouse.x = e.clientX; mouse.y = e.clientY; };
     const onLeave = () => { mouse.x = -9999; mouse.y = -9999; };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseleave', onLeave);
-
-    let animId: number;
-    let w = 0, h = 0;
-    const cx = () => w / 2;
-    const cy = () => h / 2;
+    if (w >= 768) {
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseleave', onLeave);
+    }
 
     const resize = () => {
       w = window.innerWidth;
       h = window.innerHeight;
       canvas!.width = w;
       canvas!.height = h;
+      // Update isMobile on resize
+      if (w >= 768) {
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseleave', onLeave);
+      } else {
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseleave', onLeave);
+        mouse.x = -9999; mouse.y = -9999;
+      }
     };
     window.addEventListener('resize', resize);
     resize();
 
-    // ─── Particles — 1500, larger, no constellation lines ───
+    // ─── Particles — 800 (desktop) / 128 (mobile) ───
+    const isMobile = w < 768;
+    const count = isMobile ? 128 : 800;
     const particles: {
       x: number; y: number; size: number; baseSize: number;
       homeX: number; homeY: number;
@@ -218,7 +269,6 @@ export default function MusicPage() {
       noiseOffset: number;
     }[] = [];
 
-    const count = 1500;
     const maxRadius = Math.min(w, h) * 0.15;
     for (let i = 0; i < count; i++) {
       const homeX = Math.random() * (w + 400) - 200;
@@ -304,10 +354,12 @@ export default function MusicPage() {
           const scale = 1 + exitEased * 4;
           const fade = 1 - exitEased;
           const r = p.size * scale;
-          ctx!.beginPath();
-          ctx!.arc(p.x, p.y, r * 4, 0, Math.PI * 2);
-          ctx!.fillStyle = `hsla(${(hue + p.hueOff + 360) % 360}, 80%, 70%, ${fade * 0.08})`;
-          ctx!.fill();
+          if (!isMobile) {
+            ctx!.beginPath();
+            ctx!.arc(p.x, p.y, r * 4, 0, Math.PI * 2);
+            ctx!.fillStyle = `hsla(${(hue + p.hueOff + 360) % 360}, 80%, 70%, ${fade * 0.08})`;
+            ctx!.fill();
+          }
           ctx!.beginPath();
           ctx!.arc(p.x, p.y, r, 0, Math.PI * 2);
           ctx!.fillStyle = `hsla(${(hue + p.hueOff + 360) % 360}, 90%, 80%, ${fade * p.opacity})`;
@@ -315,14 +367,16 @@ export default function MusicPage() {
           continue;
         }
 
-        // Mouse repulsion
-        const dx = p.x - mouse.x;
-        const dy = p.y - mouse.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < 120) {
-          const force = (120 - dist) / 120 * 1.2;
-          p.x += (dx / dist) * force;
-          p.y += (dy / dist) * force;
+        // Mouse repulsion (desktop only)
+        if (!isMobile) {
+          const dx = p.x - mouse.x;
+          const dy = p.y - mouse.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < 120) {
+            const force = (120 - dist) / 120 * 1.2;
+            p.x += (dx / dist) * force;
+            p.y += (dy / dist) * force;
+          }
         }
 
         if (burstStart > 0 && burstProgress < 1) {
@@ -372,10 +426,12 @@ export default function MusicPage() {
         const sizePulse = p.baseSize * pulse * (1 + binVal * 0.3);
         const displayOpacity = p.opacity * twinkle * trebleShimmer;
 
-        ctx!.beginPath();
-        ctx!.arc(p.x, p.y, sizePulse * 4, 0, Math.PI * 2);
-        ctx!.fillStyle = `hsla(${(hue + p.hueOff + 360) % 360}, 65%, 60%, ${displayOpacity * 0.06})`;
-        ctx!.fill();
+        if (!isMobile) {
+          ctx!.beginPath();
+          ctx!.arc(p.x, p.y, sizePulse * 4, 0, Math.PI * 2);
+          ctx!.fillStyle = `hsla(${(hue + p.hueOff + 360) % 360}, 65%, 60%, ${displayOpacity * 0.06})`;
+          ctx!.fill();
+        }
         ctx!.beginPath();
         ctx!.arc(p.x, p.y, sizePulse, 0, Math.PI * 2);
         ctx!.fillStyle = `hsla(${(hue + p.hueOff + 360) % 360}, 80%, 75%, ${displayOpacity})`;
@@ -715,6 +771,9 @@ export default function MusicPage() {
         </div>
       </header>
 
+      {/* ─── Live Clock ─── */}
+      <MusicClock />
+
       {/* Main content */}
       <div className="flex-1 flex flex-col md:flex-row items-center justify-center gap-8 px-6 pb-6 z-10">
         {/* Left: Album art + controls */}
@@ -862,23 +921,23 @@ export default function MusicPage() {
             {showParticles ? '粒子已开启' : '粒子已关闭'}
           </button>
 
-          {/* Frequency visualizer bars */}
-          <div className="flex items-end gap-[2px] h-14 w-full max-w-[300px] opacity-50">
+          {/* Frequency visualizer bars — log-mapped, EMA-smoothed, compression applied */}
+          <div className={`flex items-end h-14 w-full max-w-[300px] ${isMobile ? 'gap-0' : 'gap-px'}`}>
             {Array.from({ length: barCount }).map((_, i) => {
-              const val = freqData[i] / 255;
-              const noise = Math.sin(Date.now() * 0.003 + i * 1.7) * 0.15 + Math.cos(Date.now() * 0.005 + i * 0.9) * 0.1;
-              const height = playing ? Math.max(3, (val + noise * 0.3) * 55) : 3;
-              // Smooth the height using CSS transition
-              const smoothTransition = playing
-                ? 'height 60ms ease-out'
-                : 'height 300ms ease, opacity 300ms ease';
+              // Dynamic range compression: ^0.6 brings up quiet signals without clipping peaks
+              const val = Math.pow(freqData[i] / 255, 0.6);
+              const height = playing ? Math.max(3, val * (isMobile ? 80 : 60)) : 3;
               return (
                 <div key={i} className="flex-1 rounded-full"
                   style={{
                     height: `${height}px`,
-                    background: `hsl(${(bgHue + barHues[i]) % 360}, 70%, 60%)`,
-                    opacity: playing ? 0.35 + val * 0.5 : 0.15,
-                    transition: smoothTransition,
+                    background: isMobile
+                      ? `hsl(${(bgHue + barHues[i]) % 360}, 90%, 65%)`
+                      : `hsl(${(bgHue + barHues[i]) % 360}, 80%, 70%)`,
+                    opacity: playing ? (isMobile ? 0.7 + val * 0.3 : 0.6 + val * 0.4) : 0.2,
+                    boxShadow: isMobile && playing
+                      ? `0 0 4px hsl(${(bgHue + barHues[i]) % 360}, 90%, 65%)`
+                      : 'none',
                   }} />
               );
             })}
@@ -988,6 +1047,48 @@ export default function MusicPage() {
         />
       </div>
       )}
+    </div>
+  );
+}
+
+function MusicClock() {
+  const [time, setTime] = useState({ h: '00', m: '00', s: '00' });
+  useEffect(() => {
+    const tick = () => {
+      const d = new Date(Date.now() + 8 * 3600000);
+      setTime({
+        h: d.getUTCHours().toString().padStart(2, '0'),
+        m: d.getUTCMinutes().toString().padStart(2, '0'),
+        s: d.getUTCSeconds().toString().padStart(2, '0'),
+      });
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, []);
+  return (
+    <div className="flex justify-center z-10 px-6">
+      <div className="inline-flex items-baseline gap-0.5 select-none"
+        style={{
+          fontFamily: '"SF Mono", "JetBrains Mono", "Fira Code", monospace',
+          fontVariantNumeric: 'tabular-nums',
+        }}>
+        <span className="text-5xl sm:text-6xl font-light tracking-[0.05em]"
+          style={{
+            color: '#fff',
+            textShadow: '0 0 40px hsla(0,0%,100%,0.15), 0 0 80px hsla(0,0%,100%,0.08)',
+            fontWeight: 200,
+          }}>
+          {time.h}:{time.m}
+        </span>
+        <span className="text-xl sm:text-2xl font-light opacity-40 self-end mb-1.5 sm:mb-2"
+          style={{
+            color: '#fff',
+            fontVariantNumeric: 'tabular-nums',
+          }}>
+          {time.s}
+        </span>
+      </div>
     </div>
   );
 }

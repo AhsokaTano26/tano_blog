@@ -6,10 +6,22 @@ import { useTheme } from '@/lib/theme';
 import { api } from '@/lib/api';
 import { Menu, X, Sun, Moon, Palette } from 'lucide-react';
 
+function useMobile() {
+  const [mobile, setMobile] = useState(false);
+  useEffect(() => {
+    const check = () => setMobile(window.innerWidth < 640);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
+  return mobile;
+}
+
 export function Header() {
   const { theme, hue, setTheme, setHue } = useTheme();
   const [menuOpen, setMenuOpen] = useState(false);
   const [hueOpen, setHueOpen] = useState(false);
+  const isMobile = useMobile();
   const hueRef = useRef<HTMLDivElement>(null);
 
   const defaultNavLinks = [
@@ -50,7 +62,7 @@ export function Header() {
   return (
     <div className="fixed top-3 left-1/2 -translate-x-1/2 z-50 flex items-center gap-1 px-3 py-1.5 rounded-2xl max-w-[92vw]"
       style={{
-        background: 'var(--glass-bg)',
+        background: isMobile ? 'var(--glass-bg-mobile)' : 'var(--glass-bg)',
         border: '1px solid var(--glass-border)',
         backdropFilter: 'blur(var(--glass-blur))',
         WebkitBackdropFilter: 'blur(var(--glass-blur))',
@@ -124,6 +136,11 @@ export function Header() {
 
       {/* Divider */}
       <div className="hidden md:block w-px h-5 mx-1" style={{ background: 'var(--glass-border)' }} />
+      {/* Live clock */}
+      <Clock />
+
+      {/* Divider */}
+      <div className="hidden md:block w-px h-5 mx-1" style={{ background: 'var(--glass-border)' }} />
 
       {/* Theme toggle */}
       <button
@@ -149,8 +166,7 @@ export function Header() {
       {menuOpen && (
         <div className="md:hidden absolute top-full left-0 right-0 mt-2 rounded-2xl p-4 animate-slide-down"
           style={{
-            background: 'var(--glass-bg)',
-            border: '1px solid var(--glass-border)',
+            background: isMobile ? 'var(--glass-bg-mobile)' : 'var(--glass-bg)',
             backdropFilter: 'blur(var(--glass-blur))',
             WebkitBackdropFilter: 'blur(var(--glass-blur))',
             boxShadow: '0 8px 32px -4px rgba(0, 0, 0, 0.3)',
@@ -187,5 +203,25 @@ export function Header() {
         </div>
       )}
     </div>
+  );
+}
+
+
+function Clock() {
+  const [time, setTime] = useState('');
+  useEffect(() => {
+    const tick = () => {
+      const d = new Date(Date.now() + 8 * 3600000);
+      setTime(d.toISOString().slice(11, 19));
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, []);
+  if (!time) return null;
+  return (
+    <span className="hidden md:inline text-xs font-mono tabular-nums" style={{ color: 'var(--text-primary)' }}>
+      {time}
+    </span>
   );
 }

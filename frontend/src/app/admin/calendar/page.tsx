@@ -96,7 +96,7 @@ export default function CalendarPage() {
                     const day = i + 1;
                     const dateKey = `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
                     const dayPosts = postsByDate[dateKey] || [];
-                    const isToday = new Date().toISOString().slice(0, 10) === dateKey;
+                    const isToday = new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10) === dateKey;
 
                     return (
                         <div

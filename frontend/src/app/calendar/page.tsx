@@ -135,7 +135,7 @@ export default function CalendarPage() {
             const day = i + 1;
             const dateKey = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
             const dayPosts = postsByDate[dateKey] || [];
-            const isToday = dateKey === now.toISOString().slice(0, 10);
+            const isToday = dateKey === new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10);
             const isWeekend = (firstDay + i) % 7 === 0 || (firstDay + i) % 7 === 6;
 
             return (

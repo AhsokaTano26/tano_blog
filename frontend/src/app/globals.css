@@ -16,6 +16,7 @@
 
   /* Glass */
   --glass-bg: rgba(255, 255, 255, 0.05);
+  --glass-bg-mobile: rgba(0, 0, 0, 0.55);
   --glass-border: hsla(0, 0%, 100%, 0.08);
   --glass-blur: 20px;
 
@@ -25,9 +26,9 @@
   --btn-card-bg: rgba(255, 255, 255, 0.08);
 
   /* Text */
-  --text-primary: hsla(0, 0%, 100%, 0.9);
-  --text-secondary: hsla(0, 0%, 100%, 0.5);
-  --text-info: hsla(0, 0%, 100%, 0.3);
+  --text-primary: hsla(0, 0%, 100%, 0.95);
+  --text-secondary: hsla(0, 0%, 100%, 0.75);
+  --text-info: hsla(0, 0%, 100%, 0.55);
 
   /* Border */
   --border-color: hsla(0, 0%, 100%, 0.08);
@@ -46,6 +47,7 @@
 /* Light mode */
 .light {
   --glass-bg: rgba(255, 255, 255, 0.6);
+  --glass-bg-mobile: rgba(255, 255, 255, 0.85);
   --glass-border: rgba(0, 0, 0, 0.08);
   --glass-blur: 20px;
 
@@ -53,9 +55,9 @@
   --surface-bg: rgba(0, 0, 0, 0.03);
   --btn-card-bg: rgba(0, 0, 0, 0.05);
 
-  --text-primary: #1e293b;
-  --text-secondary: #94a3b8;
-  --text-info: #cbd5e1;
+  --text-primary: #0f172a;
+  --text-secondary: #64748b;
+  --text-info: #94a3b8;
 
   --border-color: rgba(0, 0, 0, 0.08);
   --color-bg: #f1f5f9;

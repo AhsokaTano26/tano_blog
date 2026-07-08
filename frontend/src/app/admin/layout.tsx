@@ -6,7 +6,7 @@ import { useTheme } from '@/lib/theme';
 import {
   FileText, FolderTree, Tags, MessageSquare, Image, Settings, ScrollText,
   LogOut, Home, Sun, Moon, Monitor, UserCircle, Database, LayoutDashboard,
-  Bookmark, Link, Menu, Calendar, BarChart3, Bell, HelpCircle, Music
+  Bookmark, Link, Menu, Calendar, BarChart3, Bell, HelpCircle, Music, X
 } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import NavLink from 'next/link';
@@ -47,6 +47,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [collapsed, setCollapsed] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [showWelcome, setShowWelcome] = useState(false);
   const [pendingCounts, setPendingCounts] = useState<Record<string, number>>({});
   const [notifCount, setNotifCount] = useState(0);
@@ -141,8 +142,103 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   return (
       <div className="min-h-screen flex" style={{ background: 'var(--color-bg)' }}>
-      {/* Sidebar */}
-      <aside className={`fixed top-0 left-0 h-full z-50 flex flex-col transition-all duration-200 ${collapsed ? 'w-[60px]' : 'w-[220px]'}`}
+      {/* Mobile header bar */}
+      <div className="fixed top-0 left-0 right-0 h-12 flex items-center justify-between px-4 z-50 lg:hidden"
+        style={{
+          background: 'var(--glass-bg)',
+          borderBottom: '1px solid var(--glass-border)',
+          backdropFilter: 'blur(var(--glass-blur))',
+          WebkitBackdropFilter: 'blur(var(--glass-blur))',
+        }}>
+        <button onClick={() => setMobileSidebarOpen(true)}
+          className="p-1.5 rounded-lg hover:bg-white/10 transition-colors"
+          style={{ color: 'var(--text-secondary)' }}>
+          <Menu className="w-5 h-5" />
+        </button>
+        <NavLink href="/admin" className="flex items-center gap-2">
+          <img src="/aimi.png" alt="T" className="w-6 h-6 rounded object-cover" />
+          <span className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>管理后台</span>
+        </NavLink>
+        <div className="w-8" />
+      </div>
+
+      {/* Mobile sidebar drawer */}
+      {mobileSidebarOpen && (
+        <>
+          <div className="fixed inset-0 z-50 bg-black/50 lg:hidden" onClick={() => setMobileSidebarOpen(false)} />
+          <aside className="fixed top-0 left-0 h-full w-[260px] z-50 flex flex-col lg:hidden animate-slide-right"
+            style={{
+              background: 'var(--glass-bg)',
+              borderRight: '1px solid var(--glass-border)',
+              backdropFilter: 'blur(var(--glass-blur))',
+              WebkitBackdropFilter: 'blur(var(--glass-blur))',
+            }}>
+            <div className="h-12 flex items-center justify-between px-4 flex-shrink-0"
+              style={{ borderBottom: '1px solid var(--glass-border)' }}>
+              <span className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>管理后台</span>
+              <button onClick={() => setMobileSidebarOpen(false)}
+                className="p-1 rounded-lg hover:bg-white/10 transition-colors"
+                style={{ color: 'var(--text-info)' }}>
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            {/* Navigation */}
+            <nav className="flex-1 overflow-y-auto py-3 px-2">
+              <button onClick={() => { setMobileSidebarOpen(false); window.location.href = '/'; }}
+                className="flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-all hover:bg-white/5 w-full text-left"
+                style={{ color: 'var(--text-secondary)' }}>
+                <Home className="w-4 h-4 flex-shrink-0" />
+                <span>前台首页</span>
+              </button>
+              <button onClick={() => { setMobileSidebarOpen(false); window.location.href = '/admin'; }}
+                className="flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-all hover:bg-white/5 w-full text-left mt-1"
+                style={{ background: pathname === '/admin' ? 'var(--primary-sub)' : 'transparent', color: pathname === '/admin' ? 'var(--primary)' : 'var(--text-secondary)' }}>
+                <LayoutDashboard className="w-4 h-4 flex-shrink-0" />
+                <span>概览</span>
+              </button>
+              {navSections.map((section) => (
+                <div key={section.title} className="mt-4">
+                  <div className="px-3 mb-1.5 text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-info)' }}>
+                    {section.title}
+                  </div>
+                  {section.items.map((item) => {
+                    const isActive = item.href === '/admin' ? pathname === '/admin' : pathname.startsWith(item.href);
+                    const badgeCount = item.href === '/admin/comments' ? pendingCounts.comments : item.href === '/admin/links' ? pendingCounts.links : 0;
+                    return (
+                      <button key={item.href} onClick={() => { setMobileSidebarOpen(false); window.location.href = item.href; }}
+                        className="flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-all hover:bg-white/5 w-full text-left mb-0.5"
+                        style={{ background: isActive ? 'var(--primary-sub)' : 'transparent', color: isActive ? 'var(--primary)' : 'var(--text-secondary)' }}>
+                        <item.icon className="w-4 h-4 flex-shrink-0" />
+                        <span className="flex-1 truncate">{item.label}</span>
+                        {badgeCount > 0 && (
+                          <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full" style={{ background: 'var(--color-error)', color: '#fff' }}>
+                            {badgeCount > 99 ? '99+' : badgeCount}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              ))}
+            </nav>
+            <div className="p-3 flex-shrink-0" style={{ borderTop: '1px solid var(--glass-border)' }}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <img src={user?.avatar_url || '/aimi.png'} alt="" className="w-7 h-7 rounded-full object-cover" />
+                  <span className="text-sm truncate" style={{ color: 'var(--text-primary)' }}>{user?.display_name || user?.username}</span>
+                </div>
+                <button onClick={async () => { await api.logout(); window.location.href = '/admin/login'; }}
+                  className="p-1.5 rounded-lg hover:bg-white/10 transition-colors" style={{ color: 'var(--text-info)' }}>
+                  <LogOut className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          </aside>
+        </>
+      )}
+
+      {/* Desktop sidebar */}
+      <aside className={`hidden lg:flex fixed top-0 left-0 h-full z-50 flex-col transition-all duration-200 ${collapsed ? 'w-[60px]' : 'w-[220px]'}`}
         style={{
           background: 'var(--glass-bg)',
           borderRight: '1px solid var(--glass-border)',
@@ -292,8 +388,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       </aside>
 
       {/* Main content */}
-      <main className={`flex-1 min-w-0 transition-[margin] duration-200 animate-fade-in ${collapsed ? 'ml-[60px]' : 'ml-[220px]'}`}>
-        <div className="p-6 animate-fade-in-up" style={{ animationDelay: '0.1s' }}>
+      <main className={`flex-1 min-w-0 transition-[margin] duration-200 animate-fade-in pt-12 lg:pt-0 ${collapsed ? 'ml-0 lg:ml-[60px]' : 'ml-0 lg:ml-[220px]'}`}>
+        <div className="p-4 sm:p-6 animate-fade-in-up" style={{ animationDelay: '0.1s' }}>
           <ConfirmProvider>
             {children}
           </ConfirmProvider>
