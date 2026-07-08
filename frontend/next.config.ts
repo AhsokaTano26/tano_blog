@@ -6,6 +6,7 @@ const API_UPSTREAM = process.env.API_UPSTREAM_URL || 'http://localhost:8080';
 const nextConfig: NextConfig = {
   output: 'standalone',
   poweredByHeader: false,
+  // @ts-expect-error — 此选项在 Next.js 16.2.10 中有效但类型定义缺失
   middlewareClientMaxBodySize: '2048MB',
   images: {
     remotePatterns: [
