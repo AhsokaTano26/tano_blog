@@ -348,22 +348,19 @@ export default function AdminComments() {
         </div>
       )}
 
-      {/* Tabs */}
-      <div className="glass-card rounded-xl mb-4">
-        <div className="flex" style={{ borderBottom: '1px solid var(--glass-border)' }}>
-          {tabs.map(tab => (
-            <button key={tab.key} onClick={() => { setFilter(tab.key); setPage(1); setCommenterPage(1); setBlockedPage(1); setCommenterSearchKey(0); }}
-              className={`px-5 py-3 text-sm font-medium transition-colors relative ${
-                filter === tab.key ? '' : ''
-              }`}
-              style={{ color: filter === tab.key ? 'var(--primary)' : 'var(--text-secondary)' }}>
-              {tab.label}
-              {filter === tab.key && (
-                <div className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full" style={{ background: 'var(--primary)' }} />
-              )}
-            </button>
-          ))}
-        </div>
+      {/* Tabs - segmented pill style */}
+      <div className="flex gap-1 mb-4 p-1 rounded-xl" style={{ background: 'var(--card-bg)', border: '1px solid var(--glass-border)' }}>
+        {tabs.map(tab => (
+          <button key={tab.key} onClick={() => { setFilter(tab.key); setPage(1); setCommenterPage(1); setBlockedPage(1); setCommenterSearchKey(0); }}
+            className="flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer"
+            style={{
+              background: filter === tab.key ? 'var(--primary)' : 'transparent',
+              color: filter === tab.key ? 'white' : 'var(--text-secondary)',
+            }}>
+            {tab.label}
+          </button>
+        ))}
+      </div>
 
         {filter === 'commenter' ? (
           <div className="p-5">
@@ -593,7 +590,6 @@ export default function AdminComments() {
             ))}
           </div>
         )}
-      </div>
 
       {/* Pagination */}
       {isCommentTab && totalPages > 1 && (
