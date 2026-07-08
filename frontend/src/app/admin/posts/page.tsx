@@ -209,6 +209,8 @@ export default function AdminPosts() {
                   <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-info)' }}>标签</th>
                   <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider w-16" style={{ color: 'var(--text-info)' }}>浏览</th>
                   <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider w-28" style={{ color: 'var(--text-info)' }}>发布日期</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider w-28" style={{ color: 'var(--text-info)' }}>创建时间</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider w-28" style={{ color: 'var(--text-info)' }}>更新时间</th>
                   <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider w-32" style={{ color: 'var(--text-info)' }}>操作</th>
                 </tr>
               </thead>
@@ -276,6 +278,12 @@ export default function AdminPosts() {
                     </td>
                     <td className="px-4 py-3 text-sm whitespace-nowrap" style={{ color: 'var(--text-secondary)' }}>
                       {post.published_at ? new Date(post.published_at).toLocaleDateString('zh-CN') : '-'}
+                    </td>
+                    <td className="px-4 py-3 text-sm whitespace-nowrap" style={{ color: 'var(--text-secondary)' }}>
+                      {post.created_at ? new Date(post.created_at).toLocaleDateString('zh-CN') : '-'}
+                    </td>
+                    <td className="px-4 py-3 text-sm whitespace-nowrap" style={{ color: 'var(--text-secondary)' }}>
+                      {post.updated_at ? new Date(post.updated_at).toLocaleDateString('zh-CN') : '-'}
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-1">

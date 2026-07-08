@@ -62,11 +62,10 @@ export default function AdminSettings() {
   }
 
   async function handleTestEmail() {
-    if (!config.email_from) return;
     setTesting(true);
     setMessage('');
     try {
-      const res = await api.admin.config.testEmail(config.email_from);
+      const res = await api.admin.config.testEmail();
       setMessage(res.message || '测试邮件已发送');
       setTimeout(() => setMessage(''), 5000);
     } catch (e: any) {
@@ -406,8 +405,8 @@ export default function AdminSettings() {
               {/* Test email */}
               <div className="pt-4" style={{ borderTop: '1px solid var(--glass-border)' }}>
                 <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>发送测试邮件</label>
-                <p className="text-xs mb-2" style={{ color: 'var(--text-info)' }}>将发送测试邮件到发件人地址（{config.email_from || '请先填写发件人地址'}）</p>
-                <button onClick={handleTestEmail} disabled={testing || !config.email_from}
+                <p className="text-xs mb-2" style={{ color: 'var(--text-info)' }}>将发送测试邮件到个人资料中的管理员邮箱</p>
+                <button onClick={handleTestEmail} disabled={testing}
                   className="px-4 py-2.5 rounded-lg text-sm font-medium text-white disabled:opacity-50 transition-colors"
                   style={{ background: 'var(--primary)' }}>
                   {testing ? '发送中...' : '发送测试邮件'}

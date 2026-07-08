@@ -413,10 +413,28 @@ export default function AdminMusicPage() {
         <MediaPickerModal
           triggerRect={trackPickerTarget.anchorRect}
           onSelect={(url, originalName, thumbnailUrl) => {
-            if (trackPickerTarget.field === 'url') {
-              autoFillTrack(trackPickerTarget.playlistId, trackPickerTarget.index, url, originalName, thumbnailUrl);
+            if (trackPickerTarget.index === -1) {
+              // New track — update newTrack state directly
+              if (trackPickerTarget.field === 'url') {
+                setNewTrack(prev => {
+                  const updates: Partial<Track> = { url };
+                  if (originalName && !prev.title) {
+                    const { title, artist } = parseFilename(originalName);
+                    updates.title = title;
+                    if (artist && !prev.artist) updates.artist = artist;
+                  }
+                  if (thumbnailUrl) updates.cover = thumbnailUrl;
+                  return { ...prev, ...updates };
+                });
+              } else {
+                setNewTrack(prev => ({ ...prev, [trackPickerTarget.field]: url }));
+              }
             } else {
-              updateTrackInPlaylist(trackPickerTarget.playlistId, trackPickerTarget.index, { [trackPickerTarget.field]: url });
+              if (trackPickerTarget.field === 'url') {
+                autoFillTrack(trackPickerTarget.playlistId, trackPickerTarget.index, url, originalName, thumbnailUrl);
+              } else {
+                updateTrackInPlaylist(trackPickerTarget.playlistId, trackPickerTarget.index, { [trackPickerTarget.field]: url });
+              }
             }
             setTrackPickerTarget(null);
           }}

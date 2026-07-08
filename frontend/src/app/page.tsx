@@ -308,6 +308,12 @@ export default function Home() {
                                   <span>{new Date(post.published_at).toLocaleDateString('zh-CN')}</span>
                                 </div>
                               )}
+                              {post.created_at && (
+                                <div className="flex items-center gap-1.5 text-sm">
+                                  <Calendar className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
+                                  <span>创建于 {new Date(post.created_at).toLocaleDateString('zh-CN')}</span>
+                                </div>
+                              )}
                               {post.author_name && (
                                 <div className="flex items-center gap-1.5 text-sm">
                                   <User className="w-4 h-4" style={{ color: 'var(--text-info)' }} />

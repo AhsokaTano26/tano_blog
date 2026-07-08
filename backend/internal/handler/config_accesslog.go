@@ -9,7 +9,8 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
-	"tano_blog/backend/internal/repository"
+	"tano_blog/backend/internal/model"
+		"tano_blog/backend/internal/repository"
 	"tano_blog/backend/internal/service"
 	"tano_blog/backend/internal/utils"
 )
@@ -115,21 +116,20 @@ func (h *SiteConfigHandler) TestEmail(c *gin.Context) {
 		return
 	}
 
-	var input struct {
-		To string `json:"to" binding:"required,email"`
-	}
-	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "请输入有效的邮箱地址"})
+	// Find admin email from database
+	var admin struct{ Email string }
+	if err := h.db.Model(&model.User{}).Where("role = ?", "admin").First(&admin).Error; err != nil || admin.Email == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "管理员邮箱未配置，请先完善个人信息"})
 		return
 	}
 
-	if err := h.emailService.SendTestEmail(input.To); err != nil {
-		utils.LogError("test email send failed", "to", input.To, "error", err)
+	if err := h.emailService.SendTestEmail(admin.Email); err != nil {
+		utils.LogError("test email send failed", "to", admin.Email, "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "发送测试邮件失败"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "测试邮件已发送，请检查收件箱"})
+	c.JSON(http.StatusOK, gin.H{"message": "测试邮件已发送至 " + admin.Email + "，请检查收件箱"})
 }
 
 type AccessLogHandler struct {

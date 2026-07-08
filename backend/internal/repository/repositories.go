@@ -252,7 +252,7 @@ func (r *PostRepo) ListPublic(page, pageSize int, category, tag, search string) 
 	}
 
 	query.Count(&total)
-	err := query.Order("is_top DESC, published_at DESC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&posts).Error
+	err := query.Order("is_top DESC, created_at DESC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&posts).Error
 	if err != nil {
 		return posts, total, err
 	}
@@ -311,9 +311,9 @@ func (r *PostRepo) Archive() ([]map[string]interface{}, error) {
 
 	var posts []ArchivePost
 	err := r.db.Model(&model.Post{}).
-		Select("id, title, slug, published_at, excerpt, EXTRACT(YEAR FROM published_at)::int as year, EXTRACT(MONTH FROM published_at)::int as month").
+		Select("id, title, slug, published_at, created_at, excerpt, EXTRACT(YEAR FROM created_at)::int as year, EXTRACT(MONTH FROM created_at)::int as month").
 		Where("status = ? AND published_at IS NOT NULL", "published").
-		Order("published_at DESC").
+		Order("created_at DESC").
 		Find(&posts).Error
 	if err != nil {
 		return nil, err
@@ -349,7 +349,7 @@ func (r *PostRepo) TopPosts() ([]model.Post, error) {
 	var posts []model.Post
 	err := r.db.Where("status = ? AND is_top = ?", "published", true).
 		Preload("Category").Preload("Tags").
-		Order("published_at DESC").Limit(5).Find(&posts).Error
+		Order("created_at DESC").Limit(5).Find(&posts).Error
 	return posts, err
 }
 
@@ -367,14 +367,14 @@ func (r *PostRepo) AdjacentPosts(slug string) (prev, next *model.Post) {
 	}
 
 	var prevPost model.Post
-	if err := r.db.Where("published_at < ? AND status = ?", current.PublishedAt, "published").
-		Order("published_at DESC").Limit(1).First(&prevPost).Error; err == nil {
+	if err := r.db.Where("created_at < ? AND status = ?", current.CreatedAt, "published").
+		Order("created_at DESC").Limit(1).First(&prevPost).Error; err == nil {
 		prev = &prevPost
 	}
 
 	var nextPost model.Post
-	if err := r.db.Where("published_at > ? AND status = ?", current.PublishedAt, "published").
-		Order("published_at ASC").Limit(1).First(&nextPost).Error; err == nil {
+	if err := r.db.Where("created_at > ? AND status = ?", current.CreatedAt, "published").
+		Order("created_at ASC").Limit(1).First(&nextPost).Error; err == nil {
 		next = &nextPost
 	}
 
@@ -401,7 +401,7 @@ func (r *PostRepo) RelatedPosts(slug string, limit int) ([]model.Post, error) {
 		Joins("JOIN post_tags ON post_tags.post_id = posts.id").
 		Where("post_tags.tag_id IN ?", tagIDs).
 		Group("posts.id").
-		Order("COUNT(post_tags.tag_id) DESC, posts.published_at DESC").
+		Order("COUNT(post_tags.tag_id) DESC, posts.created_at DESC").
 		Limit(limit).
 		Preload("Category").Preload("Tags").
 		Find(&posts).Error
@@ -577,7 +577,7 @@ func (r *PostRepo) CalendarPosts(year, month string) ([]model.Post, error) {
 	).Or(
 		"EXTRACT(YEAR FROM created_at) = ? AND EXTRACT(MONTH FROM created_at) = ? AND status = 'draft' AND published_at IS NULL", year, month,
 	).Select("id, title, slug, status, published_at, created_at").
-		Order("COALESCE(published_at, created_at) ASC").
+		Order("created_at ASC").
 		Find(&posts).Error
 	return posts, err
 }
@@ -586,8 +586,8 @@ func (r *PostRepo) CalendarPostsPublic(year, month string) ([]model.Post, error)
 	var posts []model.Post
 	err := r.db.Where(
 		"EXTRACT(YEAR FROM published_at) = ? AND EXTRACT(MONTH FROM published_at) = ? AND status = 'published'", year, month,
-	).Select("id, title, slug, published_at").
-		Order("published_at ASC").
+	).Select("id, title, slug, published_at, created_at").
+		Order("created_at ASC").
 		Find(&posts).Error
 	return posts, err
 }

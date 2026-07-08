@@ -291,8 +291,8 @@ export const api = {
       get: () => request<{ config: Record<string, string> }>('/api/v1/admin/config'),
       update: (data: Record<string, string>) =>
         request('/api/v1/admin/config', { method: 'PUT', body: JSON.stringify(data) }),
-      testEmail: (to: string) =>
-        request<{ message: string }>('/api/v1/admin/config/test-email', { method: 'POST', body: JSON.stringify({ to }) }),
+      testEmail: () =>
+        request<{ message: string }>('/api/v1/admin/config/test-email', { method: 'POST' }),
     },
     series: {
       list: () => request<{ items: any[] }>('/api/v1/admin/series'),

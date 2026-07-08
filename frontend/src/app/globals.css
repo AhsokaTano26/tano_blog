@@ -24,6 +24,7 @@
   --card-bg: rgba(255, 255, 255, 0.05);
   --surface-bg: rgba(255, 255, 255, 0.03);
   --btn-card-bg: rgba(255, 255, 255, 0.08);
+  --popover-bg: rgba(25, 27, 35, 0.96);
 
   /* Text */
   --text-primary: hsla(0, 0%, 100%, 0.95);
@@ -54,6 +55,7 @@
   --card-bg: rgba(255, 255, 255, 0.6);
   --surface-bg: rgba(0, 0, 0, 0.03);
   --btn-card-bg: rgba(0, 0, 0, 0.05);
+  --popover-bg: rgba(255, 255, 255, 0.96);
 
   --text-primary: #0f172a;
   --text-secondary: #64748b;

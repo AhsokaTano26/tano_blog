@@ -181,12 +181,6 @@ function CodeBlock({ children, className }: { children?: React.ReactNode; classN
   }, []);
 
   const lang = className?.replace('language-', '') || '';
-  const isMermaid = lang === 'mermaid';
-  const codeContent = codeRef.current?.querySelector('code')?.textContent || '';
-
-  if (isMermaid && typeof window !== 'undefined') {
-    return <MermaidDiagram code={codeContent} />;
-  }
 
   return (
     <div className="relative group my-4 rounded-lg overflow-hidden" style={{ background: 'var(--code-bg, #1e1e2e)' }}>
@@ -489,6 +483,19 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
 
   const shareUrl = typeof window !== 'undefined' ? window.location.href : '';
 
+  // Stable markdown component mappings — defined before early returns to obey Hook order
+  const markdownComponents = useMemo(() => ({
+    code: ({ className, children, ...props }: any) => {
+      const match = /language-(\w+)/.exec(className || '');
+      if (match?.[1] === 'mermaid') {
+        return <MermaidDiagram code={String(children).replace(/\n$/, '')} />;
+      }
+      return <code className={className} {...props}>{children}</code>;
+    },
+    pre: CodeBlock,
+    audio: ({ src }: any) => <ArticleAudioPlayer src={src || ''} />,
+  }), []);
+
   if (loading) {
     return <Loading />;
   }
@@ -654,17 +661,7 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
             <ReactMarkdown
               remarkPlugins={[remarkGfm, remarkMath]}
               rehypePlugins={[rehypeHighlight, rehypeSlug, rehypeKatex, rehypeRaw]}
-              components={{
-                code: ({ className, children, ...props }: any) => {
-                  const match = /language-(\w+)/.exec(className || '');
-                  if (match?.[1] === 'mermaid') {
-                    return <MermaidDiagram code={String(children).replace(/\n$/, '')} />;
-                  }
-                  return <code className={className} {...props}>{children}</code>;
-                },
-                pre: CodeBlock,
-                audio: ({ src }) => <ArticleAudioPlayer src={src || ''} />,
-              }}
+              components={markdownComponents}
             >
               {post.content}
             </ReactMarkdown>

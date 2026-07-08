@@ -265,14 +265,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto py-3 px-2">
           <NavLink href="/"
-            className="flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-all hover:bg-white/5"
+            className="flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-all hover:bg-white/5 cursor-pointer"
             style={{ color: 'var(--text-secondary)' }}>
             <Home className="w-4 h-4 flex-shrink-0" />
             {!collapsed && <span>前台首页</span>}
           </NavLink>
 
           <NavLink href="/admin"
-            className="flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-all hover:bg-white/5 mt-1"
+            className="flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-all hover:bg-white/5 mt-1 cursor-pointer"
             style={{
               background: pathname === '/admin' ? 'var(--primary-sub)' : 'transparent',
               color: pathname === '/admin' ? 'var(--primary)' : 'var(--text-secondary)',
@@ -297,7 +297,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                   : item.href === '/admin/links' ? pendingCounts.links : 0;
                 return (
                   <NavLink key={item.href} href={item.href}
-                    className={`flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-all mb-0.5 relative ${collapsed && badgeCount > 0 ? 'relative' : ''}`}
+                    className={`flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-all mb-0.5 relative cursor-pointer ${collapsed && badgeCount > 0 ? 'relative' : ''}`}
                     style={{
                       background: isActive ? 'var(--primary-sub)' : 'transparent',
                       color: isActive ? 'var(--primary)' : 'var(--text-secondary)',

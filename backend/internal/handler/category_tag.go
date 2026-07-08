@@ -44,8 +44,8 @@ func (h *CategoryHandler) GetBySlug(c *gin.Context) {
 	query.Count(&total)
 
 	var posts []model.Post
-	query.Select("id, title, slug, excerpt, cover_image, published_at, view_count").
-		Order("published_at DESC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&posts)
+	query.Select("id, title, slug, excerpt, cover_image, published_at, created_at, view_count").
+		Order("created_at DESC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&posts)
 
 	c.JSON(http.StatusOK, gin.H{
 		"category": cat,
@@ -193,8 +193,8 @@ func (h *TagHandler) GetBySlug(c *gin.Context) {
 	query.Count(&total)
 
 	var posts []model.Post
-	query.Select("posts.id, posts.title, posts.slug, posts.excerpt, posts.cover_image, posts.published_at, posts.view_count").
-		Order("posts.published_at DESC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&posts)
+	query.Select("posts.id, posts.title, posts.slug, posts.excerpt, posts.cover_image, posts.published_at, posts.created_at, posts.view_count").
+		Order("posts.created_at DESC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&posts)
 
 	c.JSON(http.StatusOK, gin.H{
 		"tag":   tag,

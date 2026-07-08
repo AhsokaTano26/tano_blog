@@ -49,7 +49,7 @@ func (h *FeedHandler) RSS(c *gin.Context) {
 	var posts []model.Post
 	h.db.Where("status = ?", "published").
 		Preload("Category").Preload("Tags").
-		Order("published_at DESC").
+		Order("created_at DESC").
 		Limit(50).
 		Find(&posts)
 
@@ -126,8 +126,8 @@ func escapeXML(s string) string {
 func (h *FeedHandler) Sitemap(c *gin.Context) {
 	var posts []model.Post
 	h.db.Where("status = ?", "published").
-		Select("slug, updated_at").
-		Order("updated_at DESC").
+		Select("slug, updated_at, created_at").
+		Order("created_at DESC").
 		Find(&posts)
 
 	var categories []model.Category

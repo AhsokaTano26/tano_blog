@@ -51,6 +51,7 @@ func (h *PostHandler) ListPublic(c *gin.Context) {
 		ViewCount   int64                  `json:"view_count"`
 		CommentCount int64                  `json:"comment_count"`
 		PublishedAt *string                `json:"published_at"`
+		CreatedAt   string                 `json:"created_at"`
 		AuthorName  string                 `json:"author_name"`
 		Author      map[string]interface{} `json:"author,omitempty"`
 		Category    map[string]interface{} `json:"category,omitempty"`
@@ -70,6 +71,7 @@ func (h *PostHandler) ListPublic(c *gin.Context) {
 			CommentCount: p.CommentCount,
 			AuthorName: p.AuthorName,
 		}
+		item.CreatedAt = p.CreatedAt.Format("2006-01-02T15:04:05Z")
 		if p.PublishedAt != nil {
 			s := p.PublishedAt.Format("2006-01-02T15:04:05Z")
 			item.PublishedAt = &s
