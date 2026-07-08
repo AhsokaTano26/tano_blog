@@ -9,15 +9,20 @@ export default function ForgotPasswordPage() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [resetLink, setResetLink] = useState('');
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
     setMessage('');
+    setResetLink('');
     setLoading(true);
     try {
       const res = await api.forgotPassword(email);
       setMessage(res.message);
+      if (res.reset_link) {
+        setResetLink(res.reset_link);
+      }
     } catch (err: any) {
       setError(err.message || '发送失败');
     }
@@ -31,7 +36,13 @@ export default function ForgotPasswordPage() {
           <h1 className="text-xl font-bold text-center mb-6" style={{ color: 'var(--text-primary)' }}>忘记密码</h1>
           {message && (
             <div className="mb-4 px-4 py-2.5 rounded-xl text-sm" style={{ background: 'var(--primary-sub)', color: 'var(--primary)' }}>
-              {message}
+              <p>{message}</p>
+              {resetLink && (
+                <a href={resetLink} className="block mt-2 break-all hover:underline font-medium"
+                  style={{ color: 'var(--primary)' }}>
+                  {resetLink}
+                </a>
+              )}
             </div>
           )}
           {error && (

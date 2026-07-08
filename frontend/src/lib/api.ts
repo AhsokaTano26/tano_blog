@@ -151,7 +151,7 @@ export const api = {
   logout: () =>
     request('/api/v1/auth/logout', { method: 'POST' }),
   forgotPassword: (email: string) =>
-    request<{ message: string; token?: string }>('/api/v1/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email }) }),
+    request<{ message: string; token?: string; reset_link?: string }>('/api/v1/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email }) }),
   resetPassword: (token: string, new_password: string) =>
     request<{ message: string }>('/api/v1/auth/reset-password', { method: 'POST', body: JSON.stringify({ token, new_password }) }),
   getMe: () =>

@@ -323,9 +323,9 @@ func (s *EmailService) SendReplyNotify(parentEmail, parentNickname, replyNicknam
 }
 
 // SendPasswordResetEmail sends a password reset link to the user
-func (s *EmailService) SendPasswordResetEmail(toEmail, resetLink string) {
+func (s *EmailService) SendPasswordResetEmail(toEmail, resetLink string) error {
 	if toEmail == "" {
-		return
+		return fmt.Errorf("empty recipient email")
 	}
 
 	cfg := s.getConfigMap()
@@ -339,9 +339,7 @@ func (s *EmailService) SendPasswordResetEmail(toEmail, resetLink string) {
 	html := renderPasswordResetEmail(siteTitle, resetLink)
 
 	// Send direct (bypass email_enabled check so forgot password always works)
-	if err := s.sendDirect(toEmail, subject, html); err != nil {
-		utils.LogError("Failed to send password reset email", "error", err)
-	}
+	return s.sendDirect(toEmail, subject, html)
 }
 
 // sendDirect sends email bypassing the email_enabled flag

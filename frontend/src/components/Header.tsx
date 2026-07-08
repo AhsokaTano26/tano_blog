@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useTheme } from '@/lib/theme';
 import { useMobile } from '@/lib/useMobile';
 import { api } from '@/lib/api';
-import { Menu, X, Sun, Moon, Palette } from 'lucide-react';
+import { Menu, X, Sun, Moon, Palette, Search } from 'lucide-react';
 
 export function Header() {
   const { theme, hue, setTheme, setHue } = useTheme();
@@ -132,6 +132,14 @@ export function Header() {
       {/* Divider */}
       <div className="hidden md:block w-px h-5 mx-1" style={{ background: 'var(--glass-border)' }} />
 
+      {/* Search */}
+      <Link href="/search"
+        className="hidden md:flex p-2 rounded-xl transition-all hover:bg-white/5 dark:hover:bg-white/5 btn-press"
+        style={{ color: 'var(--text-secondary)' }}
+        aria-label="搜索">
+        <Search className="w-4 h-4" />
+      </Link>
+
       {/* Theme toggle */}
       <button
         onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
@@ -169,6 +177,13 @@ export function Header() {
                 {link.label}
               </Link>
             ))}
+            {/* Search in mobile menu */}
+            <Link href="/search" onClick={() => setMenuOpen(false)}
+              className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm transition-all hover:bg-white/5"
+              style={{ color: 'var(--text-secondary)' }}>
+              <Search className="w-4 h-4" />
+              搜索
+            </Link>
             <div className="border-t my-2 pt-3" style={{ borderColor: 'var(--glass-border)' }}>
               <div className="px-3">
                 <div className="flex items-center justify-between mb-2">

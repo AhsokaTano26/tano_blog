@@ -611,31 +611,63 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 	h.db.Model(&user).Update("reset_token", token)
 
 	// Try to send email with reset link
+	emailSent := false
 	if h.emailService != nil && user.Email != "" {
-		var cfg model.SiteConfig
-		if err := h.db.Where("key = ?", "site_url").First(&cfg).Error; err == nil && cfg.Value != "" {
-			resetLink := cfg.Value + "/admin/reset-password?token=" + token
-			go h.emailService.SendPasswordResetEmail(user.Email, resetLink)
+		var siteCfg model.SiteConfig
+		siteURL := ""
+		if err := h.db.Where("key = ?", "site_url").First(&siteCfg).Error; err == nil && siteCfg.Value != "" {
+			siteURL = siteCfg.Value
+		}
+		resetLink := siteURL + "/admin/reset-password?token=" + token
+		if err := h.emailService.SendPasswordResetEmail(user.Email, resetLink); err == nil {
+			emailSent = true
+		} else {
+			utils.LogWarn("Failed to send password reset email", "email", user.Email, "error", err)
 		}
 	}
+
+	// Construct reset link for non-email delivery (console log + notification)
+	var siteCfg model.SiteConfig
+	siteURL := ""
+	if err := h.db.Where("key = ?", "site_url").First(&siteCfg).Error; err == nil {
+		siteURL = siteCfg.Value
+	}
+	resetLink := siteURL + "/admin/reset-password?token=" + token
+
+	// Log reset link to server console so admin can find it
+	utils.LogInfo("Password reset requested",
+		"user", user.Username,
+		"email", user.Email,
+		"reset_link", resetLink)
 
 	// Create site notification for password reset request
 	var adminUser model.User
 	h.db.Where("role = ?", "admin").First(&adminUser)
 	if adminUser.ID != uuid.Nil {
+		notifContent := fmt.Sprintf("用户 %s 申请了密码重置（邮箱: %s）\n重置链接: %s", user.Username, user.Email, resetLink)
 		go func() {
 			notifRepo := repository.NewNotificationRepo(h.db)
 			notifRepo.Create(&model.Notification{
 				UserID:  adminUser.ID,
 				Type:    "password_reset",
 				Title:   "密码重置申请",
-				Content: fmt.Sprintf("用户 %s 申请了密码重置（邮箱: %s）", user.Username, user.Email),
-				Link:    "/admin/settings",
+				Content: notifContent,
+				Link:    "/admin/notifications",
 			})
 		}()
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "如果该邮箱已注册，重置链接将发送到您的邮箱"})
+	if emailSent {
+		c.JSON(http.StatusOK, gin.H{
+			"message": "如果该邮箱已注册，重置链接将发送到您的邮箱",
+		})
+	} else {
+		// Email not configured or send failed — return reset link directly
+		c.JSON(http.StatusOK, gin.H{
+			"message":    "邮件服务未配置，重置链接已返回（请勿分享此链接）",
+			"reset_link": resetLink,
+		})
+	}
 }
 
 func (h *AuthHandler) ResetPassword(c *gin.Context) {
