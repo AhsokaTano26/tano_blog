@@ -3,19 +3,9 @@
 import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { useTheme } from '@/lib/theme';
+import { useMobile } from '@/lib/useMobile';
 import { api } from '@/lib/api';
 import { Menu, X, Sun, Moon, Palette } from 'lucide-react';
-
-function useMobile() {
-  const [mobile, setMobile] = useState(false);
-  useEffect(() => {
-    const check = () => setMobile(window.innerWidth < 640);
-    check();
-    window.addEventListener('resize', check);
-    return () => window.removeEventListener('resize', check);
-  }, []);
-  return mobile;
-}
 
 export function Header() {
   const { theme, hue, setTheme, setHue } = useTheme();

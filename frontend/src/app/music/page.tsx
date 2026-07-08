@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { api } from '@/lib/api';
+import { useMobile } from '@/lib/useMobile';
 import { Play, Pause, SkipForward, SkipBack, Volume2, VolumeX, ListMusic, Music, ChevronLeft } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
@@ -64,13 +65,7 @@ export default function MusicPage() {
   const [showParticles, setShowParticles] = useState(true);
   const [showPlaylistSelector, setShowPlaylistSelector] = useState(false);
   const [currentPlaylistIndex, setCurrentPlaylistIndex] = useState(0);
-  const [isMobile, setIsMobile] = useState(false);
-  useEffect(() => {
-    const check = () => setIsMobile(window.innerWidth < 768);
-    check();
-    window.addEventListener('resize', check);
-    return () => window.removeEventListener('resize', check);
-  }, []);
+  const isMobile = useMobile();
   const [bgHue, setBgHue] = useState(225);
   const [trackTransition, setTrackTransition] = useState(false);
   const prevIndexRef = useRef(currentIndex);
@@ -79,6 +74,7 @@ export default function MusicPage() {
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const sourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null);
+  const gainNodeRef = useRef<GainNode | null>(null);
   const smoothedRef = useRef(new Float32Array(barCount).fill(0));
 
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -161,9 +157,13 @@ export default function MusicPage() {
       analyser.fftSize = 2048;
       analyser.smoothingTimeConstant = 0.85;
       analyserRef.current = analyser;
+      const gainNode = ctx.createGain();
+      gainNode.gain.value = volume;
+      gainNodeRef.current = gainNode;
       const source = ctx.createMediaElementSource(audioRef.current);
       source.connect(analyser);
-      analyser.connect(ctx.destination);
+      analyser.connect(gainNode);
+      gainNode.connect(ctx.destination);
       sourceNodeRef.current = source;
     } catch (e) {
       // AudioContext unavailable (e.g. already connected, or not supported)
@@ -458,7 +458,11 @@ export default function MusicPage() {
       audioRef.current.src = targetUrl;
       audioRef.current.setAttribute('data-src', targetUrl);
     }
-    audioRef.current.volume = volume;
+    if (gainNodeRef.current) {
+      gainNodeRef.current.gain.value = volume;
+    } else {
+      audioRef.current.volume = volume;
+    }
     if (playing) {
       audioRef.current.play().catch(() => setPlaying(false));
     }
@@ -466,7 +470,11 @@ export default function MusicPage() {
   }, [currentIndex, currentTrack?.url]);
 
   useEffect(() => {
-    if (audioRef.current) audioRef.current.volume = volume;
+    if (gainNodeRef.current) {
+      gainNodeRef.current.gain.value = volume;
+    } else if (audioRef.current) {
+      audioRef.current.volume = volume;
+    }
   }, [volume]);
 
   const togglePlay = useCallback(() => {
@@ -931,18 +939,14 @@ export default function MusicPage() {
                 <div key={i} className="flex-1 rounded-full"
                   style={{
                     height: `${height}px`,
-                    background: isMobile
-                      ? `hsl(${(bgHue + barHues[i]) % 360}, 90%, 65%)`
-                      : `hsl(${(bgHue + barHues[i]) % 360}, 80%, 70%)`,
-                    opacity: playing ? (isMobile ? 0.7 + val * 0.3 : 0.6 + val * 0.4) : 0.2,
-                    boxShadow: isMobile && playing
-                      ? `0 0 4px hsl(${(bgHue + barHues[i]) % 360}, 90%, 65%)`
-                      : 'none',
+                    background: `hsl(${(bgHue + barHues[i]) % 360}, 90%, 70%)`,
+                    opacity: playing ? 0.7 + val * 0.3 : 0.2,
+                    boxShadow: playing ? `0 0 4px hsl(${(bgHue + barHues[i]) % 360}, 90%, 70%)` : 'none',
                   }} />
               );
             })}
           </div>
-        </div>
+          </div>
 
         {/* Right: Playlist */}
         <div className={`${showPlaylist ? 'flex' : 'hidden'} md:flex flex-col w-full max-w-sm md:max-w-xs lg:max-w-sm transition-all`}>
@@ -1034,6 +1038,9 @@ export default function MusicPage() {
             ))}
           </div>
         </div>
+
+
+
       </div>
 
         {/* Audio element */}
@@ -1053,6 +1060,11 @@ export default function MusicPage() {
 
 function MusicClock() {
   const [time, setTime] = useState({ h: '00', m: '00', s: '00' });
+  const [fontSize, setFontSize] = useState(
+    typeof window !== 'undefined' && window.innerWidth >= 1024 ? 72
+    : typeof window !== 'undefined' && window.innerWidth >= 640 ? 60
+    : 48
+  );
   useEffect(() => {
     const tick = () => {
       const d = new Date(Date.now() + 8 * 3600000);
@@ -1064,7 +1076,19 @@ function MusicClock() {
     };
     tick();
     const id = setInterval(tick, 1000);
-    return () => clearInterval(id);
+
+    const onResize = () => {
+      const w = window.innerWidth;
+      if (w >= 1024) setFontSize(72);
+      else if (w >= 640) setFontSize(60);
+      else setFontSize(48);
+    };
+    onResize();
+    window.addEventListener('resize', onResize);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener('resize', onResize);
+    };
   }, []);
   return (
     <div className="flex justify-center z-10 px-6">
@@ -1073,18 +1097,24 @@ function MusicClock() {
           fontFamily: '"SF Mono", "JetBrains Mono", "Fira Code", monospace',
           fontVariantNumeric: 'tabular-nums',
         }}>
-        <span className="text-5xl sm:text-6xl font-light tracking-[0.05em]"
+        <span
           style={{
+            fontSize: `${fontSize}px`,
             color: '#fff',
             textShadow: '0 0 40px hsla(0,0%,100%,0.15), 0 0 80px hsla(0,0%,100%,0.08)',
             fontWeight: 200,
+            letterSpacing: '0.05em',
           }}>
           {time.h}:{time.m}
         </span>
-        <span className="text-xl sm:text-2xl font-light opacity-40 self-end mb-1.5 sm:mb-2"
+        <span
           style={{
+            fontSize: `${Math.round(fontSize * 0.4)}px`,
             color: '#fff',
+            opacity: 0.4,
             fontVariantNumeric: 'tabular-nums',
+            alignSelf: 'flex-end',
+            marginBottom: fontSize > 60 ? '12px' : '6px',
           }}>
           {time.s}
         </span>
