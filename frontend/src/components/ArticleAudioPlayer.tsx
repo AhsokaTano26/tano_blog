@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Play, Pause, Music } from 'lucide-react';
+import { Play, Pause, Music, Volume2, VolumeX } from 'lucide-react';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
 
@@ -56,6 +56,7 @@ export function ArticleAudioPlayer({ src, ..._rest }: ArticleAudioPlayerProps) {
   const [title, setTitle] = useState('');
   const [artist, setArtist] = useState('');
   const [loaded, setLoaded] = useState(false);
+  const [volume, setVolume] = useState(0.5);
 
   // Fetch media metadata from API
   useEffect(() => {
@@ -108,6 +109,11 @@ export function ArticleAudioPlayer({ src, ..._rest }: ArticleAudioPlayerProps) {
     };
     tryExt('jpg');
   }, [loaded, coverUrl, srcStr]);
+
+  // Sync volume to audio element
+  useEffect(() => {
+    if (audioRef.current) audioRef.current.volume = volume;
+  }, [volume]);
 
   const togglePlay = useCallback(() => {
     if (!audioRef.current) return;
@@ -278,9 +284,41 @@ export function ArticleAudioPlayer({ src, ..._rest }: ArticleAudioPlayerProps) {
                 whiteSpace: 'nowrap',
                 fontVariantNumeric: 'tabular-nums',
                 color: 'inherit',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
               }}
             >
-              {formatTime(currentTime)} / {formatTime(duration)}
+              <span>{formatTime(currentTime)} / {formatTime(duration)}</span>
+              <span style={{ width: '1px', height: '10px', background: 'rgba(128,128,128,0.2)' }} />
+              <button
+                onClick={() => setVolume(v => v > 0 ? 0 : 0.5)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: 0,
+                  display: 'flex',
+                  color: 'inherit',
+                  opacity: 0.6,
+                }}
+                title={volume > 0 ? '静音' : '恢复音量'}
+              >
+                {volume > 0 ? <Volume2 style={{ width: '12px', height: '12px' }} /> : <VolumeX style={{ width: '12px', height: '12px' }} />}
+              </button>
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                value={volume}
+                onChange={e => setVolume(parseFloat(e.target.value))}
+                style={{
+                  width: '50px',
+                  height: '3px',
+                  accentColor: 'currentColor',
+                }}
+              />
             </span>
           </span>
         </span>
