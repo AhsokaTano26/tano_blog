@@ -265,6 +265,7 @@ func main() {
 				admin.GET("/media", mediaHandler.List)
 				admin.DELETE("/media/:id", mediaHandler.Delete)
 				admin.PUT("/media/:id/tags", mediaHandler.UpdateMediaTags)
+				admin.PUT("/media/:id/metadata", mediaHandler.UpdateMetadata)
 				admin.GET("/media/tags", mediaHandler.ListTags)
 				admin.POST("/media/tags", mediaHandler.CreateTag)
 				admin.DELETE("/media/tags/:id", mediaHandler.DeleteTag)

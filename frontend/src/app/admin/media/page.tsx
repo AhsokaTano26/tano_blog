@@ -6,6 +6,7 @@ import { api } from '@/lib/api';
 import { Image, Upload, Trash2, Copy, Check, Grid, List, Search, X, FileText, Video, Music, File, Tag, Plus, Settings, Play, ExternalLink } from 'lucide-react';
 import { Loading } from '@/components/Loading';
 import { useConfirm, Checkbox } from '@/components/ConfirmDialog';
+import { MediaField } from '@/components/MediaField';
 
 const SITE_URL = typeof window !== 'undefined' ? window.location.origin : 'https://tano.asia';
 
@@ -20,6 +21,10 @@ type MediaItem = {
   size: number;
   created_at: string;
   tags: MediaTag[];
+  title?: string;
+  artist?: string;
+  album?: string;
+  description?: string;
 };
 
 function getMediaType(mime: string): 'image' | 'video' | 'audio' | 'document' {
@@ -124,6 +129,10 @@ export default function AdminMedia() {
 
   // Media viewer
   const [viewerItem, setViewerItem] = useState<MediaItem | null>(null);
+
+  // Metadata editor
+  const [editingMetadataItem, setEditingMetadataItem] = useState<MediaItem | null>(null);
+  const [metadataForm, setMetadataForm] = useState({ title: '', artist: '', album: '', description: '', thumbnail_url: '' });
 
   // Close viewer on Escape
   useEffect(() => {
@@ -254,6 +263,32 @@ export default function AdminMedia() {
     try {
       const res = await api.admin.media.updateTags(mediaId, next) as { media: MediaItem };
       setItems(prev => prev.map(i => i.id === mediaId ? { ...i, tags: res.media.tags || [] } : i));
+    } catch { /* empty */ }
+  }
+
+  function openMetadataEditor(item: MediaItem) {
+    setEditingMetadataItem(item);
+    setMetadataForm({
+      title: item.title || '',
+      artist: item.artist || '',
+      album: item.album || '',
+      description: item.description || '',
+      thumbnail_url: item.thumbnail_url || '',
+    });
+  }
+
+  async function handleSaveMetadata() {
+    if (!editingMetadataItem) return;
+    try {
+      const res = await api.admin.media.updateMetadata(editingMetadataItem.id, {
+        title: metadataForm.title,
+        artist: metadataForm.artist,
+        album: metadataForm.album,
+        description: metadataForm.description,
+        thumbnail_url: metadataForm.thumbnail_url,
+      }) as { media: MediaItem };
+      setItems(prev => prev.map(i => i.id === editingMetadataItem.id ? { ...i, ...res.media } : i));
+      setEditingMetadataItem(null);
     } catch { /* empty */ }
   }
 
@@ -633,6 +668,13 @@ export default function AdminMedia() {
                       </button>
                       <button onClick={(e) => {
                         e.stopPropagation();
+                        openMetadataEditor(item);
+                      }}
+                        className="p-1.5 rounded-full transition-colors pointer-events-auto" style={{ background: 'var(--card-bg)', color: 'var(--text-primary)' }} title="编辑元信息">
+                        <FileText className="w-4 h-4" />
+                      </button>
+                      <button onClick={(e) => {
+                        e.stopPropagation();
                         handleDelete(item.id, e.currentTarget);
                       }}
                         className="p-1.5 rounded-full transition-colors pointer-events-auto" style={{ background: 'var(--card-bg)', color: 'var(--color-error)' }} title="删除">
@@ -642,7 +684,9 @@ export default function AdminMedia() {
                   </div>
                   <div className="p-2.5">
                     <p className="text-xs truncate" style={{ color: 'var(--text-secondary)' }} title={item.original_name || item.filename}>
-                      {item.original_name || item.filename}
+                      {item.mime_type?.startsWith('audio/') && (item.title || item.artist)
+                        ? [item.title, item.artist].filter(Boolean).join(' — ') || item.original_name || item.filename
+                        : item.original_name || item.filename}
                     </p>
                     {item.tags && item.tags.length > 0 && (
                       <div className="flex gap-1 mt-1 flex-wrap">
@@ -713,7 +757,9 @@ export default function AdminMedia() {
                         </div>
                       </td>
                       <td className="px-4 py-3 text-sm truncate max-w-[200px]" style={{ color: 'var(--text-primary)' }} title={item.original_name || item.filename}>
-                        {item.original_name || item.filename}
+                        {item.mime_type?.startsWith('audio/') && (item.title || item.artist)
+                          ? [item.title, item.artist].filter(Boolean).join(' — ') || item.original_name || item.filename
+                          : item.original_name || item.filename}
                       </td>
                       <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>{item.mime_type || '-'}</td>
                       <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>{item.size ? formatSize(item.size) : '-'}</td>
@@ -744,6 +790,10 @@ export default function AdminMedia() {
                           }}
                             className="btn-glass p-1.5 rounded transition-colors" title="编辑标签">
                             <Tag className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
+                          </button>
+                          <button onClick={() => openMetadataEditor(item)}
+                            className="btn-glass p-1.5 rounded transition-colors" title="编辑元信息">
+                            <FileText className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
                           </button>
                           <button onClick={() => handleDelete(item.id)}
                             className="btn-glass p-1.5 rounded transition-colors" title="删除">
@@ -919,6 +969,107 @@ export default function AdminMedia() {
           </FloatingPopover>
         );
       })()}
+
+      {/* Metadata editor modal */}
+      {editingMetadataItem && (() => {
+        const item = editingMetadataItem;
+        const type = getMediaType(item.mime_type);
+        return (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4"
+            style={{ background: 'rgba(0,0,0,0.6)' }}
+            onClick={() => setEditingMetadataItem(null)}>
+            <div className="w-full max-w-lg rounded-xl p-5 space-y-4 glass-card"
+              onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between">
+                <h3 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>编辑元信息</h3>
+                <button onClick={() => setEditingMetadataItem(null)} className="p-1 rounded hover:bg-white/10">
+                  <X className="w-4 h-4" style={{ color: 'var(--text-secondary)' }} />
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                {/* Cover image */}
+                <div className="pb-3" style={{ borderBottom: '1px solid var(--glass-border)' }}>
+                  <label className="block text-xs font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>封面图</label>
+                  <div className="flex items-center gap-3">
+                    <div className="w-20 h-20 rounded-xl overflow-hidden flex-shrink-0"
+                      style={{ background: 'var(--surface-bg)', border: '1px dashed var(--glass-border)' }}>
+                      {metadataForm.thumbnail_url ? (
+                        <img key={metadataForm.thumbnail_url} src={metadataForm.thumbnail_url} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <Image className="w-7 h-7" style={{ color: 'var(--text-info)' }} />
+                        </div>
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <p className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>{item.original_name || item.filename}</p>
+                      <p className="text-xs" style={{ color: 'var(--text-info)' }}>{item.mime_type} · {formatSize(item.size)}</p>
+                      <div className="pt-1">
+                        <MediaField
+                          value={metadataForm.thumbnail_url}
+                          onChange={(url) => setMetadataForm(p => ({ ...p, thumbnail_url: url }))}
+                          filterType="image"
+                          previewSize={0}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Title */}
+                <div>
+                  <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>标题</label>
+                  <input type="text" value={metadataForm.title}
+                    onChange={e => setMetadataForm(p => ({ ...p, title: e.target.value }))}
+                    placeholder={type === 'audio' ? '歌曲名' : type === 'video' ? '视频标题' : '标题'}
+                    className="w-full px-3 py-2 rounded-lg text-sm outline-none glass-card"
+                    style={{ color: 'var(--text-primary)' }} />
+                </div>
+
+                {/* Artist */}
+                <div>
+                  <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>作者</label>
+                  <input type="text" value={metadataForm.artist}
+                    onChange={e => setMetadataForm(p => ({ ...p, artist: e.target.value }))}
+                    placeholder={type === 'audio' ? '歌手/乐队名' : '视频作者'}
+                    className="w-full px-3 py-2 rounded-lg text-sm outline-none glass-card"
+                    style={{ color: 'var(--text-primary)' }} />
+                </div>
+
+                {/* Album */}
+                <div>
+                  <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>专辑</label>
+                  <input type="text" value={metadataForm.album}
+                    onChange={e => setMetadataForm(p => ({ ...p, album: e.target.value }))}
+                    placeholder="专辑名"
+                    className="w-full px-3 py-2 rounded-lg text-sm outline-none glass-card"
+                    style={{ color: 'var(--text-primary)' }} />
+                </div>
+
+                {/* Description */}
+                <div>
+                  <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>描述</label>
+                  <textarea value={metadataForm.description}
+                    onChange={e => setMetadataForm(p => ({ ...p, description: e.target.value }))}
+                    placeholder="简要描述"
+                    rows={3}
+                    className="w-full px-3 py-2 rounded-lg text-sm outline-none glass-card resize-none"
+                    style={{ color: 'var(--text-primary)' }} />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button onClick={() => setEditingMetadataItem(null)}
+                  className="px-4 py-2 rounded-lg text-sm btn-glass" style={{ color: 'var(--text-secondary)' }}>取消</button>
+                <button onClick={handleSaveMetadata}
+                  className="px-4 py-2 rounded-lg text-sm font-medium text-white" style={{ background: 'var(--primary)' }}>保存</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
     </div>
   );
 }

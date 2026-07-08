@@ -279,6 +279,8 @@ export const api = {
       },
       updateTags: (id: string, tagIds: string[]) =>
         request(`/api/v1/admin/media/${id}/tags`, { method: 'PUT', body: JSON.stringify({ tag_ids: tagIds }) }),
+      updateMetadata: (id: string, data: Record<string, string>) =>
+        request(`/api/v1/admin/media/${id}/metadata`, { method: 'PUT', body: JSON.stringify(data) }),
       tags: {
         list: () => request<{ items: any[] }>('/api/v1/admin/media/tags'),
         create: (name: string) => request('/api/v1/admin/media/tags', { method: 'POST', body: JSON.stringify({ name }) }),

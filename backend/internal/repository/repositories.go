@@ -891,6 +891,10 @@ func (r *MediaRepo) ListTags() ([]model.MediaTag, error) {
 	return tags, err
 }
 
+func (r *MediaRepo) UpdateMetadata(id uuid.UUID, updates map[string]interface{}) error {
+	return r.db.Model(&model.Media{}).Where("id = ?", id).Updates(updates).Error
+}
+
 func (r *MediaRepo) CreateTag(name string) (*model.MediaTag, error) {
 	tag := &model.MediaTag{Name: name}
 	err := r.db.Create(tag).Error

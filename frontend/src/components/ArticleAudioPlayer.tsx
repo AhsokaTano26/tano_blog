@@ -18,6 +18,9 @@ interface MediaInfo {
   url: string;
   mime_type: string;
   size: number;
+  title?: string;
+  artist?: string;
+  album?: string;
 }
 
 function formatTime(s: number): string {
@@ -66,10 +69,15 @@ export function ArticleAudioPlayer({ src, ..._rest }: ArticleAudioPlayerProps) {
           const m = data.media;
           // Use thumbnail from API response directly
           if (m.thumbnail_url) setCoverUrl(m.thumbnail_url);
-          // Parse title & artist from original filename
-          const { artist: a, title: t } = parseFilename(m.original_name);
-          setArtist(a);
-          setTitle(t || m.original_name.replace(/\.[^.]+$/, ''));
+          // Use metadata fields from API, fall back to filename parsing
+          if (m.title || m.artist) {
+            setTitle(m.title || '');
+            setArtist(m.artist || '');
+          } else {
+            const { artist: a, title: t } = parseFilename(m.original_name);
+            setArtist(a);
+            setTitle(t || m.original_name.replace(/\.[^.]+$/, ''));
+          }
         }
         setLoaded(true);
       })

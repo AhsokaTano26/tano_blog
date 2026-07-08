@@ -115,10 +115,12 @@ func (h *MediaHandler) Upload(c *gin.Context) {
 		return
 	}
 
-	// Extract embedded album art from audio files
+	// Extract embedded album art and metadata from audio files
 	var thumbnailURL string
+	var audioTitle, audioArtist, audioAlbum string
 	if strings.HasPrefix(mimeType, "audio/") {
 		thumbnailURL, _ = extractAudioCover(filePath, uploadDir, filename)
+		audioTitle, audioArtist, audioAlbum = extractAudioMetadata(filePath)
 	}
 
 	userID, _ := uuid.Parse(c.GetString("user_id"))
@@ -129,6 +131,9 @@ func (h *MediaHandler) Upload(c *gin.Context) {
 		Size:         file.Size,
 		URL:          "/uploads/" + filename,
 		ThumbnailURL: thumbnailURL,
+		Title:        audioTitle,
+		Artist:       audioArtist,
+		Album:        audioAlbum,
 		UploadedBy:   userID,
 	}
 
@@ -422,6 +427,58 @@ func extractAudioCover(filePath, uploadDir, filename string) (string, error) {
 	}
 
 	return "/uploads/" + thumbFilename, nil
+}
+
+// extractAudioMetadata reads title, artist, album from audio file metadata.
+// Returns empty strings on any error (caller handles gracefully).
+func extractAudioMetadata(filePath string) (title, artist, album string) {
+	f, err := os.Open(filePath)
+	if err != nil {
+		return "", "", ""
+	}
+	defer f.Close()
+
+	meta, err := tag.ReadFrom(f)
+	if err != nil {
+		return "", "", ""
+	}
+	return meta.Title(), meta.Artist(), meta.Album()
+}
+
+func (h *MediaHandler) UpdateMetadata(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
+		return
+	}
+
+	var req struct {
+		Title        string `json:"title"`
+		Artist       string `json:"artist"`
+		Album        string `json:"album"`
+		Description  string `json:"description"`
+		ThumbnailURL string `json:"thumbnail_url"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
+		return
+	}
+
+	updates := map[string]interface{}{
+		"title":         req.Title,
+		"artist":        req.Artist,
+		"album":         req.Album,
+		"description":   req.Description,
+		"thumbnail_url": req.ThumbnailURL,
+	}
+
+	if err := h.repo.UpdateMetadata(id, updates); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "更新元信息失败"})
+		return
+	}
+
+	media, _ := h.repo.GetByID(id)
+	c.JSON(http.StatusOK, gin.H{"media": media})
 }
 
 // hasAnyPrefix checks if s has any of the given prefixes

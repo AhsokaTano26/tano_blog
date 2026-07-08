@@ -140,6 +140,10 @@ type Media struct {
 	URL          string     `gorm:"size:1000;not null" json:"url"`
 	ThumbnailURL string     `gorm:"size:1000" json:"thumbnail_url"`
 	AltText      string     `gorm:"size:500" json:"alt_text"`
+	Title        string     `gorm:"size:500" json:"title"`
+	Artist       string     `gorm:"size:500" json:"artist"`
+	Album        string     `gorm:"size:500" json:"album"`
+	Description  string     `gorm:"size:2000" json:"description"`
 	UploadedBy   uuid.UUID  `gorm:"type:uuid;index" json:"uploaded_by"`
 	CreatedAt    time.Time  `json:"created_at"`
 	Uploader     User       `gorm:"foreignKey:UploadedBy" json:"-"`
