@@ -23,6 +23,251 @@ import rehypeKatex from 'rehype-katex';
 import rehypeRaw from 'rehype-raw';
 import rehypeSlug from 'rehype-slug';
 
+// ===== Image helper types and functions =====
+
+interface ImageAttrs {
+  url: string;
+  alt: string;
+  width: string;
+  height: string;
+  align: 'left' | 'center' | 'right';
+  caption: string;
+  linkUrl: string;
+}
+
+const DEFAULT_IMAGE_ATTRS: ImageAttrs = {
+  url: '',
+  alt: '',
+  width: '100%',
+  height: '',
+  align: 'center',
+  caption: '',
+  linkUrl: '',
+};
+
+const WIDTH_PRESETS = [
+  { label: '小', value: '50%' },
+  { label: '中', value: '75%' },
+  { label: '大', value: '100%' },
+  { label: '原始', value: '' },
+];
+
+function escapeHtmlAttr(s: string): string {
+  return (s ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function generateImageHtml(attrs: ImageAttrs): string {
+  let style = `width: ${attrs.width || 'auto'};`;
+  if (attrs.height) style += ` height: ${attrs.height};`;
+  let alignItems = 'center';
+  if (attrs.align === 'left') alignItems = 'flex-start';
+  else if (attrs.align === 'right') alignItems = 'flex-end';
+  let html = `<figure class="editor-image" style="display: flex; flex-direction: column; align-items: ${alignItems}; margin: 1em 0;">\n`;
+  if (attrs.linkUrl) {
+    html += `  <a href="${escapeHtmlAttr(attrs.linkUrl)}" target="_blank" rel="noopener noreferrer">\n`;
+  }
+  html += `  <img src="${escapeHtmlAttr(attrs.url)}" alt="${escapeHtmlAttr(attrs.alt)}" style="${style}" />\n`;
+  if (attrs.linkUrl) {
+    html += `  </a>\n`;
+  }
+  if (attrs.caption) {
+    html += `  <figcaption>${escapeHtmlAttr(attrs.caption)}</figcaption>\n`;
+  }
+  html += '</figure>';
+  return html;
+}
+
+function findImageInContent(content: string, srcUrl: string): { start: number; end: number; attrs: Partial<ImageAttrs> } | null {
+  const escSrc = srcUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const figureRegex = new RegExp(`<figure[^>]*>[\\s\\S]*?<img[^>]*src=["']${escSrc}["'][\\s\\S]*?<\\/figure>`, 'i');
+  const figureMatch = content.match(figureRegex);
+  if (figureMatch && figureMatch.index !== undefined) {
+    return { start: figureMatch.index, end: figureMatch.index + figureMatch[0].length, attrs: parseFigureAttrs(figureMatch[0]) };
+  }
+  const mdRegex = new RegExp(`!\\[([^\\]]*)\\]\\(${escSrc}\\)`);
+  const mdMatch = content.match(mdRegex);
+  if (mdMatch && mdMatch.index !== undefined) {
+    return { start: mdMatch.index, end: mdMatch.index + mdMatch[0].length, attrs: { url: srcUrl, alt: mdMatch[1] || '' } };
+  }
+  return null;
+}
+
+function parseFigureAttrs(figureHtml: string): Partial<ImageAttrs> {
+  const attrs: Partial<ImageAttrs> = {};
+  let alignMatch = figureHtml.match(/align-items:\s*(flex-start|center|flex-end)/i);
+  if (alignMatch) {
+    attrs.align = alignMatch[1] === 'flex-start' ? 'left' : alignMatch[1] === 'flex-end' ? 'right' : 'center';
+  }
+  const srcMatch = figureHtml.match(/<img[^>]*src=["']([^"']*)["']/i);
+  if (srcMatch) attrs.url = srcMatch[1];
+  const altMatch = figureHtml.match(/<img[^>]*alt=["']([^"']*)["']/i);
+  if (altMatch) attrs.alt = altMatch[1];
+  const widthMatch = figureHtml.match(/<img[^>]*style=["'][^"']*width:\s*([^;"']+)/i);
+  if (widthMatch) attrs.width = widthMatch[1].trim();
+  const heightMatch = figureHtml.match(/<img[^>]*style=["'][^"']*height:\s*([^;"']+)/i);
+  if (heightMatch) attrs.height = heightMatch[1].trim();
+  const capMatch = figureHtml.match(/<figcaption>([\s\S]*?)<\/figcaption>/i);
+  if (capMatch) attrs.caption = capMatch[1].trim();
+  const linkMatch = figureHtml.match(/<a[^>]*href=["']([^"']*)["'][^>]*>/i);
+  if (linkMatch) attrs.linkUrl = linkMatch[1];
+  return attrs;
+}
+
+// ===== ImageEditDialog Component =====
+
+function ImageEditDialog({ attrs, onSave, onClose }: {
+  attrs: ImageAttrs;
+  onSave: (attrs: ImageAttrs) => void;
+  onClose: () => void;
+}) {
+  const [url, setUrl] = useState(attrs.url ?? '');
+  const [alt, setAlt] = useState(attrs.alt ?? '');
+  const [width, setWidth] = useState(attrs.width ?? '100%');
+  const [height, setHeight] = useState(attrs.height ?? '');
+  const [align, setAlign] = useState<'left' | 'center' | 'right'>(attrs.align ?? 'center');
+  const [caption, setCaption] = useState(attrs.caption ?? '');
+  const [linkUrl, setLinkUrl] = useState(attrs.linkUrl ?? '');
+  const [showMediaPicker, setShowMediaPicker] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  function handleSave() {
+    if (!url) return;
+    onSave({ url, alt, width, height, align, caption, linkUrl });
+  }
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 transition-opacity duration-200" style={{ background: 'rgba(0,0,0,0.5)' }} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="rounded-2xl w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden pe-animate-in" style={{ background: 'var(--color-bg)', border: '1px solid var(--glass-border)' }} onClick={e => e.stopPropagation()}>
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 flex-shrink-0" style={{ borderBottom: '1px solid var(--glass-border)' }}>
+          <h2 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>编辑图片</h2>
+          <button onClick={onClose} className="p-1.5 rounded-lg transition-colors btn-glass" style={{ color: 'var(--text-info)' }}>
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-5">
+          {/* URL */}
+          <div>
+            <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-info)' }}>图片 URL</label>
+            <div className="flex gap-2">
+              <input type="text" value={url} onChange={e => setUrl(e.target.value)}
+                className="flex-1 px-3 py-2 rounded-xl text-sm outline-none glass-card"
+                style={{ color: 'var(--text-primary)' }}
+                placeholder="输入图片地址" />
+              <button onClick={() => setShowMediaPicker(true)}
+                className="px-3 py-2 rounded-xl text-sm btn-glass whitespace-nowrap" style={{ color: 'var(--text-secondary)' }}>
+                媒体库
+              </button>
+            </div>
+          </div>
+
+          {/* Alt Text */}
+          <div>
+            <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-info)' }}>替代文本 (Alt)</label>
+            <input type="text" value={alt} onChange={e => setAlt(e.target.value)}
+              className="w-full px-3 py-2 rounded-xl text-sm outline-none glass-card"
+              style={{ color: 'var(--text-primary)' }}
+              placeholder="图片描述" />
+          </div>
+
+          {/* Width Presets */}
+          <div>
+            <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-info)' }}>尺寸</label>
+            <div className="flex gap-2 mb-2">
+              {WIDTH_PRESETS.map(p => (
+                <button key={p.value} onClick={() => setWidth(p.value)}
+                  className="flex-1 px-4 py-2 rounded-xl text-sm font-medium transition-all"
+                  style={{
+                    background: width === p.value ? 'var(--btn-card-bg)' : 'transparent',
+                    color: width === p.value ? 'var(--primary)' : 'var(--text-secondary)',
+                    border: width === p.value ? '1px solid var(--glass-border)' : '1px solid transparent',
+                  }}>
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <label className="block text-xs mb-1" style={{ color: 'var(--text-info)' }}>宽度</label>
+                <input type="text" value={width} onChange={e => setWidth(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl text-sm outline-none glass-card"
+                  style={{ color: 'var(--text-primary)' }}
+                  placeholder="100%" />
+              </div>
+              <div className="flex-1">
+                <label className="block text-xs mb-1" style={{ color: 'var(--text-info)' }}>高度</label>
+                <input type="text" value={height} onChange={e => setHeight(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl text-sm outline-none glass-card"
+                  style={{ color: 'var(--text-primary)' }}
+                  placeholder="auto" />
+              </div>
+            </div>
+          </div>
+
+          {/* Alignment */}
+          <div>
+            <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-info)' }}>对齐方式</label>
+            <div className="flex gap-2">
+              {(['left', 'center', 'right'] as const).map(a => (
+                <button key={a} onClick={() => setAlign(a)}
+                  className="flex-1 px-4 py-2 rounded-xl text-sm font-medium transition-all"
+                  style={{
+                    background: align === a ? 'var(--btn-card-bg)' : 'transparent',
+                    color: align === a ? 'var(--primary)' : 'var(--text-secondary)',
+                    border: align === a ? '1px solid var(--glass-border)' : '1px solid transparent',
+                  }}>
+                  {a === 'left' ? '左对齐' : a === 'center' ? '居中' : '右对齐'}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Caption */}
+          <div>
+            <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-info)' }}>描述文本</label>
+            <textarea value={caption} onChange={e => setCaption(e.target.value)} rows={2}
+              className="w-full px-3 py-2 rounded-xl text-sm outline-none resize-none glass-card"
+              style={{ color: 'var(--text-primary)' }}
+              placeholder="图片下方的描述文字" />
+          </div>
+
+          {/* Link URL */}
+          <div>
+            <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-info)' }}>跳转链接</label>
+            <input type="text" value={linkUrl} onChange={e => setLinkUrl(e.target.value)}
+              className="w-full px-3 py-2 rounded-xl text-sm outline-none glass-card"
+              style={{ color: 'var(--text-primary)' }}
+              placeholder="点击图片跳转的 URL" />
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-2 px-6 py-4 flex-shrink-0" style={{ borderTop: '1px solid var(--glass-border)' }}>
+          <button onClick={onClose}
+            className="px-4 py-2 rounded-xl text-sm btn-glass" style={{ color: 'var(--text-secondary)' }}>
+            取消
+          </button>
+          <button onClick={handleSave}
+            className="px-4 py-2 rounded-xl text-sm font-medium text-white transition-all hover:opacity-90"
+            style={{ background: 'var(--primary)', boxShadow: '0 0 12px var(--primary-glow)' }}>
+            确认
+          </button>
+        </div>
+      </div>
+
+      {showMediaPicker && (
+        <MediaPickerModal
+          filterType="image"
+          onSelect={(url: string) => { setUrl(url); setShowMediaPicker(false); }}
+          onClose={() => setShowMediaPicker(false)}
+        />
+      )}
+    </div>
+  );
+}
+
 export default function AdminPosts() {
   const { confirm } = useConfirm();
   const [posts, setPosts] = useState<any[]>([]);
@@ -701,7 +946,7 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
   const [passwordHint, setPasswordHint] = useState(post?.password_hint || '');
   const [passwordSet, setPasswordSet] = useState(post?.password_set || false);
   const [users, setUsers] = useState<any[]>([]);
-  const [rightTab, setRightTab] = useState<'outline' | 'history'>('outline');
+  const [rightTab, setRightTab] = useState<'outline' | 'history' | 'details'>('outline');
   const [revisions, setRevisions] = useState<any[]>([]);
   const [showRightPanel, setShowRightPanel] = useState(true);
   const [showDetailDialog, setShowDetailDialog] = useState(false);
@@ -714,6 +959,7 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
   const [mediaUploading, setMediaUploading] = useState(false);
   const previewScrollRef = useRef<HTMLDivElement>(null);
   const syncingRef = useRef<'editor' | 'preview' | null>(null);
+  const [imageDialog, setImageDialog] = useState<{ attrs: ImageAttrs; range?: { start: number; end: number } } | null>(null);
 
   const handleEditorScroll = useCallback(() => {
     if (!textareaRef.current || !previewScrollRef.current || syncingRef.current === 'preview') return;
@@ -934,6 +1180,7 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
     setTimeout(() => { ta.focus(); ta.setSelectionRange(start + before.length + url.length + after.length, start + before.length + url.length + after.length); }, 0);
   }
 
+
   async function handleMediaUpload(e: React.ChangeEvent<HTMLInputElement>, type: 'image' | 'video' | 'audio') {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -970,6 +1217,16 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
         }
         return;
       }
+    }
+  }
+
+  function handleEditImage(srcUrl: string, altText: string) {
+    const found = findImageInContent(content, srcUrl);
+    if (found) {
+      const merged: ImageAttrs = { ...DEFAULT_IMAGE_ATTRS, ...found.attrs, url: found.attrs.url || srcUrl, alt: found.attrs.alt ?? altText };
+      setImageDialog({ attrs: merged, range: { start: found.start, end: found.end } });
+    } else {
+      setImageDialog({ attrs: { ...DEFAULT_IMAGE_ATTRS, url: srcUrl, alt: altText } });
     }
   }
 
@@ -1023,7 +1280,7 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
     { icon: Heading3, action: () => insertMarkdown('### '), title: '标题 3' },
     { type: 'divider' as const },
     { icon: Link, action: () => insertMarkdown('[', '](url)'), title: '链接 (Ctrl+K)' },
-    { icon: ImageIcon, action: () => setMediaPickerType('image'), title: '图片' },
+    { icon: ImageIcon, action: () => setImageDialog({ attrs: { ...DEFAULT_IMAGE_ATTRS } }), title: '图片' },
     { icon: Code, action: () => insertMarkdown('`', '`'), title: '行内代码' },
     { icon: SquareCode, action: () => insertMarkdown('```\n', '\n```'), title: '代码块' },
     { icon: Quote, action: () => insertMarkdown('> '), title: '引用' },
@@ -1280,7 +1537,9 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
                         <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary)' }}>{children}</a>
                       ),
                       img: ({ src, alt }) => (
-                        <img src={src} alt={alt || ''} style={{ maxWidth: '100%', borderRadius: '8px' }} />
+                        <img src={src} alt={typeof alt === 'string' ? alt : ''} style={{ maxWidth: '100%', borderRadius: '8px', cursor: 'pointer' }}
+                          onClick={(e) => { e.stopPropagation(); handleEditImage(typeof src === 'string' ? src : '', typeof alt === 'string' ? alt : ''); }}
+                          title="点击编辑图片" />
                       ),
                       audio: ({ src }) => <ArticleAudioPlayer src={src || ''} />,
                     }}
@@ -1303,6 +1562,12 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
                 style={{ color: rightTab === 'outline' ? 'var(--primary)' : 'var(--text-info)' }}>
                 大纲
                 {rightTab === 'outline' && <div className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full" style={{ background: 'var(--primary)' }} />}
+              </button>
+              <button onClick={() => setRightTab('details')}
+                className="flex-1 px-4 py-2.5 text-sm font-medium transition-colors relative"
+                style={{ color: rightTab === 'details' ? 'var(--primary)' : 'var(--text-info)' }}>
+                详情
+                {rightTab === 'details' && <div className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full" style={{ background: 'var(--primary)' }} />}
               </button>
               {post?.id && (
                 <button onClick={() => { setRightTab('history'); loadRevisions(); }}
@@ -1328,6 +1593,49 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
                         </div>
                       ))}
                     </div>
+                  )}
+                </div>
+              ) : rightTab === 'details' ? (
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-xs font-medium mb-1" style={{ color: 'var(--text-info)' }}>字符数</p>
+                    <p className="text-sm" style={{ color: 'var(--text-primary)' }}>{content.length.toLocaleString()}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium mb-1" style={{ color: 'var(--text-info)' }}>词数量</p>
+                    <p className="text-sm" style={{ color: 'var(--text-primary)' }}>{content.trim() ? content.trim().split(/\s+/).length.toLocaleString() : 0}</p>
+                  </div>
+                  {post?.created_at && (
+                    <div>
+                      <p className="text-xs font-medium mb-1" style={{ color: 'var(--text-info)' }}>创建时间</p>
+                      <p className="text-sm" style={{ color: 'var(--text-primary)' }}>{new Date(post.created_at).toLocaleString('zh-CN')}</p>
+                    </div>
+                  )}
+                  {post?.published_at && (
+                    <div>
+                      <p className="text-xs font-medium mb-1" style={{ color: 'var(--text-info)' }}>发布时间</p>
+                      <p className="text-sm" style={{ color: 'var(--text-primary)' }}>{new Date(post.published_at).toLocaleString('zh-CN')}</p>
+                    </div>
+                  )}
+                  {authorName && (
+                    <div>
+                      <p className="text-xs font-medium mb-1" style={{ color: 'var(--text-info)' }}>创建者 / 作者</p>
+                      <p className="text-sm" style={{ color: 'var(--text-primary)' }}>{authorName}</p>
+                    </div>
+                  )}
+                  {post?.slug && (
+                    <div>
+                      <p className="text-xs font-medium mb-1" style={{ color: 'var(--text-info)' }}>访问链接</p>
+                      <a href={`${typeof window !== 'undefined' ? window.location.origin : ''}/posts/${post.slug}`}
+                        target="_blank" rel="noopener noreferrer"
+                        className="text-sm break-all hover:underline"
+                        style={{ color: 'var(--primary)' }}>
+                        /posts/{post.slug}
+                      </a>
+                    </div>
+                  )}
+                  {!post?.id && (
+                    <p className="text-sm" style={{ color: 'var(--text-info)' }}>保存后可见更多详情</p>
                   )}
                 </div>
               ) : (
@@ -1379,6 +1687,32 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
             if ('password_set' in data) setPasswordSet(data.password_set);
           }}
           onClose={() => setShowDetailDialog(false)}
+        />
+      )}
+
+      {imageDialog && (
+        <ImageEditDialog
+          attrs={imageDialog.attrs}
+          onSave={(newAttrs) => {
+            const html = generateImageHtml(newAttrs);
+            if (imageDialog.range) {
+              const newContent = content.substring(0, imageDialog.range.start) + '\n' + html + '\n' + content.substring(imageDialog.range.end);
+              setContent(newContent);
+            } else {
+              const ta = textareaRef.current;
+              if (ta) {
+                const start = ta.selectionStart;
+                const end = ta.selectionEnd;
+                const newContent = content.substring(0, start) + html + '\n' + content.substring(end);
+                setContent(newContent);
+                setTimeout(() => { ta.focus(); ta.setSelectionRange(start + html.length + 1, start + html.length + 1); }, 0);
+              } else {
+                setContent((prev: string) => prev + '\n' + html + '\n');
+              }
+            }
+            setImageDialog(null);
+          }}
+          onClose={() => setImageDialog(null)}
         />
       )}
     </div>
