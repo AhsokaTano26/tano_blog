@@ -391,6 +391,7 @@ function PostDetailDialog({ post, categories, tags, seriesList, onSave, onClose 
   const [passwordSet, setPasswordSet] = useState(post?.password_set || false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [aiGenerating, setAiGenerating] = useState(false);
 
   function generateExcerpt(md: string): string {
     const text = md
@@ -577,6 +578,33 @@ function PostDetailDialog({ post, categories, tags, seriesList, onSave, onClose 
                     background: excerptMode === 'auto' ? 'var(--primary-sub)' : 'transparent',
                     color: excerptMode === 'auto' ? 'var(--primary)' : 'var(--text-info)',
                   }}>自动</button>
+                <div className="w-px h-4 mx-1 self-center" style={{ background: 'var(--glass-border)' }} />
+                <button onClick={async () => {
+                  if (aiGenerating || !post?.id) return;
+                  setAiGenerating(true);
+                  setError('');
+                  try {
+                    const res = await api.admin.posts.generateExcerpt(post.id);
+                    setExcerpt(res.excerpt);
+                    setExcerptMode('manual');
+                  } catch (err: any) {
+                    setError(err.message || 'AI 生成失败');
+                  }
+                  setAiGenerating(false);
+                }}
+                  className="px-2 py-0.5 rounded text-xs transition-all flex items-center gap-1"
+                  style={{
+                    background: 'var(--primary-sub)',
+                    color: 'var(--primary)',
+                    opacity: aiGenerating ? 0.6 : 1,
+                  }}>
+                  {aiGenerating ? (
+                    <>
+                      <span className="inline-block w-3 h-3 rounded-full border-2 border-transparent animate-spin" style={{ borderTopColor: 'var(--primary)', borderRightColor: 'var(--primary)' }} />
+                      生成中
+                    </>
+                  ) : 'AI 生成'}
+                </button>
               </div>
             </div>
             {excerptMode === 'manual' ? (

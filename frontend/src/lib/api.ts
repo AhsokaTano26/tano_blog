@@ -212,6 +212,8 @@ export const api = {
       },
       generatePreviewToken: (postId: string) =>
         request<{ token: string }>(`/api/v1/admin/posts/${postId}/preview-token`, { method: 'POST' }),
+      generateExcerpt: (postId: string) =>
+        request<{ excerpt: string }>(`/api/v1/admin/posts/${postId}/generate-excerpt`, { method: 'POST' }),
       export: () => {
         window.open(`${API_BASE}/api/v1/admin/posts/export`, '_blank');
       },

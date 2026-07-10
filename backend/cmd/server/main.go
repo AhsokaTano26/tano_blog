@@ -84,6 +84,7 @@ func main() {
 
 	// Initialize services
 	emailService := service.NewEmailService(db)
+	aiService := service.NewAIService(db)
 
 	// Initialize handlers
 	authHandler := handler.NewAuthHandler(db, &cfg.JWT, emailService)
@@ -101,6 +102,7 @@ func main() {
 	navLinkHandler := handler.NewNavLinkHandler(db)
 	commenterHandler := handler.NewCommenterHandler(db)
 	notifHandler := handler.NewNotificationHandler(db)
+	aiHandler := handler.NewAIHandler(aiService, db)
 
 	// Setup router
 	r := gin.New()
@@ -236,6 +238,7 @@ func main() {
 				admin.GET("/posts/:id/revisions", postHandler.ListRevisions)
 				admin.POST("/posts/:id/revisions/:revId/restore", postHandler.RestoreRevision)
 				admin.POST("/posts/:id/preview-token", postHandler.GeneratePreviewToken)
+				admin.POST("/posts/:id/generate-excerpt", aiHandler.GenerateExcerpt)
 				admin.GET("/posts/calendar", postHandler.CalendarPosts)
 				admin.GET("/posts/export", postHandler.Export)
 
@@ -459,6 +462,10 @@ func seedSiteConfigs(db *gorm.DB) {
 		"profile_bio":      "A BanG Dreamer!",
 		"profile_contacts": `[{"type":"email","value":"public@tano.asia"},{"type":"github","value":"AhsokaTano26"}]`,
 		"site_favicon":     "/favicon.ico",
+		"ai_enabled":      "false",
+		"ai_api_url":      "https://api.openai.com/v1",
+		"ai_api_key":      "",
+		"ai_model":        "gpt-3.5-turbo",
 	}
 
 	for key, value := range defaults {

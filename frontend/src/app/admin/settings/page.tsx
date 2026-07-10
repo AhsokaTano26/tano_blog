@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { api } from '@/lib/api';
-import { Save, Globe, FileText, Palette, MessageSquare, Code, Mail, User, Plus, Trash2 } from 'lucide-react';
+import { Save, Globe, FileText, Palette, MessageSquare, Code, Mail, User, Plus, Trash2, Cpu } from 'lucide-react';
 import { Loading } from '@/components/Loading';
 import { Select } from '@/components/ConfirmDialog';
 import { MediaField } from '@/components/MediaField';
@@ -24,6 +24,7 @@ const tabs = [
   { key: 'article', label: '文章设置', icon: FileText },
   { key: 'appearance', label: '外观设置', icon: Palette },
   { key: 'comment', label: '评论设置', icon: MessageSquare },
+  { key: 'ai', label: 'AI 设置', icon: Cpu },
   { key: 'email', label: '邮件通知', icon: Mail },
   { key: 'injection', label: '代码注入', icon: Code },
 ];
@@ -312,6 +313,52 @@ export default function AdminSettings() {
                       border: config.comment_enabled === 'false' ? 'none' : '1px solid var(--glass-border)',
                     }}>关闭</button>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'ai' && (
+            <div className="space-y-5 max-w-2xl">
+              <div>
+                <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>AI 摘要生成</label>
+                <div className="flex gap-2">
+                  <button onClick={() => setConfig({ ...config, ai_enabled: 'true' })}
+                    className="px-4 py-2 rounded-lg text-sm transition-colors"
+                    style={{
+                      background: config.ai_enabled === 'true' ? 'hsl(142, 60%, 50%)' : 'var(--surface-bg)',
+                      color: config.ai_enabled === 'true' ? '#fff' : 'var(--text-secondary)',
+                      border: config.ai_enabled === 'true' ? 'none' : '1px solid var(--glass-border)',
+                    }}>开启</button>
+                  <button onClick={() => setConfig({ ...config, ai_enabled: 'false' })}
+                    className="px-4 py-2 rounded-lg text-sm transition-colors"
+                    style={{
+                      background: config.ai_enabled === 'false' ? 'hsl(0, 60%, 55%)' : 'var(--surface-bg)',
+                      color: config.ai_enabled === 'false' ? '#fff' : 'var(--text-secondary)',
+                      border: config.ai_enabled === 'false' ? 'none' : '1px solid var(--glass-border)',
+                    }}>关闭</button>
+                </div>
+                <p className="text-xs mt-1.5" style={{ color: 'var(--text-info)' }}>开启后，可在文章编辑时使用 AI 自动生成摘要</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>API 地址</label>
+                <input type="url" value={config.ai_api_url || ''} onChange={e => setConfig({ ...config, ai_api_url: e.target.value })}
+                  placeholder="https://api.openai.com/v1" className={`${inputClass} font-mono`} style={inputStyle} />
+                <p className="text-xs mt-1" style={{ color: 'var(--text-info)' }}>OpenAI 兼容 API 地址，默认 https://api.openai.com/v1</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>API Key</label>
+                <input type="password" value={config.ai_api_key || ''} onChange={e => setConfig({ ...config, ai_api_key: e.target.value })}
+                  placeholder="sk-..." className={inputClass} style={inputStyle} />
+                <p className="text-xs mt-1" style={{ color: 'var(--text-info)' }}>OpenAI 或兼容服务的 API 密钥</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>模型名称</label>
+                <input type="text" value={config.ai_model || ''} onChange={e => setConfig({ ...config, ai_model: e.target.value })}
+                  placeholder="gpt-3.5-turbo" className={inputClass} style={inputStyle} />
+                <p className="text-xs mt-1" style={{ color: 'var(--text-info)' }}>使用的模型，如 gpt-3.5-turbo、gpt-4o、gpt-4o-mini 等</p>
               </div>
             </div>
           )}
