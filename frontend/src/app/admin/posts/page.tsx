@@ -231,8 +231,14 @@ export default function AdminPosts() {
                             <FileText className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
                           </div>
                         )}
-                        <div className="flex items-center gap-2 min-w-0">
+                        <div className="flex items-center gap-2 min-w-0 group">
                           <span className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>{post.title}</span>
+                          <button onClick={(e) => { e.stopPropagation(); window.open(`/posts/${post.slug}`, '_blank'); }}
+                            className="p-0.5 rounded transition-colors opacity-0 group-hover:opacity-100 hover:opacity-100 flex-shrink-0"
+                            style={{ color: 'var(--text-info)' }}
+                            title="预览文章">
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </button>
                           {post.is_top && (
                             <span className="px-1.5 py-0.5 text-xs rounded flex-shrink-0"
                               style={{ background: 'var(--primary-sub)', color: 'var(--primary)' }}>置顶</span>
@@ -608,7 +614,7 @@ function PostDetailDialog({ post, categories, tags, seriesList, onSave, onClose 
               </div>
             </div>
             {excerptMode === 'manual' ? (
-              <textarea placeholder="文章摘要" value={excerpt} onChange={e => setExcerpt(e.target.value)} rows={3}
+              <textarea placeholder="文章摘要" value={excerpt} onChange={e => setExcerpt(e.target.value)} rows={8}
                 className="w-full px-3 py-2 rounded-xl text-sm outline-none resize-none glass-card"
                 style={{ color: 'var(--text-primary)' }} />
             ) : (
