@@ -16,6 +16,7 @@ export function Header() {
 
   const defaultNavLinks = [
     { href: '/', label: '首页' },
+    { href: '/gallery', label: '图片' },
     { href: '/music', label: '音乐' },
     { href: '/archive', label: '归档' },
     { href: '/links', label: '友链' },
