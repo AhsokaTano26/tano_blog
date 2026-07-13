@@ -3,8 +3,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import { X, ChevronLeft, ChevronRight } from 'lucide-react';
 
+interface LightboxImage {
+  url: string;
+  title?: string;
+  description?: string;
+}
+
 interface ImageLightboxProps {
-  images: string[];
+  images: (string | LightboxImage)[];
   startIndex?: number;
   onClose: () => void;
 }
@@ -28,6 +34,12 @@ export function ImageLightbox({ images, startIndex = 0, onClose }: ImageLightbox
       document.body.style.overflow = '';
     };
   }, [onClose, prev, next]);
+
+  // 统一处理 images 为 LightboxImage[]
+  const normalizedImages: LightboxImage[] = images.map(img =>
+    typeof img === 'string' ? { url: img } : img
+  );
+  const current = normalizedImages[index];
 
   return (
     <div
@@ -54,13 +66,23 @@ export function ImageLightbox({ images, startIndex = 0, onClose }: ImageLightbox
         </button>
       )}
 
-      {/* Image */}
-      <img
-        src={images[index]}
-        alt="查看大图"
-        onClick={(e) => e.stopPropagation()}
-        className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg"
-      />
+      <div className="flex flex-col items-center gap-4 max-w-[90vw] max-h-[90vh]" onClick={e => e.stopPropagation()}>
+        <img
+          src={current.url}
+          alt={current.title || '查看大图'}
+          className="max-w-[90vw] max-h-[75vh] object-contain rounded-lg"
+        />
+        {(current.title || current.description) && (
+          <div className="text-center max-w-[80vw]">
+            {current.title && (
+              <div className="text-white/90 text-sm font-medium mb-1">{current.title}</div>
+            )}
+            {current.description && (
+              <div className="text-white/60 text-xs">{current.description}</div>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* Next */}
       {images.length > 1 && (

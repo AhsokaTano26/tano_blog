@@ -1,0 +1,41 @@
+<h2>数据存储方式</h2>
+<p class="subtitle">选了瀑布流，接下来决定后台数据怎么管理</p>
+
+<div class="cards" style="grid-template-columns: repeat(2, 1fr);">
+  <div class="card" data-choice="siteconfig" onclick="toggleSelect(this)">
+    <div class="card-body">
+      <h3>A. SiteConfig JSON（推荐）</h3>
+      <p style="margin:8px 0;">和音乐馆完全一样：</p>
+      <div style="background:var(--surface);padding:12px;border-radius:6px;font-size:12px;font-family:monospace;margin-bottom:8px;">
+site_configs 表<br>
+key: "gallery_page_config"<br>
+value: JSON 数组 → 图片列表<br><br>
+后台: PUT /api/v1/admin/config<br>
+前端: GET /api/v1/config/gallery_page_config
+      </div>
+      <div class="pros-cons">
+        <div class="pros"><h4>优点</h4><ul><li>无需新建接口/路由</li><li>和音乐馆统一模式</li><li>实现最快</li></ul></div>
+        <div class="cons"><h4>缺点</h4><ul><li>不支持分页</li><li>图片量大时 JSON 臃肿</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" data-choice="dbtable" onclick="toggleSelect(this)">
+    <div class="card-body">
+      <h3>B. 独立数据库表</h3>
+      <p style="margin:8px 0;">新建 gallery_images 表：</p>
+      <div style="background:var(--surface);padding:12px;border-radius:6px;font-size:12px;font-family:monospace;margin-bottom:8px;">
+gallery_images {<br>
+&nbsp;&nbsp;id, url, title,<br>
+&nbsp;&nbsp;description, width,<br>
+&nbsp;&nbsp;height, sort_order,<br>
+&nbsp;&nbsp;created_at<br>
+}
+      </div>
+      <div class="pros-cons">
+        <div class="pros"><h4>优点</h4><ul><li>支持分页、排序</li><li>适合大量图片</li><li>每张图可独立编辑</li></ul></div>
+        <div class="cons"><h4>缺点</h4><ul><li>需要新表+新接口</li><li>实现复杂度高</li></ul></div>
+      </div>
+    </div>
+  </div>
+</div>

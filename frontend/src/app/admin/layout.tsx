@@ -25,6 +25,7 @@ const navSections = [
       { href: '/admin/comments', label: '评论', icon: MessageSquare },
       { href: '/admin/media', label: '附件', icon: Image },
       { href: '/admin/series', label: '系列', icon: Bookmark },
+      { href: '/admin/gallery', label: '图片馆', icon: Image },
       { href: '/admin/links', label: '友链', icon: Link },
     ],
   },

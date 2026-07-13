@@ -81,6 +81,7 @@ func main() {
 	commentRepo := repository.NewCommentRepo(db)
 	mediaRepo := repository.NewMediaRepo(db)
 	seriesRepo := repository.NewSeriesRepo(db)
+	galleryRepo := repository.NewGalleryRepo(db)
 
 	// Initialize services
 	emailService := service.NewEmailService(db)
@@ -92,7 +93,7 @@ func main() {
 	categoryHandler := handler.NewCategoryHandler(db)
 	tagHandler := handler.NewTagHandler(db)
 	commentHandler := handler.NewCommentHandler(commentRepo, db, emailService)
-	mediaHandler := handler.NewMediaHandler(mediaRepo, &cfg.Upload)
+	mediaHandler := handler.NewMediaHandler(mediaRepo, galleryRepo, &cfg.Upload)
 	siteConfigHandler := handler.NewSiteConfigHandler(db, emailService)
 	accessLogHandler := handler.NewAccessLogHandler(db)
 	backupHandler := handler.NewBackupHandler(db, cfg.Upload.Dir, cfg.BackupDir)
@@ -100,6 +101,7 @@ func main() {
 	feedHandler := handler.NewFeedHandler(db)
 	friendLinkHandler := handler.NewFriendLinkHandler(db)
 	navLinkHandler := handler.NewNavLinkHandler(db)
+	galleryHandler := handler.NewGalleryHandler(galleryRepo)
 	commenterHandler := handler.NewCommenterHandler(db)
 	notifHandler := handler.NewNotificationHandler(db)
 	aiHandler := handler.NewAIHandler(aiService, db)
@@ -183,6 +185,8 @@ func main() {
 
 		// Nav links (public)
 		api.GET("/nav-links", navLinkHandler.ListPublic)
+		// Gallery (public)
+		api.GET("/gallery", galleryHandler.List)
 
 		api.GET("/categories", categoryHandler.List)
 		api.GET("/categories/:slug", categoryHandler.GetBySlug)
@@ -322,6 +326,13 @@ func main() {
 				admin.PUT("/nav-links/:id", navLinkHandler.AdminUpdate)
 				admin.DELETE("/nav-links/:id", navLinkHandler.AdminDelete)
 				admin.PUT("/nav-links/reorder", navLinkHandler.AdminReorder)
+				// Gallery
+				admin.GET("/gallery", galleryHandler.List)
+				admin.POST("/gallery", galleryHandler.Create)
+				admin.PUT("/gallery/:id", galleryHandler.Update)
+				admin.DELETE("/gallery/:id", galleryHandler.Delete)
+				admin.PUT("/gallery/reorder", galleryHandler.Reorder)
+				admin.POST("/gallery/toggle", galleryHandler.ToggleByURL)
 			}
 		}
 	}

@@ -178,6 +178,38 @@ html {
   text-decoration: underline;
 }
 
+/* ===== Image Gallery ===== */
+.prose .editor-image-gallery {
+  display: grid !important;
+  gap: 12px;
+  margin: 1em auto;
+}
+.prose .editor-image-gallery .gallery-item {
+  break-inside: avoid;
+}
+.prose .editor-image-gallery .gallery-item img {
+  margin: 0 !important;
+  width: 100% !important;
+  height: auto !important;
+  border-radius: 8px;
+}
+.prose .editor-image-gallery .gallery-item p {
+  text-align: center;
+  font-size: 0.875em;
+  margin: 0.25em 0 0 0 !important;
+}
+.prose .editor-image-gallery > figcaption {
+  text-align: center;
+  margin-top: 0.75em;
+  grid-column: 1 / -1;
+  font-size: 0.875em;
+}
+@media (max-width: 640px) {
+  .prose .editor-image-gallery {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+
 /* ===== TOC ===== */
 .toc-link {
   transition: all 0.2s;
@@ -487,5 +519,64 @@ input[type="range"]::-moz-range-thumb {
 .dark .katex .mpunct,
 .dark .katex .mop {
   color: hsla(0, 0%, 100%, 0.9);
+}
+
+/* ===== Gallery Masonry ===== */
+.gallery-masonry {
+  column-count: 4;
+  column-gap: 12px;
+  padding: 0;
+}
+.gallery-masonry-item {
+  break-inside: avoid;
+  margin-bottom: 12px;
+  cursor: pointer;
+  border-radius: 10px;
+  overflow: hidden;
+  position: relative;
+}
+.gallery-masonry-inner {
+  background: var(--card-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: 10px;
+  overflow: hidden;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.gallery-masonry-inner:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 32px -8px rgba(0, 0, 0, 0.3);
+  border-color: hsla(0, 0%, 100%, 0.15);
+}
+.gallery-masonry-inner img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 10px 10px 0 0;
+}
+.gallery-masonry-overlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 12px;
+  background: linear-gradient(transparent, rgba(0,0,0,0.7));
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+.gallery-masonry-inner:hover .gallery-masonry-overlay {
+  opacity: 1;
+}
+.gallery-masonry-overlay span {
+  color: white;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+@media (max-width: 1024px) {
+  .gallery-masonry { column-count: 3; }
+}
+@media (max-width: 640px) {
+  .gallery-masonry { column-count: 2; column-gap: 8px; }
+  .gallery-masonry-item { margin-bottom: 8px; }
 }
 

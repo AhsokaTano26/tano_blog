@@ -1,0 +1,73 @@
+<h2>方案 B：相册式浏览</h2>
+<p class="subtitle">和音乐馆完全一致的模式：封⾯ → 点击进入 → 查看该相册内所有图片</p>
+
+<div class="mockup">
+  <div class="mockup-header">
+    <div style="display:flex;align-items:center;gap:12px;padding:0 16px;">
+      <span style="font-weight:600;">📷 图片馆</span>
+      <span style="color:var(--muted);font-size:13px;margin-left:auto;">4 个相册</span>
+    </div>
+  </div>
+  <div class="mockup-body" style="padding:24px;">
+    <!-- 相册封面列表页 (类比音乐馆专辑列表) -->
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px;">
+      <div style="border-radius:10px;overflow:hidden;border:1px solid rgba(255,255,255,0.08);cursor:pointer;">
+        <div style="aspect-ratio:1;background:linear-gradient(135deg,#6c5ce7,#a29bfe);display:flex;align-items:center;justify-content:center;font-size:40px;">🗺️</div>
+        <div style="padding:10px;">
+          <div style="font-size:13px;font-weight:600;">旅行日记 2024</div>
+          <div style="font-size:11px;color:var(--muted);">12 张</div>
+        </div>
+      </div>
+      <div style="border-radius:10px;overflow:hidden;border:1px solid rgba(255,255,255,0.08);cursor:pointer;">
+        <div style="aspect-ratio:1;background:linear-gradient(135deg,#fd79a8,#e84393);display:flex;align-items:center;justify-content:center;font-size:40px;">📸</div>
+        <div style="padding:10px;">
+          <div style="font-size:13px;font-weight:600;">摄影精选</div>
+          <div style="font-size:11px;color:var(--muted);">8 张</div>
+        </div>
+      </div>
+      <div style="border-radius:10px;overflow:hidden;border:1px solid rgba(255,255,255,0.08);cursor:pointer;">
+        <div style="aspect-ratio:1;background:linear-gradient(135deg,#00b894,#00cec9);display:flex;align-items:center;justify-content:center;font-size:40px;">🍳</div>
+        <div style="padding:10px;">
+          <div style="font-size:13px;font-weight:600;">日常碎片</div>
+          <div style="font-size:11px;color:var(--muted);">6 张</div>
+        </div>
+      </div>
+      <div style="border-radius:10px;overflow:hidden;border:1px solid rgba(255,255,255,0.08);cursor:pointer;">
+        <div style="aspect-ratio:1;background:linear-gradient(135deg,#fdcb6e,#e17055);display:flex;align-items:center;justify-content:center;font-size:40px;">🎨</div>
+        <div style="padding:10px;">
+          <div style="font-size:13px;font-weight:600;">插画收藏</div>
+          <div style="font-size:11px;color:var(--muted);">15 张</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 进入相册后的图片网格 -->
+    <div style="padding:16px;background:var(--surface);border-radius:10px;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+        <span style="font-size:14px;">←</span>
+        <span style="font-size:13px;font-weight:600;">返回</span>
+        <span style="font-size:13px;color:var(--muted);margin-left:8px;">/ 旅行日记 2024</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">
+        <div style="aspect-ratio:1;background:#2d2d3d;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:24px;">🏔️</div>
+        <div style="aspect-ratio:1;background:#2d2d3d;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:24px;">🌊</div>
+        <div style="aspect-ratio:1;background:#2d2d3d;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:24px;">🌅</div>
+        <div style="aspect-ratio:1;background:#2d2d3d;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:24px;">🏕️</div>
+      </div>
+    </div>
+
+    <div style="margin-top:16px;padding:16px;background:var(--surface);border-radius:8px;">
+      <div style="font-size:13px;font-weight:600;margin-bottom:8px;">🖱️ 浏览流程</div>
+      <div style="display:flex;gap:12px;font-size:12px;color:var(--muted);flex-wrap:wrap;">
+        <div>1. 首页看到相册封面列表</div>
+        <div>2. 点击相册 → 进入该相册</div>
+        <div>3. 相册内图片网格</div>
+        <div>4. 点击单张 → 灯箱</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div style="margin-top:16px;padding:12px;background:rgba(253,121,168,0.1);border:1px solid rgba(253,121,168,0.2);border-radius:8px;">
+  <strong>特点：</strong> 和音乐馆（专辑列表 → 歌曲列表）完全一样的模式。适合按主题分组展示，图片无需裁切。但浏览路径多一层。
+</div>

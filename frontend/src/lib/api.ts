@@ -127,6 +127,10 @@ export const api = {
     request('/api/v1/links/apply', { method: 'POST', body: JSON.stringify(data) }),
   getNavLinks: () =>
     request<{ items: any[] }>('/api/v1/nav-links'),
+
+  // Gallery
+  getGalleryImages: () =>
+    request<{ items: any[] }>('/api/v1/gallery'),
   verifyPostPassword: (slug: string, password: string) =>
     request<{ verified: boolean }>(`/api/v1/posts/${slug}/verify-password`, { method: 'POST', body: JSON.stringify({ password }) }),
 
@@ -413,6 +417,20 @@ export const api = {
         const searchParams = params ? '?' + new URLSearchParams(params).toString() : '';
         window.open(`${API_BASE}/api/v1/admin/links/export${searchParams}`, '_blank');
       },
+    },
+    gallery: {
+      list: () =>
+        request<{ items: any[] }>('/api/v1/admin/gallery'),
+      create: (data: { url: string; title?: string; description?: string; width?: number; height?: number }) =>
+        request('/api/v1/admin/gallery', { method: 'POST', body: JSON.stringify(data) }),
+      update: (id: string, data: any) =>
+        request(`/api/v1/admin/gallery/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+      delete: (id: string) =>
+        request(`/api/v1/admin/gallery/${id}`, { method: 'DELETE' }),
+      reorder: (items: { id: string; sort_order: number }[]) =>
+        request('/api/v1/admin/gallery/reorder', { method: 'PUT', body: JSON.stringify({ items }) }),
+      toggle: (url: string, title?: string) =>
+        request<{ in_gallery: boolean; image?: any }>('/api/v1/admin/gallery/toggle', { method: 'POST', body: JSON.stringify({ url, title }) }),
     },
   },
 };

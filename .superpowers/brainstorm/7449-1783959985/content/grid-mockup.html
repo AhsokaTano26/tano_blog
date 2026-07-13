@@ -1,0 +1,61 @@
+<h2>方案 A：网格画廊</h2>
+<p class="subtitle">整体思路：和音乐馆一样的网格卡片布局，点击图片 → 全屏灯箱浏览</p>
+
+<div class="mockup">
+  <div class="mockup-header">
+    <div style="display:flex;align-items:center;gap:12px;padding:0 16px;">
+      <span style="font-weight:600;">📷 图片馆</span>
+      <span style="color:var(--muted);font-size:13px;margin-left:auto;">共 24 张</span>
+    </div>
+  </div>
+  <div class="mockup-body" style="padding:24px;">
+    <!-- 筛选栏 -->
+    <div style="display:flex;gap:8px;margin-bottom:20px;">
+      <span class="mock-button" style="background:var(--accent);color:white;">全部</span>
+      <span class="mock-button">旅行</span>
+      <span class="mock-button">日常</span>
+      <span class="mock-button">摄影</span>
+    </div>
+    <!-- 网格 -->
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">
+      <div style="aspect-ratio:1;background:#2d2d3d;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-direction:column;border:1px solid rgba(255,255,255,0.06);">
+        <div style="font-size:32px;margin-bottom:4px;">🌄</div>
+        <div style="font-size:11px;color:var(--text-secondary);">日落</div>
+      </div>
+      <div style="aspect-ratio:1;background:#2d2d3d;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-direction:column;border:1px solid rgba(255,255,255,0.06);">
+        <div style="font-size:32px;margin-bottom:4px;">🏔️</div>
+        <div style="font-size:11px;color:var(--text-secondary);">山川</div>
+      </div>
+      <div style="aspect-ratio:1;background:#2d2d3d;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-direction:column;border:1px solid rgba(255,255,255,0.06);">
+        <div style="font-size:32px;margin-bottom:4px;">🌊</div>
+        <div style="font-size:11px;color:var(--text-secondary);">大海</div>
+      </div>
+      <div style="aspect-ratio:1;background:#2d2d3d;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-direction:column;border:1px solid rgba(255,255,255,0.06);">
+        <div style="font-size:32px;margin-bottom:4px;">🌸</div>
+        <div style="font-size:11px;color:var(--text-secondary);">花</div>
+      </div>
+      <div style="aspect-ratio:1;background:#2d2d3d;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-direction:column;border:1px solid rgba(255,255,255,0.06);">
+        <div style="font-size:32px;margin-bottom:4px;">🌃</div>
+        <div style="font-size:11px;color:var(--text-secondary);">夜景</div>
+      </div>
+      <div style="aspect-ratio:1;background:#2d2d3d;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-direction:column;border:1px solid rgba(255,255,255,0.06);">
+        <div style="font-size:32px;margin-bottom:4px;">🍜</div>
+        <div style="font-size:11px;color:var(--text-secondary);">美食</div>
+      </div>
+    </div>
+    <!-- 交互说明 -->
+    <div style="margin-top:24px;padding:16px;background:var(--surface);border-radius:8px;">
+      <div style="font-size:13px;font-weight:600;margin-bottom:8px;">🖱️ 交互方式</div>
+      <div style="display:flex;gap:20px;font-size:12px;color:var(--muted);">
+        <div>点击图片 → 全屏灯箱浏览</div>
+        <div>← → 键盘切换</div>
+        <div>Esc 关闭</div>
+        <div>灯箱显示图片总数和当前位置</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div style="margin-top:16px;padding:12px;background:rgba(108,92,231,0.1);border:1px solid rgba(108,92,231,0.2);border-radius:8px;">
+  <strong>特点：</strong> 和音乐馆结构最像，所有图片平铺展示，统一为正方形网格。图片不足时会裁切或留白。实现最简单。
+</div>
