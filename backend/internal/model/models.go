@@ -292,5 +292,6 @@ func AutoMigrate(db *gorm.DB) error {
 		&NavLink{},
 		&CommenterBlock{},
 		&Notification{},
+		&GalleryImage{},
 	)
 }
