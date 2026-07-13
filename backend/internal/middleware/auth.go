@@ -77,6 +77,7 @@ func OptionalAuth(cfg *config.JWTConfig) gin.HandlerFunc {
 		if err == nil && token.Valid {
 			c.Set("user_id", claims.UserID)
 			c.Set("username", claims.Username)
+			c.Set("role", claims.Role)
 		}
 		c.Next()
 	}
