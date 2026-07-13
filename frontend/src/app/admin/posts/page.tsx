@@ -7,7 +7,7 @@ import {
   Plus, Pencil, Trash2, ExternalLink, Eye, Search, X, Check, FileText,
   ArrowLeft, Save,
   Bold, Italic, Underline, Strikethrough, Link, Code, Quote, List, ListOrdered,
-  Image as ImageIcon, Heading1, Heading2, Heading3,
+  Image as ImageIcon, Heading1, Heading2, Heading3, LayoutGrid,
   Minus, SquareCode, Superscript, GitBranch, Table, Video, Music, Palette, Settings
 } from 'lucide-react';
 import { Loading } from '@/components/Loading';
@@ -15,6 +15,9 @@ import { MermaidDiagram } from '@/components/MermaidDiagram';
 import { ArticleAudioPlayer } from '@/components/ArticleAudioPlayer';
 import { useConfirm, Checkbox, Select } from '@/components/ConfirmDialog';
 import { MediaField, MediaPickerModal } from '@/components/MediaField';
+import GalleryEditDialog from '@/components/GalleryEditDialog';
+import { generateGalleryHtml, findGalleryInContent, createDefaultGalleryAttrs } from '@/lib/gallery';
+import type { GalleryAttrs } from '@/lib/gallery';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -960,6 +963,7 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
   const previewScrollRef = useRef<HTMLDivElement>(null);
   const syncingRef = useRef<'editor' | 'preview' | null>(null);
   const [imageDialog, setImageDialog] = useState<{ attrs: ImageAttrs; range?: { start: number; end: number } } | null>(null);
+  const [galleryDialog, setGalleryDialog] = useState<{ attrs: GalleryAttrs; range?: { start: number; end: number } } | null>(null);
 
   const handleEditorScroll = useCallback(() => {
     if (!textareaRef.current || !previewScrollRef.current || syncingRef.current === 'preview') return;
@@ -1230,6 +1234,35 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
     }
   }
 
+  function handleEditGallery(imgEl: HTMLElement) {
+    const galleryEl = imgEl.closest('.editor-image-gallery');
+    if (!galleryEl) return;
+    const preview = previewScrollRef.current;
+    if (!preview) return;
+    // Count how many galleries precede this one in the preview DOM
+    const allGalleries = preview.querySelectorAll('.editor-image-gallery');
+    let galleryIndex = -1;
+    for (let i = 0; i < allGalleries.length; i++) {
+      if (allGalleries[i] === galleryEl) { galleryIndex = i; break; }
+    }
+    if (galleryIndex < 0) return;
+    // Find the nth gallery in raw content
+    let searchStart = 0;
+    let foundIndex = 0;
+    while (true) {
+      const found = findGalleryInContent(content.slice(searchStart));
+      if (!found) break;
+      const absStart = searchStart + found.start;
+      const absEnd = searchStart + found.end;
+      if (foundIndex === galleryIndex) {
+        setGalleryDialog({ attrs: found.attrs, range: { start: absStart, end: absEnd } });
+        return;
+      }
+      foundIndex++;
+      searchStart = absEnd;
+    }
+  }
+
   // Drag-and-drop image upload
   const [dragOver, setDragOver] = useState(false);
   function handleEditorDragOver(e: React.DragEvent) {
@@ -1281,6 +1314,7 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
     { type: 'divider' as const },
     { icon: Link, action: () => insertMarkdown('[', '](url)'), title: '链接 (Ctrl+K)' },
     { icon: ImageIcon, action: () => setImageDialog({ attrs: { ...DEFAULT_IMAGE_ATTRS } }), title: '图片' },
+    { icon: LayoutGrid, action: () => setGalleryDialog({ attrs: createDefaultGalleryAttrs(3) }), title: '图片画廊' },
     { icon: Code, action: () => insertMarkdown('`', '`'), title: '行内代码' },
     { icon: SquareCode, action: () => insertMarkdown('```\n', '\n```'), title: '代码块' },
     { icon: Quote, action: () => insertMarkdown('> '), title: '引用' },
@@ -1538,8 +1572,16 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
                       ),
                       img: ({ src, alt }) => (
                         <img src={src} alt={typeof alt === 'string' ? alt : ''} style={{ maxWidth: '100%', borderRadius: '8px', cursor: 'pointer' }}
-                          onClick={(e) => { e.stopPropagation(); handleEditImage(typeof src === 'string' ? src : '', typeof alt === 'string' ? alt : ''); }}
-                          title="点击编辑图片" />
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const imgEl = e.target as HTMLElement;
+                            if (imgEl.closest('.editor-image-gallery')) {
+                              handleEditGallery(imgEl);
+                              return;
+                            }
+                            handleEditImage(typeof src === 'string' ? src : '', typeof alt === 'string' ? alt : '');
+                          }}
+                          title="点击编辑" />
                       ),
                       audio: ({ src }) => <ArticleAudioPlayer src={src || ''} />,
                     }}
@@ -1713,6 +1755,31 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
             setImageDialog(null);
           }}
           onClose={() => setImageDialog(null)}
+        />
+      )}
+
+      {galleryDialog && (
+        <GalleryEditDialog
+          initialAttrs={galleryDialog.attrs}
+          onSave={(html) => {
+            if (galleryDialog.range) {
+              const newContent = content.substring(0, galleryDialog.range.start) + '\n' + html + '\n' + content.substring(galleryDialog.range.end);
+              setContent(newContent);
+            } else {
+              const ta = textareaRef.current;
+              if (ta) {
+                const start = ta.selectionStart;
+                const end = ta.selectionEnd;
+                const newContent = content.substring(0, start) + '\n' + html + '\n' + content.substring(end);
+                setContent(newContent);
+                setTimeout(() => { ta.focus(); ta.setSelectionRange(start + html.length + 1, start + html.length + 1); }, 0);
+              } else {
+                setContent((prev: string) => prev + '\n' + html + '\n');
+              }
+            }
+            setGalleryDialog(null);
+          }}
+          onClose={() => setGalleryDialog(null)}
         />
       )}
     </div>

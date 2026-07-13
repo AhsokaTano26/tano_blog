@@ -467,8 +467,20 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
 
     imgs.forEach((img, i) => {
       img.style.cursor = 'zoom-in';
-      img.className += ' rounded-lg transition-opacity hover:opacity-80';
-      const handler = () => { setLightboxImages(allSrcs); setLightboxIndex(i); };
+      img.className = img.className + ' rounded-lg transition-opacity hover:opacity-80';
+      const handler = () => {
+        const gallery = img.closest('.editor-image-gallery');
+        if (gallery) {
+          const galleryImgs = Array.from(gallery.querySelectorAll('img'));
+          const gallerySrcs = galleryImgs.map(g => g.getAttribute('src') || '');
+          const galleryIndex = galleryImgs.indexOf(img);
+          setLightboxImages(gallerySrcs);
+          setLightboxIndex(galleryIndex);
+        } else {
+          setLightboxImages(allSrcs);
+          setLightboxIndex(i);
+        }
+      };
       img.addEventListener('click', handler);
       (img as any)._lbHandler = handler;
     });
