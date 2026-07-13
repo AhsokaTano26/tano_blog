@@ -1,0 +1,86 @@
+<h2>📷 图片展示页 — 三种布局风格对比</h2>
+<p class="subtitle">和音乐馆风格统一，但以图片展示为核心。看看哪种是你想要的？</p>
+
+<div class="cards" style="grid-template-columns: repeat(3, 1fr);">
+
+  <!-- 方案 A: 网格画廊 -->
+  <div class="card" data-choice="grid" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:var(--surface);padding:16px;">
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;">
+        <div style="aspect-ratio:1;background:linear-gradient(135deg,var(--accent),#6c5ce7);border-radius:4px;"></div>
+        <div style="aspect-ratio:1;background:linear-gradient(135deg,#fd79a8,#e84393);border-radius:4px;"></div>
+        <div style="aspect-ratio:1;background:linear-gradient(135deg,#00b894,#00cec9);border-radius:4px;"></div>
+        <div style="aspect-ratio:1;background:linear-gradient(135deg,#fdcb6e,#e17055);border-radius:4px;"></div>
+        <div style="aspect-ratio:1;background:linear-gradient(135deg,#6c5ce7,#a29bfe);border-radius:4px;"></div>
+        <div style="aspect-ratio:1;background:linear-gradient(135deg,#e17055,#d63031);border-radius:4px;"></div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A. 网格画廊</h3>
+      <p>等高等宽卡片网格，点击任意图片 → 全屏灯箱浏览（左右切换 + 键盘控制）。</p>
+      <div class="pros-cons" style="margin-top:8px;">
+        <div class="pros"><h4>优点</h4><ul><li>整齐规整，视觉干净</li><li>实现简单，响应式好</li><li>和音乐馆风格最统一</li><li>灯箱复用现有组件</li></ul></div>
+        <div class="cons"><h4>缺点</h4><ul><li>不同比例图片会被裁切</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 方案 B: 相册式 -->
+  <div class="card" data-choice="album" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:var(--surface);padding:16px;">
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;">
+        <div style="border-radius:8px;overflow:hidden;border:2px solid var(--border);">
+          <div style="aspect-ratio:1;background:linear-gradient(135deg,var(--accent),#6c5ce7);border-radius:4px 4px 0 0;"></div>
+          <div style="padding:6px;font-size:10px;color:var(--muted);background:var(--card);text-align:center;">旅行 2024</div>
+        </div>
+        <div style="border-radius:8px;overflow:hidden;border:2px solid var(--border);">
+          <div style="aspect-ratio:1;background:linear-gradient(135deg,#fd79a8,#e84393);border-radius:4px 4px 0 0;"></div>
+          <div style="padding:6px;font-size:10px;color:var(--muted);background:var(--card);text-align:center;">摄影作品</div>
+        </div>
+        <div style="border-radius:8px;overflow:hidden;border:2px solid var(--border);">
+          <div style="aspect-ratio:1;background:linear-gradient(135deg,#00b894,#00cec9);border-radius:4px 4px 0 0;"></div>
+          <div style="padding:6px;font-size:10px;color:var(--muted);background:var(--card);text-align:center;">日常生活</div>
+        </div>
+        <div style="border-radius:8px;overflow:hidden;border:2px solid var(--border);">
+          <div style="aspect-ratio:1;background:linear-gradient(135deg,#fdcb6e,#e17055);border-radius:4px 4px 0 0;"></div>
+          <div style="padding:6px;font-size:10px;color:var(--muted);background:var(--card);text-align:center;">收藏</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B. 相册式浏览</h3>
+      <p>首页显示相册封面 + 标题 → 点击进入相册查看该组所有图片。</p>
+      <div class="pros-cons" style="margin-top:8px;">
+        <div class="pros"><h4>优点</h4><ul><li>适合分组展示（按主题/日期）</li><li>和音乐馆专辑模式一致</li><li>图片可自由比例</li></ul></div>
+        <div class="cons"><h4>缺点</h4><ul><li>多一层浏览路径</li><li>需要相册管理功能</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 方案 C: 瀑布流 -->
+  <div class="card" data-choice="masonry" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:var(--surface);padding:16px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+        <div style="height:120px;background:linear-gradient(135deg,var(--accent),#6c5ce7);border-radius:4px;"></div>
+        <div style="height:80px;background:linear-gradient(135deg,#fd79a8,#e84393);border-radius:4px;margin-top:0;"></div>
+        <div style="height:60px;background:linear-gradient(135deg,#fdcb6e,#e17055);border-radius:4px;"></div>
+        <div style="height:100px;background:linear-gradient(135deg,#00b894,#00cec9);border-radius:4px;margin-top:-30px;"></div>
+        <div style="height:90px;background:linear-gradient(135deg,#6c5ce7,#a29bfe);border-radius:4px;"></div>
+        <div style="height:70px;background:linear-gradient(135deg,#e17055,#d63031);border-radius:4px;margin-top:-10px;"></div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C. 瀑布流（Masonry）</h3>
+      <p>图片不等高排列，类似 Pinterest，自然错落有致。</p>
+      <div class="pros-cons" style="margin-top:8px;">
+        <div class="pros"><h4>优点</h4><ul><li>视觉丰富，适合展示不同比例</li><li>图片不会被裁切</li><li>浏览体验沉浸</li></ul></div>
+        <div class="cons"><h4>缺点</h4><ul><li>实现复杂</li><li>布局跳跃感</li><li>和现有风格差异大</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<p style="text-align:center;margin-top:24px;padding:16px;border:1px dashed var(--border);border-radius:8px;color:var(--muted);">
+👆 点击卡片选中你喜欢的风格，然后在终端告诉我你的想法
+</p>

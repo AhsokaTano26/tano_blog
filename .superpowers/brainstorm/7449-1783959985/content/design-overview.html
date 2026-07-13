@@ -1,0 +1,81 @@
+<h2>完整设计方案</h2>
+<p class="subtitle">瀑布流图片馆 — 后端独立表 + 前端 masonry 布局</p>
+
+<div class="section">
+  <h3>1. 数据库模型</h3>
+  <p>新建 <code>GalleryImage</code> 表：</p>
+  <div style="background:var(--surface);padding:16px;border-radius:8px;font-family:monospace;font-size:13px;line-height:1.6;">
+id          UUID PRIMARY KEY<br>
+url         TEXT NOT NULL &nbsp;&nbsp;// 图片地址<br>
+title       VARCHAR(255) &nbsp;&nbsp;&nbsp;// 标题（鼠标悬停显示）<br>
+description TEXT &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;// 描述（灯箱内显示）<br>
+width       INT &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;// 原始宽度（用于计算 masonry 比例）<br>
+height      INT &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;// 原始高度<br>
+sort_order  INT &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;// 排序序号<br>
+created_at  TIMESTAMP<br>
+updated_at  TIMESTAMP
+  </div>
+  <p style="margin-top:8px;">width/height 在上传时自动读取，masonry 布局用宽高比决定每列高度。</p>
+</div>
+
+<div class="section">
+  <h3>2. 后端 API</h3>
+  <div style="background:var(--surface);padding:16px;border-radius:8px;font-family:monospace;font-size:13px;line-height:1.8;">
+<span style="color:var(--accent);">公开</span>
+GET  /api/v1/gallery &nbsp;&nbsp;// 返回所有图片（按 sort_order 排序）
+
+<span style="color:var(--accent);">管理员（需要 auth+csrf+admin）</span>
+GET    /api/v1/admin/gallery &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;// 列表
+POST   /api/v1/admin/gallery &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;// 新增
+PUT    /api/v1/admin/gallery/:id &nbsp;// 更新
+DELETE /api/v1/admin/gallery/:id &nbsp;// 删除
+PUT    /api/v1/admin/gallery/reorder // 批量排序
+  </div>
+</div>
+
+<div class="section">
+  <h3>3. 前端页面</h3>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:8px;">
+    <div style="background:var(--surface);padding:16px;border-radius:8px;">
+      <h4 style="margin-bottom:8px;">📱 公开页 /gallery</h4>
+      <ul style="font-size:13px;line-height:1.8;">
+        <li>CSS column 瀑布流布局</li>
+        <li>页面加载时取图片宽高比</li>
+        <li>点击图片 → 全屏灯箱（左右切换）</li>
+        <li>灯箱显示标题 + 描述</li>
+        <li>响应式：PC 3-4 列 → 平板 2 列 → 手机 1-2 列</li>
+        <li>复用现有 ImageLightbox 组件</li>
+        <li>页面风格和音乐馆统一</li>
+      </ul>
+    </div>
+    <div style="background:var(--surface);padding:16px;border-radius:8px;">
+      <h4 style="margin-bottom:8px;">⚙️ 后台管理 /admin/gallery</h4>
+      <ul style="font-size:13px;line-height:1.8;">
+        <li>图片网格预览（缩略图）</li>
+        <li>添加图片弹窗：媒体库选择 + URL 输入 + 标题+描述</li>
+        <li>编辑 / 删除按钮</li>
+        <li>拖拽或上下按钮调整排序</li>
+        <li>侧边栏加「图片馆」入口</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>4. 新增/修改文件</h3>
+  <div style="background:var(--surface);padding:16px;border-radius:8px;font-family:monospace;font-size:12px;line-height:1.8;">
+<span style="color:var(--accent);">后端（新增 3 个文件 + 修改 2 个）</span>
++ backend/internal/model/gallery.go &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;// GalleryImage 模型
++ backend/internal/handler/gallery.go &nbsp;&nbsp;&nbsp;// 增删改查 handler
++ backend/internal/repository/gallery.go &nbsp;// 数据库操作
+M backend/internal/model/models.go &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;// 注册 AutoMigrate
+M backend/cmd/server/main.go &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;// 注册路由
+
+<span style="color:var(--accent);">前端（新增 2 个文件 + 修改 3 个）</span>
++ frontend/src/app/gallery/page.tsx &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;// 公开瀑布流页面
++ frontend/src/app/admin/gallery/page.tsx &nbsp;// 后台管理页面
+M frontend/src/lib/api.ts &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;// 添加 gallery API
+M frontend/src/app/admin/layout.tsx &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;// 侧边栏添加入口
+M frontend/src/app/globals.css &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;// 瀑布流样式
+  </div>
+</div>
