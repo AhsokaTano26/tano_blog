@@ -100,6 +100,8 @@ func main() {
 	feedHandler := handler.NewFeedHandler(db)
 	friendLinkHandler := handler.NewFriendLinkHandler(db)
 	navLinkHandler := handler.NewNavLinkHandler(db)
+	galleryRepo := repository.NewGalleryRepo(db)
+	galleryHandler := handler.NewGalleryHandler(galleryRepo)
 	commenterHandler := handler.NewCommenterHandler(db)
 	notifHandler := handler.NewNotificationHandler(db)
 	aiHandler := handler.NewAIHandler(aiService, db)
@@ -183,6 +185,8 @@ func main() {
 
 		// Nav links (public)
 		api.GET("/nav-links", navLinkHandler.ListPublic)
+		// Gallery (public)
+		api.GET("/gallery", galleryHandler.List)
 
 		api.GET("/categories", categoryHandler.List)
 		api.GET("/categories/:slug", categoryHandler.GetBySlug)
@@ -322,6 +326,12 @@ func main() {
 				admin.PUT("/nav-links/:id", navLinkHandler.AdminUpdate)
 				admin.DELETE("/nav-links/:id", navLinkHandler.AdminDelete)
 				admin.PUT("/nav-links/reorder", navLinkHandler.AdminReorder)
+				// Gallery
+				admin.GET("/gallery", galleryHandler.List)
+				admin.POST("/gallery", galleryHandler.Create)
+				admin.PUT("/gallery/:id", galleryHandler.Update)
+				admin.DELETE("/gallery/:id", galleryHandler.Delete)
+				admin.PUT("/gallery/reorder", galleryHandler.Reorder)
 			}
 		}
 	}
