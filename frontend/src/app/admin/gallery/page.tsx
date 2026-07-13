@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { api } from '@/lib/api';
 import { Loading } from '@/components/Loading';
 import { MediaPickerModal } from '@/components/MediaField';
-import { Plus, Trash2, ArrowUp, ArrowDown, Image, X } from 'lucide-react';
+import { Plus, Trash2, ArrowUp, ArrowDown, X } from 'lucide-react';
 
 interface GalleryImage {
   id: string;
