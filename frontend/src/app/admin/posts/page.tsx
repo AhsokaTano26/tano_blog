@@ -480,7 +480,8 @@ export default function AdminPosts() {
                           </div>
                         )}
                         <div className="flex items-center gap-2 min-w-0 group">
-                          <span className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>{post.title}</span>
+                          <span className="text-sm font-medium truncate cursor-pointer hover:opacity-80 transition-opacity" style={{ color: 'var(--text-primary)' }}
+                            onClick={() => setEditing(post)}>{post.title}</span>
                           <button onClick={(e) => { e.stopPropagation(); window.open(`/posts/${post.slug}`, '_blank'); }}
                             className="p-0.5 rounded transition-colors opacity-0 group-hover:opacity-100 hover:opacity-100 flex-shrink-0"
                             style={{ color: 'var(--text-info)' }}
