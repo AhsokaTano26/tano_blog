@@ -81,8 +81,8 @@ func (h *GalleryHandler) Update(c *gin.Context) {
 		URL         string `json:"url"`
 		Title       string `json:"title"`
 		Description string `json:"description"`
-		Width       int    `json:"width"`
-		Height      int    `json:"height"`
+		Width       *int   `json:"width"`
+		Height      *int   `json:"height"`
 		SortOrder   *int   `json:"sort_order"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -96,8 +96,12 @@ func (h *GalleryHandler) Update(c *gin.Context) {
 	}
 	updates["title"] = input.Title
 	updates["description"] = input.Description
-	updates["width"] = input.Width
-	updates["height"] = input.Height
+	if input.Width != nil {
+			updates["width"] = *input.Width
+		}
+	if input.Height != nil {
+			updates["height"] = *input.Height
+		}
 	if input.SortOrder != nil {
 		updates["sort_order"] = *input.SortOrder
 	}
