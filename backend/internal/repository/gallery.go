@@ -26,6 +26,12 @@ func (r *GalleryRepo) GetByID(id uuid.UUID) (*model.GalleryImage, error) {
 	return &item, err
 }
 
+func (r *GalleryRepo) FindByURL(url string) (*model.GalleryImage, error) {
+	var item model.GalleryImage
+	err := r.db.Where("url = ?", url).First(&item).Error
+	return &item, err
+}
+
 func (r *GalleryRepo) Create(item *model.GalleryImage) error {
 	return r.db.Create(item).Error
 }

@@ -81,6 +81,7 @@ func main() {
 	commentRepo := repository.NewCommentRepo(db)
 	mediaRepo := repository.NewMediaRepo(db)
 	seriesRepo := repository.NewSeriesRepo(db)
+	galleryRepo := repository.NewGalleryRepo(db)
 
 	// Initialize services
 	emailService := service.NewEmailService(db)
@@ -92,7 +93,7 @@ func main() {
 	categoryHandler := handler.NewCategoryHandler(db)
 	tagHandler := handler.NewTagHandler(db)
 	commentHandler := handler.NewCommentHandler(commentRepo, db, emailService)
-	mediaHandler := handler.NewMediaHandler(mediaRepo, &cfg.Upload)
+	mediaHandler := handler.NewMediaHandler(mediaRepo, galleryRepo, &cfg.Upload)
 	siteConfigHandler := handler.NewSiteConfigHandler(db, emailService)
 	accessLogHandler := handler.NewAccessLogHandler(db)
 	backupHandler := handler.NewBackupHandler(db, cfg.Upload.Dir, cfg.BackupDir)
@@ -100,7 +101,6 @@ func main() {
 	feedHandler := handler.NewFeedHandler(db)
 	friendLinkHandler := handler.NewFriendLinkHandler(db)
 	navLinkHandler := handler.NewNavLinkHandler(db)
-	galleryRepo := repository.NewGalleryRepo(db)
 	galleryHandler := handler.NewGalleryHandler(galleryRepo)
 	commenterHandler := handler.NewCommenterHandler(db)
 	notifHandler := handler.NewNotificationHandler(db)
@@ -332,6 +332,7 @@ func main() {
 				admin.PUT("/gallery/:id", galleryHandler.Update)
 				admin.DELETE("/gallery/:id", galleryHandler.Delete)
 				admin.PUT("/gallery/reorder", galleryHandler.Reorder)
+				admin.POST("/gallery/toggle", galleryHandler.ToggleByURL)
 			}
 		}
 	}

@@ -429,6 +429,8 @@ export const api = {
         request(`/api/v1/admin/gallery/${id}`, { method: 'DELETE' }),
       reorder: (items: { id: string; sort_order: number }[]) =>
         request('/api/v1/admin/gallery/reorder', { method: 'PUT', body: JSON.stringify({ items }) }),
+      toggle: (url: string, title?: string) =>
+        request<{ in_gallery: boolean; image?: any }>('/api/v1/admin/gallery/toggle', { method: 'POST', body: JSON.stringify({ url, title }) }),
     },
   },
 };

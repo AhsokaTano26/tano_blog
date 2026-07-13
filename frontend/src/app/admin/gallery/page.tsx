@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { api } from '@/lib/api';
 import { Loading } from '@/components/Loading';
 import { MediaPickerModal } from '@/components/MediaField';
@@ -25,6 +25,7 @@ export default function AdminGalleryPage() {
   const [formTitle, setFormTitle] = useState('');
   const [formDescription, setFormDescription] = useState('');
   const [showMediaPicker, setShowMediaPicker] = useState(false);
+  const mediaBtnRef = useRef<HTMLButtonElement>(null);
 
   async function loadImages() {
     try {
@@ -195,7 +196,7 @@ export default function AdminGalleryPage() {
                     className="flex-1 px-3 py-2 rounded-xl text-sm outline-none"
                     style={inputStyle}
                     placeholder="输入图片地址" />
-                  <button onClick={() => setShowMediaPicker(true)}
+                  <button ref={mediaBtnRef} onClick={() => setShowMediaPicker(true)}
                     className="px-3 py-2 rounded-xl btn-glass text-sm whitespace-nowrap"
                     style={{ color: 'var(--text-secondary)' }}>
                     媒体库
@@ -238,6 +239,7 @@ export default function AdminGalleryPage() {
       {showMediaPicker && (
         <MediaPickerModal
           filterType="image"
+          triggerRect={mediaBtnRef.current?.getBoundingClientRect()}
           onSelect={(url: string) => {
             setFormUrl(url);
             setShowMediaPicker(false);

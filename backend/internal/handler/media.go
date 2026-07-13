@@ -19,12 +19,13 @@ import (
 )
 
 type MediaHandler struct {
-	repo *repository.MediaRepo
-	cfg  *config.UploadConfig
+	repo        *repository.MediaRepo
+	galleryRepo *repository.GalleryRepo
+	cfg         *config.UploadConfig
 }
 
-func NewMediaHandler(repo *repository.MediaRepo, cfg *config.UploadConfig) *MediaHandler {
-	return &MediaHandler{repo: repo, cfg: cfg}
+func NewMediaHandler(repo *repository.MediaRepo, galleryRepo *repository.GalleryRepo, cfg *config.UploadConfig) *MediaHandler {
+	return &MediaHandler{repo: repo, galleryRepo: galleryRepo, cfg: cfg}
 }
 
 func (h *MediaHandler) Upload(c *gin.Context) {
@@ -154,6 +155,27 @@ func (h *MediaHandler) Upload(c *gin.Context) {
 			h.repo.UpdateTags(media.ID, tagIDs)
 		}
 		media, _ = h.repo.GetByID(media.ID)
+	}
+
+	// 图片上传时自动加入图片馆
+	if strings.HasPrefix(mimeType, "image/") {
+		existing, _ := h.galleryRepo.FindByURL(media.URL)
+		if existing == nil {
+			items, _ := h.galleryRepo.List()
+			maxOrder := 0
+			for _, item := range items {
+				if item.SortOrder > maxOrder {
+					maxOrder = item.SortOrder
+				}
+			}
+			galleryImg := &model.GalleryImage{
+				ID:        uuid.New(),
+				URL:       media.URL,
+				Title:     media.OriginalName,
+				SortOrder: maxOrder + 1,
+			}
+			_ = h.galleryRepo.Create(galleryImg)
+		}
 	}
 
 	c.JSON(http.StatusCreated, gin.H{"media": media})

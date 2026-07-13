@@ -127,6 +127,49 @@ func (h *GalleryHandler) Delete(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "已删除"})
 }
 
+// ToggleByURL — 通过 URL 开关图片馆状态（前端附件用）
+func (h *GalleryHandler) ToggleByURL(c *gin.Context) {
+	var input struct {
+		URL   string `json:"url" binding:"required"`
+		Title string `json:"title"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
+		return
+	}
+
+	existing, err := h.repo.FindByURL(input.URL)
+	if err == nil && existing != nil {
+		// 已在馆中 → 移除
+		if err := h.repo.Delete(existing.ID); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "操作失败"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"in_gallery": false})
+		return
+	}
+
+	// 不在馆中 → 加入
+	items, _ := h.repo.List()
+	maxOrder := 0
+	for _, item := range items {
+		if item.SortOrder > maxOrder {
+			maxOrder = item.SortOrder
+		}
+	}
+	img := &model.GalleryImage{
+		ID:        uuid.New(),
+		URL:       input.URL,
+		Title:     input.Title,
+		SortOrder: maxOrder + 1,
+	}
+	if err := h.repo.Create(img); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "操作失败"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"in_gallery": true, "image": img})
+}
+
 // Reorder — 批量更新排序
 func (h *GalleryHandler) Reorder(c *gin.Context) {
 	var input struct {

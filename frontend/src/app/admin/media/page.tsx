@@ -122,6 +122,7 @@ export default function AdminMedia() {
   const [newTagName, setNewTagName] = useState('');
   const [uploadTagIds, setUploadTagIds] = useState<string[]>([]);
 
+  const [galleryUrls, setGalleryUrls] = useState(new Set<string>());
   const [selectedIds, setSelectedIds] = useState(new Set<string>());
   const [showBatchTag, setShowBatchTag] = useState(false);
   const [pendingBatchTagIds, setPendingBatchTagIds] = useState<string[]>([]);
@@ -153,6 +154,12 @@ export default function AdminMedia() {
       if (tagFilter) params.tag = tagFilter;
       const res = await api.admin.media.list(params);
       setItems(res.items || []);
+      // Load gallery URLs for toggle display
+      try {
+        const galleryRes = await api.admin.gallery.list();
+        const urls = (galleryRes.items || []).map((img: any) => img.url);
+        setGalleryUrls(new Set(urls));
+      } catch { /* empty */ }
     } catch { /* empty */ }
     setLoading(false);
   }, [search, tagFilter]);
@@ -649,6 +656,12 @@ export default function AdminMedia() {
                     <div className="absolute top-2 left-2 z-10">
                       <Checkbox checked={selectedIds.has(item.id)} onChange={() => toggleSelect(item.id)} />
                     </div>
+                    {galleryUrls.has(item.url) && (
+                      <div className="absolute top-2 right-2 z-10 px-1.5 py-0.5 rounded text-[10px] font-medium"
+                        style={{ background: 'rgba(34,197,94,0.85)', color: '#fff' }}>
+                        图片馆
+                      </div>
+                    )}
                     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 pointer-events-none">
                       <button onClick={(e) => {
                         e.stopPropagation();
@@ -1057,6 +1070,35 @@ export default function AdminMedia() {
                     className="w-full px-3 py-2 rounded-lg text-sm outline-none glass-card resize-none"
                     style={{ color: 'var(--text-primary)' }} />
                 </div>
+
+                {/* Gallery toggle */}
+                {item.mime_type?.startsWith('image/') && (
+                  <div className="flex items-center justify-between py-2" style={{ borderTop: '1px solid var(--glass-border)' }}>
+                    <div>
+                      <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>图片馆展示</span>
+                      <p className="text-xs mt-0.5" style={{ color: 'var(--text-info)' }}>关闭则不在图片馆中显示此图</p>
+                    </div>
+                    <button
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        try {
+                          const res = await api.admin.gallery.toggle(item.url, item.original_name || item.filename);
+                          setGalleryUrls(prev => {
+                            const next = new Set(prev);
+                            if (res.in_gallery) next.add(item.url);
+                            else next.delete(item.url);
+                            return next;
+                          });
+                        } catch { /* empty */ }
+                      }}
+                      className={`relative w-11 h-6 rounded-full transition-colors ${galleryUrls.has(item.url) ? 'bg-green-500' : 'bg-gray-600'}`}
+                      role="switch"
+                      aria-checked={galleryUrls.has(item.url)}
+                    >
+                      <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform ${galleryUrls.has(item.url) ? 'translate-x-5' : ''}`} />
+                    </button>
+                  </div>
+                )}
               </div>
 
               <div className="flex justify-end gap-2 pt-2">
