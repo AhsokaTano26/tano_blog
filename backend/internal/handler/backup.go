@@ -42,6 +42,7 @@ var restoreSafeColumns = map[string][]string{
 	"comment_revisions": {"id", "comment_id", "content", "edited_at"},
 	"post_reactions":    {"id", "post_id", "emoji", "ip_address", "created_at"},
 	"friend_links":      {"id", "name", "url", "description", "avatar", "email", "status", "sort_order", "created_at", "updated_at"},
+		"gallery_images":    {"id", "url", "title", "description", "width", "height", "sort_order", "created_at", "updated_at"},
 	"nav_links":         {"id", "title", "url", "sort_order", "created_at", "updated_at"},
 	"commenter_blocks":  {"id", "email", "ip_address", "reason", "created_by", "created_at"},
 	"notifications":     {"id", "user_id", "type", "title", "content", "link", "is_read", "created_at"},
@@ -75,12 +76,12 @@ var backupTables = []string{
 	"posts", "post_tags", "post_series", "comments", "comment_reactions", "comment_revisions",
 	"post_reactions", "media", "media_tag_links",
 	"passkeys", "post_revisions", "access_logs",
-	"friend_links", "nav_links", "commenter_blocks", "notifications",
+	"friend_links", "gallery_images", "nav_links", "commenter_blocks", "notifications",
 }
 
 // truncateOrder drops children first to avoid FK violations
 var truncateOrder = []string{
-	"notifications", "commenter_blocks", "nav_links", "friend_links",
+	"gallery_images", "notifications", "commenter_blocks", "nav_links", "friend_links",
 	"access_logs", "post_revisions", "passkeys", "media_tag_links", "media",
 	"post_reactions", "comment_revisions", "comment_reactions", "comments",
 	"post_series", "post_tags", "posts", "site_configs", "series", "media_tags", "tags", "categories", "users",
