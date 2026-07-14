@@ -1574,6 +1574,7 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
                       img: ({ src, alt }) => (
                         <img src={src} alt={typeof alt === 'string' ? alt : ''} style={{ maxWidth: '100%', borderRadius: '8px', cursor: 'pointer' }}
                           onClick={(e) => {
+                            e.preventDefault();
                             e.stopPropagation();
                             const imgEl = e.target as HTMLElement;
                             if (imgEl.closest('.editor-image-gallery')) {

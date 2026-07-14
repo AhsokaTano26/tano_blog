@@ -11,7 +11,7 @@ export const DEFAULT_GALLERY_IMAGE_ITEM: GalleryImageItem = {
 };
 
 export interface GalleryAttrs {
-  gridSize: 2 | 3 | 4 | 5;
+  gridSize: 1 | 2 | 3 | 4 | 5;
   images: GalleryImageItem[];
   description: string;
   maxWidth: string; // e.g. "50%", "75%", "100%"
@@ -19,8 +19,17 @@ export interface GalleryAttrs {
 
 const DEFAULT_MAX_WIDTH = '100%';
 
-export function createDefaultGalleryAttrs(gridSize: 2 | 3 | 4 | 5): GalleryAttrs {
-  const count = gridSize * gridSize;
+// gridSize=1 表示 1x2（一行两列），其余为 NxN
+export function getGridColumns(gridSize: number): number {
+  return gridSize === 1 ? 2 : gridSize;
+}
+
+export function getSlotCount(gridSize: number): number {
+  return gridSize === 1 ? 2 : gridSize * gridSize;
+}
+
+export function createDefaultGalleryAttrs(gridSize: 1 | 2 | 3 | 4 | 5): GalleryAttrs {
+  const count = getSlotCount(gridSize);
   return {
     gridSize,
     images: Array.from({ length: count }, () => ({ ...DEFAULT_GALLERY_IMAGE_ITEM })),
@@ -34,7 +43,8 @@ function escapeHtmlAttr(s: string): string {
 }
 
 export function generateGalleryHtml(attrs: GalleryAttrs): string {
-  let html = `<figure class="editor-image-gallery" style="display:grid;grid-template-columns:repeat(${attrs.gridSize},1fr);gap:12px;margin:1em auto;max-width:${escapeHtmlAttr(attrs.maxWidth)};">\n`;
+  const cols = getGridColumns(attrs.gridSize);
+  let html = `<figure class="editor-image-gallery" style="display:grid;grid-template-columns:repeat(${cols},1fr);gap:12px;margin:1em auto;max-width:${escapeHtmlAttr(attrs.maxWidth)};">\n`;
 
   for (const item of attrs.images) {
     if (!item.url) continue;
@@ -56,7 +66,10 @@ export function generateGalleryHtml(attrs: GalleryAttrs): string {
 
 export function parseGalleryAttrs(figureHtml: string): GalleryAttrs {
   const gridMatch = figureHtml.match(/grid-template-columns:\s*repeat\((\d+)/i);
-  const gridSize = Math.min(5, Math.max(2, parseInt(gridMatch?.[1] || '3', 10))) as 2 | 3 | 4 | 5;
+  const parsedCols = parseInt(gridMatch?.[1] || '3', 10);
+  // 解析图片数量判断是否为 1x2（2 列且图片少于 3 张）
+  const itemCount = (figureHtml.match(/<div\s+class="gallery-item"/gi) || []).length;
+  const gridSize = (parsedCols === 2 && itemCount < 3 ? 1 : Math.min(5, Math.max(2, parsedCols))) as 1 | 2 | 3 | 4 | 5;
 
   const images: GalleryImageItem[] = [];
   const itemRegex = /<div\s+class="gallery-item"[^>]*>([\s\S]*?)<\/div>/gi;

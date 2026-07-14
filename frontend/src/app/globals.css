@@ -210,6 +210,19 @@ html {
   }
 }
 
+/* ===== Individual Image ===== */
+.prose .editor-image {
+  display: flex !important;
+  flex-direction: column;
+  margin: 1em 0;
+}
+.prose .editor-image a {
+  display: contents;
+}
+.prose .editor-image img {
+  margin: 0 !important;
+}
+
 /* ===== TOC ===== */
 .toc-link {
   transition: all 0.2s;

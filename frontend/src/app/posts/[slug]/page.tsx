@@ -468,7 +468,10 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
     imgs.forEach((img, i) => {
       img.style.cursor = 'zoom-in';
       img.className = img.className + ' rounded-lg transition-opacity hover:opacity-80';
-      const handler = () => {
+      const handler = (e: MouseEvent) => {
+        // If image is inside a link, let default navigation happen
+        if (img.closest('a')) return;
+        e.preventDefault();
         const gallery = img.closest('.editor-image-gallery');
         if (gallery) {
           const galleryImgs = Array.from(gallery.querySelectorAll('img'));

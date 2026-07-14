@@ -3,7 +3,7 @@
 import { useState, useRef } from 'react';
 import { X, ChevronDown, ChevronUp, ImagePlus } from 'lucide-react';
 import { MediaPickerModal } from '@/components/MediaField';
-import { GalleryImageItem, GalleryAttrs, createDefaultGalleryAttrs, generateGalleryHtml } from '@/lib/gallery';
+import { GalleryImageItem, GalleryAttrs, createDefaultGalleryAttrs, generateGalleryHtml, getSlotCount } from '@/lib/gallery';
 
 interface GalleryEditDialogProps {
   initialAttrs?: GalleryAttrs;
@@ -11,21 +11,21 @@ interface GalleryEditDialogProps {
   onClose: () => void;
 }
 
-const GRID_OPTIONS = [2, 3, 4, 5] as const;
+const GRID_OPTIONS = [1, 2, 3, 4, 5] as const;
 const WIDTH_OPTIONS = ['50%', '65%', '75%', '85%', '100%'] as const;
 
 export default function GalleryEditDialog({ initialAttrs, onSave, onClose }: GalleryEditDialogProps) {
-  const [gridSize, setGridSize] = useState<2 | 3 | 4 | 5>(initialAttrs?.gridSize || 3);
+  const [gridSize, setGridSize] = useState<1 | 2 | 3 | 4 | 5>(initialAttrs?.gridSize || 3);
   const [images, setImages] = useState<GalleryImageItem[]>(initialAttrs?.images || createDefaultGalleryAttrs(3).images);
   const [description, setDescription] = useState(initialAttrs?.description || '');
   const [galleryWidth, setGalleryWidth] = useState(initialAttrs?.maxWidth || '100%');
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
   const [showMediaPickerIndex, setShowMediaPickerIndex] = useState<number | null>(null);
 
-  function handleGridChange(size: 2 | 3 | 4 | 5) {
-    const newCount = size * size;
+  function handleGridChange(size: 1 | 2 | 3 | 4 | 5) {
+    const newCount = getSlotCount(size);
     if (size > gridSize) {
-      setImages(prev => [...prev, ...Array.from({ length: newCount - prev.length }, () => ({ url: '', alt: '', caption: '' }))]);
+      setImages(prev => [...prev, ...Array.from({ length: Math.max(0, newCount - prev.length) }, () => ({ url: '', alt: '', caption: '' }))]);
     } else {
       setImages(prev => prev.slice(0, newCount));
     }
@@ -80,7 +80,7 @@ export default function GalleryEditDialog({ initialAttrs, onSave, onClose }: Gal
                     color: gridSize === size ? 'var(--primary)' : 'var(--text-secondary)',
                     border: gridSize === size ? '1px solid var(--glass-border)' : '1px solid transparent',
                   }}>
-                  {size}x{size}
+                  {size === 1 ? '1x2' : `${size}x${size}`}
                 </button>
               ))}
             </div>
