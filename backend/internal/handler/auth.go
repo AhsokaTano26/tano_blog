@@ -703,6 +703,12 @@ func (h *AuthHandler) ResetPassword(c *gin.Context) {
 		return
 	}
 
+	// Validate token against stored value to prevent reuse of old tokens
+	if user.ResetToken != input.Token {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "重置链接无效或已过期"})
+		return
+	}
+
 	hash, err := utils.HashPassword(input.NewPassword)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "密码加密失败"})
