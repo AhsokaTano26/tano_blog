@@ -948,6 +948,7 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
   const [scheduledAt, setScheduledAt] = useState(post?.published_at && post?.status === 'draft' ? post.published_at.slice(0, 16) : '');
   const [password, setPassword] = useState('');
   const [passwordHint, setPasswordHint] = useState(post?.password_hint || '');
+  const [createdAt, setCreatedAt] = useState(post?.created_at ? post.created_at.slice(0, 16) : '');
   const [passwordSet, setPasswordSet] = useState(post?.password_set || false);
   const [users, setUsers] = useState<any[]>([]);
   const [rightTab, setRightTab] = useState<'outline' | 'history' | 'details'>('outline');
@@ -1115,6 +1116,7 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
         status: publishStatus || status,
         is_top: isTop,
         allow_comment: allowComment,
+        created_at: createdAt || undefined,
       };
       data.author_name = authorName;
       if (password) {
@@ -1649,10 +1651,19 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
                     <p className="text-xs font-medium mb-1" style={{ color: 'var(--text-info)' }}>词数量</p>
                     <p className="text-sm" style={{ color: 'var(--text-primary)' }}>{content.trim() ? content.trim().split(/\s+/).length.toLocaleString() : 0}</p>
                   </div>
-                  {post?.created_at && (
+                  {post?.id && (
                     <div>
                       <p className="text-xs font-medium mb-1" style={{ color: 'var(--text-info)' }}>创建时间</p>
-                      <p className="text-sm" style={{ color: 'var(--text-primary)' }}>{new Date(post.created_at).toLocaleString('zh-CN')}</p>
+                      <div className="flex gap-2">
+                        <input type="date" value={createdAt ? createdAt.slice(0, 10) : ''}
+                          onChange={e => setCreatedAt(e.target.value ? (e.target.value + 'T' + (createdAt.slice(11) || '00:00')) : '')}
+                          className="flex-1 px-2.5 py-1.5 rounded-xl text-sm outline-none"
+                          style={{ background: 'var(--glass-bg)', color: 'var(--text-primary)', border: '1px solid var(--glass-border)', colorScheme: 'dark' }} />
+                        <input type="time" value={createdAt ? createdAt.slice(11) : '00:00'}
+                          onChange={e => setCreatedAt(createdAt ? createdAt.slice(0, 10) + 'T' + e.target.value : '')}
+                          className="flex-1 px-2.5 py-1.5 rounded-xl text-sm outline-none"
+                          style={{ background: 'var(--glass-bg)', color: 'var(--text-primary)', border: '1px solid var(--glass-border)', colorScheme: 'dark' }} />
+                      </div>
                     </div>
                   )}
                   {post?.published_at && (

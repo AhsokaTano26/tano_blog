@@ -370,6 +370,41 @@ func (h *BackupHandler) DeleteBackup(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "已删除"})
 }
 
+// ClearAllData truncates all tables and removes uploaded files
+func (h *BackupHandler) ClearAllData(c *gin.Context) {
+	var input struct {
+		Confirm string `json:"confirm" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil || input.Confirm != "CLEAR_ALL" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "确认信息不正确"})
+		return
+	}
+
+	tx := h.db.Begin()
+	for _, t := range truncateOrder {
+		if err := tx.Exec(fmt.Sprintf("TRUNCATE TABLE %s CASCADE", t)).Error; err != nil {
+			tx.Rollback()
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("清空表 %s 失败: %v", t, err)})
+			return
+		}
+	}
+	tx.Commit()
+
+	// Also clear uploaded files
+	uploadDir := h.uploadDir
+	if !filepath.IsAbs(uploadDir) {
+		absDir, _ := filepath.Abs(uploadDir)
+		uploadDir = absDir
+	}
+	if entries, err := os.ReadDir(uploadDir); err == nil {
+		for _, entry := range entries {
+			os.RemoveAll(filepath.Join(uploadDir, entry.Name()))
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "全站数据已清空"})
+}
+
 // RestoreUpload handles uploaded zip file restore
 func (h *BackupHandler) RestoreUpload(c *gin.Context) {
 	file, header, err := c.Request.FormFile("file")

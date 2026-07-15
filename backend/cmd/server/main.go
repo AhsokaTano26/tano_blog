@@ -134,6 +134,7 @@ func main() {
 		restoreGroup.POST("/upload", backupHandler.RestoreUpload)
 		restoreGroup.POST("/url", backupHandler.RestoreURL)
 		restoreGroup.POST("/local", backupHandler.RestoreLocal)
+		restoreGroup.POST("/clear-all", backupHandler.ClearAllData)
 	}
 
 	// Media upload endpoint (exempt from maxBodySize since handler has its own type-specific limits)

@@ -456,6 +456,7 @@ func (h *PostHandler) Create(c *gin.Context) {
 		SeriesID     string   `json:"series_id"`
 		Password     string   `json:"password"`
 		PasswordHint string   `json:"password_hint"`
+		CreatedAt    string   `json:"created_at"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
@@ -506,6 +507,16 @@ func (h *PostHandler) Create(c *gin.Context) {
 	}
 
 	post.ID = uuid.New()
+	if input.CreatedAt != "" {
+		if t, err := time.Parse("2006-01-02T15:04", input.CreatedAt); err == nil {
+			post.CreatedAt = t
+		}
+	}
+		if input.CreatedAt != "" {
+			if t, err := time.Parse("2006-01-02T15:04", input.CreatedAt); err == nil {
+				post.CreatedAt = t
+			}
+		}
 	if err := h.repo.Create(post); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建文章失败"})
 		return
@@ -551,6 +562,7 @@ func (h *PostHandler) Update(c *gin.Context) {
 		SeriesID     *string  `json:"series_id"`
 		Password     *string  `json:"password"`
 		PasswordHint *string  `json:"password_hint"`
+		CreatedAt    *string  `json:"created_at"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
@@ -638,6 +650,12 @@ func (h *PostHandler) Update(c *gin.Context) {
 	editorID, _ := uuid.Parse(c.GetString("user_id"))
 	if editorID != uuid.Nil {
 		updates["editor_id"] = editorID
+	}
+
+	if input.CreatedAt != nil {
+		if t, err := time.Parse("2006-01-02T15:04", *input.CreatedAt); err == nil {
+			updates["created_at"] = t
+		}
 	}
 
 	// Handle tags separately

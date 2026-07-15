@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { api } from '@/lib/api';
-import { Save, Globe, FileText, Palette, MessageSquare, Code, Mail, User, Plus, Trash2, Cpu } from 'lucide-react';
+import { Save, Globe, FileText, Palette, MessageSquare, Code, Mail, User, Plus, Trash2, Cpu, Zap, AlertTriangle } from 'lucide-react';
 import { Loading } from '@/components/Loading';
 import { Select } from '@/components/ConfirmDialog';
 import { MediaField } from '@/components/MediaField';
@@ -27,6 +27,7 @@ const tabs = [
   { key: 'ai', label: 'AI 设置', icon: Cpu },
   { key: 'email', label: '邮件通知', icon: Mail },
   { key: 'injection', label: '代码注入', icon: Code },
+  { key: 'danger', label: '危险操作', icon: AlertTriangle },
 ];
 
 export default function AdminSettings() {
@@ -36,6 +37,8 @@ export default function AdminSettings() {
   const [message, setMessage] = useState('');
   const [activeTab, setActiveTab] = useState('basic');
   const [testing, setTesting] = useState(false);
+  const [clearing, setClearing] = useState(false);
+  const [clearStep, setClearStep] = useState(0); // 0=hidden, 1=first confirm, 2=type CLEAR_ALL
 
   function getContacts(): { type: string; value: string }[] {
     try { return JSON.parse(config.profile_contacts || '[]'); } catch { return []; }
@@ -47,6 +50,10 @@ export default function AdminSettings() {
   useEffect(() => {
     api.admin.config.get().then(res => setConfig(res.config)).finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    setClearStep(0);
+  }, [activeTab]);
 
   async function handleSave() {
     setSaving(true);
@@ -74,6 +81,21 @@ export default function AdminSettings() {
       setTimeout(() => setMessage(''), 5000);
     }
     setTesting(false);
+  }
+
+  async function handleClearAll() {
+    setClearing(true);
+    setMessage('');
+    try {
+      const res = await api.admin.restore.clearAll();
+      setMessage(res.message || '已清空全站数据');
+      setTimeout(() => setMessage(''), 5000);
+    } catch (e: any) {
+      setMessage(e.message || '清空失败');
+      setTimeout(() => setMessage(''), 5000);
+    }
+    setClearing(false);
+    setClearStep(0);
   }
 
   const inputClass = "w-full px-3 py-2.5 rounded-lg text-sm outline-none";
@@ -500,14 +522,84 @@ export default function AdminSettings() {
             </div>
           )}
 
-          <div className="pt-4 mt-6" style={{ borderTop: '1px solid var(--glass-border)' }}>
-            <button onClick={handleSave} disabled={saving}
-              className="flex items-center gap-1.5 px-6 py-2.5 rounded-lg text-sm font-medium text-white disabled:opacity-50 transition-colors"
-              style={{ background: 'var(--primary)' }}>
-              <Save className="w-4 h-4" />
-              {saving ? '保存中...' : '保存设置'}
-            </button>
-          </div>
+          {activeTab === 'danger' && (
+            <div className="space-y-5 max-w-2xl">
+              <div className="px-4 py-3 rounded-lg text-sm flex items-start gap-2"
+                style={{ background: 'rgba(255, 100, 100, 0.1)', color: 'hsl(0, 60%, 55%)', border: '1px solid rgba(255, 100, 100, 0.2)' }}>
+                <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                <span>以下操作将永久删除数据，不可恢复！请谨慎操作。</span>
+              </div>
+
+              <div className="p-5 rounded-xl" style={{ background: 'rgba(255, 100, 100, 0.05)', border: '1px solid rgba(255, 100, 100, 0.15)' }}>
+                <h3 className="text-sm font-semibold mb-1 flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
+                  <Zap className="w-4 h-4" style={{ color: 'hsl(0, 60%, 55%)' }} />
+                  清空全站数据
+                </h3>
+                <p className="text-xs mb-4" style={{ color: 'var(--text-info)' }}>
+                  将删除所有文章、评论、媒体文件、分类、标签等全部数据，此操作不可撤销。
+                </p>
+
+                {clearStep === 0 && (
+                  <button onClick={() => setClearStep(1)}
+                    className="flex items-center gap-1.5 px-5 py-2.5 rounded-lg text-sm font-medium text-white transition-colors"
+                    style={{ background: 'hsl(0, 60%, 55%)' }}>
+                    <Trash2 className="w-4 h-4" />
+                    清空全站数据
+                  </button>
+                )}
+
+                {clearStep === 1 && (
+                  <div className="space-y-3">
+                    <p className="text-sm font-medium" style={{ color: 'hsl(0, 60%, 55%)' }}>
+                      请在下方输入 <span className="font-mono font-bold">CLEAR_ALL</span> 确认清空所有数据：
+                    </p>
+                    <input type="text" autoFocus
+                      onChange={e => { if (e.target.value === 'CLEAR_ALL') setClearStep(2); }}
+                      placeholder="输入 CLEAR_ALL 确认"
+                      className="w-full px-3 py-2.5 rounded-lg text-sm outline-none font-mono"
+                      style={{ border: '1px solid rgba(255, 100, 100, 0.3)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
+                    <button onClick={() => setClearStep(0)}
+                      className="text-sm" style={{ color: 'var(--text-info)' }}>
+                      取消
+                    </button>
+                  </div>
+                )}
+
+                {clearStep === 2 && (
+                  <div className="space-y-3">
+                    <div className="px-4 py-3 rounded-lg text-sm"
+                      style={{ background: 'rgba(255, 100, 100, 0.15)', color: 'hsl(0, 60%, 55%)', border: '1px solid rgba(255, 100, 100, 0.3)' }}>
+                      最后一次确认：此操作将删除博客全部数据且不可恢复！
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button onClick={handleClearAll} disabled={clearing}
+                        className="flex items-center gap-1.5 px-5 py-2.5 rounded-lg text-sm font-medium text-white disabled:opacity-50 transition-colors"
+                        style={{ background: 'hsl(0, 60%, 55%)' }}>
+                        <Zap className="w-4 h-4" />
+                        {clearing ? '清空中...' : '确认清空'}
+                      </button>
+                      <button onClick={() => setClearStep(0)}
+                        className="px-4 py-2.5 rounded-lg text-sm transition-colors"
+                        style={{ color: 'var(--text-secondary)', border: '1px solid var(--glass-border)' }}>
+                        取消
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {activeTab !== 'danger' && (
+            <div className="pt-4 mt-6" style={{ borderTop: '1px solid var(--glass-border)' }}>
+              <button onClick={handleSave} disabled={saving}
+                className="flex items-center gap-1.5 px-6 py-2.5 rounded-lg text-sm font-medium text-white disabled:opacity-50 transition-colors"
+                style={{ background: 'var(--primary)' }}>
+                <Save className="w-4 h-4" />
+                {saving ? '保存中...' : '保存设置'}
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

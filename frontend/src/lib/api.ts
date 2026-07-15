@@ -373,6 +373,11 @@ export const api = {
           method: 'POST',
           body: JSON.stringify({ filename }),
         }),
+      clearAll: () =>
+        request<{ message: string }>('/api/v1/admin/restore/clear-all', {
+          method: 'POST',
+          body: JSON.stringify({ confirm: 'CLEAR_ALL' }),
+        }),
     },
     navLinks: {
       list: () =>
