@@ -370,7 +370,13 @@ func (h *BackupHandler) DeleteBackup(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "已删除"})
 }
 
-// ClearAllData truncates all tables and removes uploaded files
+// Tables to skip when clearing all data (user accounts, settings)
+var clearSkipTables = map[string]bool{
+	"users": true, "site_configs": true,
+}
+
+// ClearAllData truncates content tables and removes uploaded files.
+// Users and site configs are preserved.
 func (h *BackupHandler) ClearAllData(c *gin.Context) {
 	var input struct {
 		Confirm string `json:"confirm" binding:"required"`
@@ -382,6 +388,9 @@ func (h *BackupHandler) ClearAllData(c *gin.Context) {
 
 	tx := h.db.Begin()
 	for _, t := range truncateOrder {
+		if clearSkipTables[t] {
+			continue
+		}
 		if err := tx.Exec(fmt.Sprintf("TRUNCATE TABLE %s CASCADE", t)).Error; err != nil {
 			tx.Rollback()
 			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("清空表 %s 失败: %v", t, err)})
