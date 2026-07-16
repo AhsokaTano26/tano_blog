@@ -9,6 +9,7 @@ on:
       - 'Dockerfile'
       - 'docker-entrypoint.sh'
       - 'VERSION'
+      - '.github/**'
 
 jobs:
   release:
