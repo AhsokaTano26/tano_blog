@@ -3,6 +3,8 @@ backend/tmp/
 backend/uploads/
 backend/.next/
 backend/server
+backend/main
+backend/backups/
 
 # Node
 frontend/.next/
