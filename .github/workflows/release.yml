@@ -111,3 +111,5 @@ jobs:
           tags: |
             tano26/tano_blog:v${{ steps.version.outputs.VERSION }}
             tano26/tano_blog:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
