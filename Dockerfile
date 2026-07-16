@@ -5,6 +5,8 @@ ARG VERSION=dev
 ARG BUILD_TIME=unknown
 
 FROM golang:1.26-alpine AS go-builder
+ARG VERSION
+ARG BUILD_TIME
 RUN apk add --no-cache gcc musl-dev
 WORKDIR /build
 COPY backend/go.mod backend/go.sum ./
@@ -16,6 +18,8 @@ RUN CGO_ENABLED=0 go build -ldflags="-s -w -X tano_blog/backend/internal/version
 # Stage 2: Build Next.js frontend (standalone)
 # ============================================
 FROM node:22-alpine AS next-builder
+ARG VERSION
+ARG BUILD_TIME
 WORKDIR /build
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
