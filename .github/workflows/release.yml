@@ -26,15 +26,12 @@ jobs:
       - name: Determine next version
         id: version
         run: |
-          # Get latest tag, default to v0.1.0
           LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
           echo "Latest tag: $LATEST_TAG"
 
-          # Count conventional commits since last tag — minor if any feat, patch if any fix
           FEATS=$(git log "$LATEST_TAG..HEAD" --oneline --grep="^feat" 2>/dev/null | wc -l)
           FIXES=$(git log "$LATEST_TAG..HEAD" --oneline --grep="^fix" 2>/dev/null | wc -l)
 
-          # Parse semver
           BASE="${LATEST_TAG#v}"
           IFS='.' read -r MAJOR MINOR PATCH <<< "$BASE"
 
@@ -44,18 +41,39 @@ jobs:
           elif [ "$FIXES" -gt 0 ]; then
             PATCH=$((PATCH + 1))
           else
-            # No conventional commits — use VERSION file or skip
-            echo "no-feat-or-fix=true" >> "$GITHUB_OUTPUT"
-            echo "VERSION=$(cat VERSION)" >> "$GITHUB_OUTPUT"
-            echo "Git tag will come from VERSION file"
+            FILE_VER="$(cat VERSION 2>/dev/null || echo '')"
+            if [ "$FILE_VER" != "$BASE" ]; then
+              echo "VERSION=$FILE_VER" >> "$GITHUB_OUTPUT"
+              echo "version=$FILE_VER" >> "$GITHUB_OUTPUT"
+              echo "Using version from VERSION file: $FILE_VER"
+            else
+              echo "VERSION=$BASE" >> "$GITHUB_OUTPUT"
+              echo "version=$BASE" >> "$GITHUB_OUTPUT"
+              echo "No changes since $LATEST_TAG, skipping release"
+            fi
           fi
 
-          NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
-          echo "VERSION=$NEW_VERSION" >> "$GITHUB_OUTPUT"
-          echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
-          echo "New version: v$NEW_VERSION"
+          # Only set VERSION from semver calc when feat or fix found
+          if [ "$FEATS" -gt 0 ] || [ "$FIXES" -gt 0 ]; then
+            NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
+            echo "VERSION=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+            echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+            echo "New version: v$NEW_VERSION"
+          fi
+
+      - name: Check if tag already exists
+        id: check
+        run: |
+          TAG="v${{ steps.version.outputs.VERSION }}"
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Tag $TAG already exists, skipping"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Create Git tag
+        if: steps.check.outputs.exists == 'false'
         run: |
           VERSION="v${{ steps.version.outputs.VERSION }}"
           git config user.name "github-actions"
@@ -64,6 +82,7 @@ jobs:
           git push origin "$VERSION"
 
       - name: Update VERSION file
+        if: steps.check.outputs.exists == 'false'
         run: |
           echo "${{ steps.version.outputs.VERSION }}" > VERSION
           git add VERSION
@@ -80,6 +99,7 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build and push
+        if: steps.check.outputs.exists == 'false'
         uses: docker/build-push-action@v6
         with:
           context: .
