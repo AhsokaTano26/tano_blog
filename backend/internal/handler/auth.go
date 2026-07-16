@@ -301,6 +301,11 @@ func (h *AuthHandler) ChangePassword(c *gin.Context) {
 		return
 	}
 
+	if input.OldPassword == input.NewPassword {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "新密码不能与旧密码相同"})
+		return
+	}
+
 	hash, err := utils.HashPassword(input.NewPassword)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "密码加密失败"})

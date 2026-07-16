@@ -423,8 +423,12 @@ func seedAdmin(db *gorm.DB, password string) {
 		return
 	}
 
+	// Track whether password was auto-generated (must change) or from .env (skip)
+	randomPassword := false
+
 	// If no password provided via env, generate a random one
 	if password == "" {
+		randomPassword = true
 		b := make([]byte, 4)
 		if _, err := rand.Read(b); err != nil {
 			log.Fatalf("Failed to generate random admin password: %v", err)
@@ -449,7 +453,7 @@ func seedAdmin(db *gorm.DB, password string) {
 		DisplayName:         "管理员",
 		Role:                "admin",
 		Bio:                 "A BanG Dreamer!",
-		MustChangePassword:  true,
+		MustChangePassword:  randomPassword,
 	}
 
 	if err := db.Create(&admin).Error; err != nil {
