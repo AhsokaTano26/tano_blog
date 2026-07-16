@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { api } from '@/lib/api';
-import { Save, Globe, FileText, Palette, MessageSquare, Code, Mail, User, Plus, Trash2, Cpu, Zap, AlertTriangle, Info } from 'lucide-react';
+import { Save, Globe, FileText, Palette, MessageSquare, Code, Mail, User, Plus, Trash2, Cpu, Zap, AlertTriangle, Info, ArrowUpCircle } from 'lucide-react';
 import { Loading } from '@/components/Loading';
 import { Select } from '@/components/ConfirmDialog';
 import { MediaField } from '@/components/MediaField';
@@ -40,6 +40,23 @@ export default function AdminSettings() {
   const [testing, setTesting] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [clearStep, setClearStep] = useState(0); // 0=hidden, 1=first confirm, 2=type CLEAR_ALL
+  const [latestVersion, setLatestVersion] = useState<string | null>(null);
+  const [checkingVersion, setCheckingVersion] = useState(true);
+  const [versionError, setVersionError] = useState(false);
+
+  function parseSemver(v: string): number[] {
+    return v.replace(/^v/, '').split('.').map(Number);
+  }
+
+  function isNewerVersion(latest: string, current: string): boolean {
+    const lp = parseSemver(latest);
+    const cp = parseSemver(current);
+    for (let i = 0; i < 3; i++) {
+      if ((lp[i] || 0) > (cp[i] || 0)) return true;
+      if ((lp[i] || 0) < (cp[i] || 0)) return false;
+    }
+    return false;
+  }
 
   function getContacts(): { type: string; value: string }[] {
     try { return JSON.parse(config.profile_contacts || '[]'); } catch { return []; }
@@ -55,6 +72,36 @@ export default function AdminSettings() {
   useEffect(() => {
     setClearStep(0);
   }, [activeTab]);
+
+  useEffect(() => {
+    const current = process.env.NEXT_PUBLIC_APP_VERSION;
+    if (!current || current === 'dev') {
+      setCheckingVersion(false);
+      return;
+    }
+    fetch('https://hub.docker.com/v2/repositories/tano26/tano_blog/tags?page_size=30')
+      .then(res => res.json())
+      .then(data => {
+        if (!data.results) { setVersionError(true); return; }
+        const tags = data.results
+          .map((r: any) => r.name)
+          .filter((n: string) => /^v\d+\.\d+\.\d+$/.test(n))
+          .sort((a: string, b: string) => {
+            const pa = parseSemver(a);
+            const pb = parseSemver(b);
+            for (let i = 0; i < 3; i++) {
+              if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) - (pb[i] || 0);
+            }
+            return 0;
+          });
+        const latest = tags[tags.length - 1];
+        if (latest && isNewerVersion(latest, current)) {
+          setLatestVersion(latest);
+        }
+      })
+      .catch(() => setVersionError(true))
+      .finally(() => setCheckingVersion(false));
+  }, []);
 
   async function handleSave() {
     setSaving(true);
@@ -602,7 +649,7 @@ export default function AdminSettings() {
                 <div className="space-y-2 text-sm">
                   <div className="flex items-center justify-between py-2 px-3 rounded-lg" style={{ background: 'var(--surface-bg)' }}>
                     <span style={{ color: 'var(--text-secondary)' }}>应用版本</span>
-                    <span className="font-mono" style={{ color: 'var(--text-primary)' }}>v{process.env.NEXT_PUBLIC_APP_VERSION || 'dev'}</span>
+                    <span className="font-mono" style={{ color: 'var(--text-primary)' }}>{process.env.NEXT_PUBLIC_APP_VERSION || 'dev'}</span>
                   </div>
                   <div className="flex items-center justify-between py-2 px-3 rounded-lg" style={{ background: 'var(--surface-bg)' }}>
                     <span style={{ color: 'var(--text-secondary)' }}>前端框架</span>
@@ -618,6 +665,25 @@ export default function AdminSettings() {
                   </div>
                 </div>
               </div>
+
+              {/* Version upgrade banner */}
+              {latestVersion && (
+                <div className="p-4 rounded-xl flex items-start gap-3" style={{ background: 'rgba(34, 197, 94, 0.1)', border: '1px solid rgba(34, 197, 94, 0.3)' }}>
+                  <ArrowUpCircle className="w-5 h-5 mt-0.5 shrink-0" style={{ color: '#22c55e' }} />
+                  <div className="text-sm">
+                    <div className="font-medium mb-1" style={{ color: '#22c55e' }}>新版本可用</div>
+                    <p style={{ color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                      {latestVersion} 已发布，当前版本为 {process.env.NEXT_PUBLIC_APP_VERSION || 'dev'}。
+                      前往 <a href="https://hub.docker.com/repository/docker/tano26/tano_blog/tags" target="_blank" rel="noopener noreferrer" style={{ color: '#22c55e', textDecoration: 'underline' }}>Docker Hub</a> 查看更新内容。
+                    </p>
+                  </div>
+                </div>
+              )}
+              {!checkingVersion && versionError && (
+                <div className="p-3 rounded-xl text-xs" style={{ background: 'rgba(255, 200, 0, 0.08)', border: '1px solid rgba(255, 200, 0, 0.2)', color: 'var(--text-secondary)' }}>
+                  无法检查版本更新
+                </div>
+              )}
 
               {/* Links */}
               <div className="p-5 rounded-xl" style={{ background: 'var(--glass-bg)', border: '1px solid var(--glass-border)' }}>
