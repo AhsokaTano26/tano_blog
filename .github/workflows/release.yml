@@ -29,6 +29,7 @@ jobs:
         run: |
           LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
           echo "Latest tag: $LATEST_TAG"
+          echo "LATEST_TAG=$LATEST_TAG" >> "$GITHUB_OUTPUT"
 
           FEATS=$(git log "$LATEST_TAG..HEAD" --oneline --grep="^feat" 2>/dev/null | wc -l)
           FIXES=$(git log "$LATEST_TAG..HEAD" --oneline --grep="^fix" 2>/dev/null | wc -l)
@@ -128,3 +129,19 @@ jobs:
             tano26/tano_blog:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Create GitHub Release
+        if: steps.check.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="v${{ steps.version.outputs.VERSION }}"
+          PREV="${{ steps.version.outputs.LATEST_TAG }}"
+          if [ "$PREV" = "v0.0.0" ]; then
+            NOTES="$(git log --oneline --no-merges -20)"
+          else
+            NOTES="$(git log "$PREV..HEAD" --oneline --no-merges)"
+          fi
+          gh release create "$VERSION" \
+            --title "$VERSION" \
+            --notes "$NOTES"
