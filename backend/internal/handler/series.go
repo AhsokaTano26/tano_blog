@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -43,7 +44,22 @@ func (h *SeriesHandler) GetBySlug(c *gin.Context) {
 
 // AdminList — admin series list
 func (h *SeriesHandler) AdminList(c *gin.Context) {
-	series, err := h.repo.List()
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 20
+	}
+
+	total, err := h.repo.Count()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取系列列表失败"})
+		return
+	}
+
+	series, err := h.repo.ListPaginated(page, pageSize)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取系列列表失败"})
 		return
@@ -51,7 +67,7 @@ func (h *SeriesHandler) AdminList(c *gin.Context) {
 	if series == nil {
 		series = []model.Series{}
 	}
-	c.JSON(http.StatusOK, gin.H{"items": series})
+	c.JSON(http.StatusOK, gin.H{"items": series, "total": total, "page": page, "size": pageSize})
 }
 
 // AdminCreate — create series

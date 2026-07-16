@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/csv"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -97,15 +98,37 @@ func (h *FriendLinkHandler) Apply(c *gin.Context) {
 
 // AdminList returns all friend links
 func (h *FriendLinkHandler) AdminList(c *gin.Context) {
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 20
+	}
+
+	statusFilter := c.Query("status")
+
+	query := h.db.Model(&model.FriendLink{})
+	countQuery := h.db.Model(&model.FriendLink{})
+	if statusFilter != "" {
+		query = query.Where("status = ?", statusFilter)
+		countQuery = countQuery.Where("status = ?", statusFilter)
+	}
+
+	var total int64
+	countQuery.Count(&total)
+
 	var links []model.FriendLink
-	if err := h.db.Order("created_at DESC").Find(&links).Error; err != nil {
+	if err := query.Order("created_at DESC").
+		Offset((page - 1) * pageSize).Limit(pageSize).Find(&links).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取友链列表失败"})
 		return
 	}
 	if links == nil {
 		links = []model.FriendLink{}
 	}
-	c.JSON(http.StatusOK, gin.H{"items": links})
+	c.JSON(http.StatusOK, gin.H{"items": links, "total": total, "page": page, "size": pageSize})
 }
 
 // AdminCreate creates a friend link directly (admin)

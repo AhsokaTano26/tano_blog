@@ -276,6 +276,7 @@ export default function AdminPosts() {
   const [posts, setPosts] = useState<any[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<any>(undefined);
   const [search, setSearch] = useState('');
@@ -330,7 +331,7 @@ export default function AdminPosts() {
   async function load() {
     setLoading(true);
     try {
-      const params: Record<string, string> = { page: String(page), page_size: '20' };
+      const params: Record<string, string> = { page: String(page), page_size: String(pageSize) };
       if (search) params.search = search;
       if (statusFilter) params.status = statusFilter;
       const res = await api.admin.posts.list(params);
@@ -340,7 +341,7 @@ export default function AdminPosts() {
     setLoading(false);
   }
 
-  useEffect(() => { load(); }, [page, statusFilter]);
+  useEffect(() => { load(); }, [page, pageSize, statusFilter]);
   useEffect(() => {
     api.getCategories().then(res => setCategories(res.items)).catch(() => {});
     api.getTags().then(res => setTags(res.items)).catch(() => {});
@@ -358,7 +359,7 @@ export default function AdminPosts() {
     load();
   }
 
-  const totalPages = Math.ceil(total / 20);
+  const totalPages = Math.ceil(total / pageSize);
 
   if (editing !== undefined) {
     return createPortal(
@@ -579,27 +580,34 @@ export default function AdminPosts() {
       {totalPages > 1 && (
         <div className="flex items-center justify-between text-sm">
           <span style={{ color: 'var(--text-secondary)' }}>共 {total} 篇</span>
-          <div className="flex gap-1">
-            <button onClick={() => setPage(Math.max(1, page - 1))} disabled={page === 1}
-              className="px-3 py-1.5 rounded-xl btn-glass disabled:opacity-40 transition-colors"
-              style={{ color: 'var(--text-primary)' }}>上一页</button>
-            {Array.from({ length: Math.min(totalPages, 10) }, (_, i) => {
-              const start = Math.max(1, page - 5);
-              const p = start + i;
-              if (p > totalPages) return null;
-              return (
-                <button key={p} onClick={() => setPage(p)}
-                  className="w-8 h-8 rounded-xl text-sm transition-all"
-                  style={{
-                    background: p === page ? 'var(--primary)' : 'transparent',
-                    color: p === page ? '#fff' : 'var(--text-primary)',
-                    boxShadow: p === page ? '0 0 12px var(--primary-glow)' : 'none',
-                  }}>{p}</button>
-              );
-            })}
-            <button onClick={() => setPage(Math.min(totalPages, page + 1))} disabled={page === totalPages}
-              className="px-3 py-1.5 rounded-xl btn-glass disabled:opacity-40 transition-colors"
-              style={{ color: 'var(--text-primary)' }}>下一页</button>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <span className="text-xs" style={{ color: 'var(--text-info)' }}>每页</span>
+              <Select value={String(pageSize)} onChange={v => { setPageSize(Number(v)); setPage(1); }}
+                options={[10, 20, 30, 50, 100].map(v => ({ value: String(v), label: String(v) }))} />
+            </div>
+            <div className="flex gap-1">
+              <button onClick={() => setPage(Math.max(1, page - 1))} disabled={page === 1}
+                className="px-3 py-1.5 rounded-xl btn-glass disabled:opacity-40 transition-colors"
+                style={{ color: 'var(--text-primary)' }}>上一页</button>
+              {Array.from({ length: Math.min(totalPages, 10) }, (_, i) => {
+                const start = Math.max(1, page - 5);
+                const p = start + i;
+                if (p > totalPages) return null;
+                return (
+                  <button key={p} onClick={() => setPage(p)}
+                    className="w-8 h-8 rounded-xl text-sm transition-all"
+                    style={{
+                      background: p === page ? 'var(--primary)' : 'transparent',
+                      color: p === page ? '#fff' : 'var(--text-primary)',
+                      boxShadow: p === page ? '0 0 12px var(--primary-glow)' : 'none',
+                    }}>{p}</button>
+                );
+              })}
+              <button onClick={() => setPage(Math.min(totalPages, page + 1))} disabled={page === totalPages}
+                className="px-3 py-1.5 rounded-xl btn-glass disabled:opacity-40 transition-colors"
+                style={{ color: 'var(--text-primary)' }}>下一页</button>
+            </div>
           </div>
         </div>
       )}

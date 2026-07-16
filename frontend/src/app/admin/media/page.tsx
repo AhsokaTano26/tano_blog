@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { api } from '@/lib/api';
 import { Image, Upload, Trash2, Copy, Check, Grid, List, Search, X, FileText, Video, Music, File, Tag, Plus, Settings, Play, ExternalLink } from 'lucide-react';
 import { Loading } from '@/components/Loading';
-import { useConfirm, Checkbox } from '@/components/ConfirmDialog';
+import { useConfirm, Checkbox, Select } from '@/components/ConfirmDialog';
 import { MediaField } from '@/components/MediaField';
 
 const SITE_URL = typeof window !== 'undefined' ? window.location.origin : 'https://tano.asia';
@@ -122,6 +122,10 @@ export default function AdminMedia() {
   const [newTagName, setNewTagName] = useState('');
   const [uploadTagIds, setUploadTagIds] = useState<string[]>([]);
 
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(30);
+  const [total, setTotal] = useState(0);
+
   const [galleryUrls, setGalleryUrls] = useState(new Set<string>());
   const [selectedIds, setSelectedIds] = useState(new Set<string>());
   const [showBatchTag, setShowBatchTag] = useState(false);
@@ -149,11 +153,12 @@ export default function AdminMedia() {
     setSelectedIds(new Set());
     setLoading(true);
     try {
-      const params: Record<string, string> = { page: '1', page_size: '100' };
+      const params: Record<string, string> = { page: String(page), page_size: String(pageSize) };
       if (search) params.search = search;
       if (tagFilter) params.tag = tagFilter;
       const res = await api.admin.media.list(params);
       setItems(res.items || []);
+      setTotal(res.total);
       // Load gallery URLs for toggle display
       try {
         const galleryRes = await api.admin.gallery.list();
@@ -162,7 +167,7 @@ export default function AdminMedia() {
       } catch { /* empty */ }
     } catch { /* empty */ }
     setLoading(false);
-  }, [search, tagFilter]);
+  }, [search, tagFilter, page, pageSize]);
 
   const loadTags = useCallback(async () => {
     try {
@@ -216,7 +221,7 @@ export default function AdminMedia() {
     ? items.filter(item => getMediaType(item.mime_type) === typeFilter)
     : items;
 
-  function handleSearch() { load(); }
+  function handleSearch() { setPage(1); load(); }
 
   function toggleSelect(id: string) {
     const next = new Set(selectedIds);
@@ -502,7 +507,7 @@ export default function AdminMedia() {
             {typeTabs.map(tab => {
               const Icon = tab.icon;
               return (
-                <button key={tab.key} onClick={() => setTypeFilter(tab.key)}
+                <button key={tab.key} onClick={() => { setTypeFilter(tab.key); setPage(1); }}
                   className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
                   style={{
                     background: typeFilter === tab.key ? 'var(--primary-sub)' : 'transparent',
@@ -823,11 +828,39 @@ export default function AdminMedia() {
         )}
       </div>
 
-      {/* Count */}
-      <div className="text-sm" style={{ color: 'var(--text-info)' }}>
-        共 {filtered.length} 个文件
-        {(typeFilter || tagFilter) && ` (筛选自 ${items.length} 个)`}
-      </div>
+      {/* Pagination */}
+      <div className="flex items-center justify-between text-sm mt-4">
+          <span style={{ color: 'var(--text-secondary)' }}>共 {total} 个文件{(typeFilter || tagFilter) && ` (当前筛选)`}</span>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <span className="text-xs" style={{ color: 'var(--text-info)' }}>每页</span>
+              <Select value={String(pageSize)} onChange={v => { setPageSize(Number(v)); setPage(1); }}
+                options={[10, 20, 30, 50, 100].map(v => ({ value: String(v), label: String(v) }))} />
+            </div>
+            <div className="flex gap-1">
+              <button onClick={() => setPage(Math.max(1, page - 1))} disabled={page === 1}
+                className="px-3 py-1.5 rounded-xl btn-glass disabled:opacity-40 transition-colors"
+                style={{ color: 'var(--text-primary)' }}>上一页</button>
+              {Array.from({ length: Math.min(Math.ceil(total / pageSize), 10) }, (_, i) => {
+                const start = Math.max(1, page - 5);
+                const p = start + i;
+                if (p > Math.ceil(total / pageSize)) return null;
+                return (
+                  <button key={p} onClick={() => setPage(p)}
+                    className="w-8 h-8 rounded-xl text-sm transition-all"
+                    style={{
+                      background: p === page ? 'var(--primary)' : 'transparent',
+                      color: p === page ? '#fff' : 'var(--text-primary)',
+                      boxShadow: p === page ? '0 0 12px var(--primary-glow)' : 'none',
+                    }}>{p}</button>
+                );
+              })}
+              <button onClick={() => setPage(Math.min(Math.ceil(total / pageSize), page + 1))} disabled={page === Math.ceil(total / pageSize)}
+                className="px-3 py-1.5 rounded-xl btn-glass disabled:opacity-40 transition-colors"
+                style={{ color: 'var(--text-primary)' }}>下一页</button>
+            </div>
+          </div>
+        </div>
 
       {/* Media viewer modal */}
       {viewerItem && (() => {

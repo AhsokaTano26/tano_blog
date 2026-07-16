@@ -232,13 +232,15 @@ export const api = {
         request<{ items: any[] }>('/api/v1/admin/posts/calendar', { params }),
     },
     categories: {
-      list: () => request('/api/v1/admin/categories'),
+      list: (params?: Record<string, string>) =>
+        request<{ items: any[]; total: number; page: number; size: number }>('/api/v1/admin/categories', { params }),
       create: (data: any) => request('/api/v1/admin/categories', { method: 'POST', body: JSON.stringify(data) }),
       update: (id: string, data: any) => request(`/api/v1/admin/categories/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
       delete: (id: string) => request(`/api/v1/admin/categories/${id}`, { method: 'DELETE' }),
     },
     tags: {
-      list: () => request('/api/v1/admin/tags'),
+      list: (params?: Record<string, string>) =>
+        request<{ items: any[]; total: number; page: number; size: number }>('/api/v1/admin/tags', { params }),
       create: (data: any) => request('/api/v1/admin/tags', { method: 'POST', body: JSON.stringify(data) }),
       update: (id: string, data: any) => request(`/api/v1/admin/tags/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
       delete: (id: string) => request(`/api/v1/admin/tags/${id}`, { method: 'DELETE' }),
@@ -310,7 +312,8 @@ export const api = {
     checkVersion: (version?: string) =>
       request<{ latest: string; changelog?: string[] }>('/api/v1/admin/check-version' + (version ? `?version=${version}` : '')),
     series: {
-      list: () => request<{ items: any[] }>('/api/v1/admin/series'),
+      list: (params?: Record<string, string>) =>
+        request<{ items: any[]; total: number; page: number; size: number }>('/api/v1/admin/series', { params }),
       create: (data: any) => request('/api/v1/admin/series', { method: 'POST', body: JSON.stringify(data) }),
       update: (id: string, data: any) => request(`/api/v1/admin/series/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
       delete: (id: string) => request(`/api/v1/admin/series/${id}`, { method: 'DELETE' }),
@@ -417,8 +420,8 @@ export const api = {
       },
     },
     links: {
-      list: () =>
-        request<{ items: any[] }>('/api/v1/admin/links'),
+      list: (params?: Record<string, string>) =>
+        request<{ items: any[]; total: number; page: number; size: number }>('/api/v1/admin/links', { params }),
       create: (data: any) =>
         request('/api/v1/admin/links', { method: 'POST', body: JSON.stringify(data) }),
       update: (id: string, data: any) =>

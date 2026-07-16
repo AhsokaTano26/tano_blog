@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { api } from '@/lib/api';
 import { Plus, Pencil, Trash2, FolderTree } from 'lucide-react';
 import { Loading } from '@/components/Loading';
-import { useConfirm } from '@/components/ConfirmDialog';
+import { useConfirm, Select } from '@/components/ConfirmDialog';
 
 export default function AdminCategories() {
   const { confirm } = useConfirm();
@@ -13,15 +13,21 @@ export default function AdminCategories() {
   const [editing, setEditing] = useState<any>(null);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [total, setTotal] = useState(0);
 
   async function load() {
     setLoading(true);
-    try { const res = await api.getCategories(); setItems(res.items); }
-    catch (e) { /* empty */ }
+    try {
+      const res = await api.admin.categories.list({ page: String(page), page_size: String(pageSize) });
+      setItems(res.items);
+      setTotal(res.total);
+    } catch (e) { /* empty */ }
     setLoading(false);
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [page, pageSize]);
 
   async function handleSave() {
     try {
@@ -116,6 +122,39 @@ export default function AdminCategories() {
           </table>
         )}
       </div>
+
+      <div className="flex items-center justify-between text-sm mt-4">
+          <span style={{ color: 'var(--text-secondary)' }}>共 {total} 个</span>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <span className="text-xs" style={{ color: 'var(--text-info)' }}>每页</span>
+              <Select value={String(pageSize)} onChange={v => { setPageSize(Number(v)); setPage(1); }}
+                options={[10, 20, 30, 50, 100].map(v => ({ value: String(v), label: String(v) }))} />
+            </div>
+            <div className="flex gap-1">
+              <button onClick={() => setPage(Math.max(1, page - 1))} disabled={page === 1}
+                className="px-3 py-1.5 rounded-xl btn-glass disabled:opacity-40 transition-colors"
+                style={{ color: 'var(--text-primary)' }}>上一页</button>
+              {Array.from({ length: Math.min(Math.ceil(total / pageSize), 10) }, (_, i) => {
+                const start = Math.max(1, page - 5);
+                const p = start + i;
+                if (p > Math.ceil(total / pageSize)) return null;
+                return (
+                  <button key={p} onClick={() => setPage(p)}
+                    className="w-8 h-8 rounded-xl text-sm transition-all"
+                    style={{
+                      background: p === page ? 'var(--primary)' : 'transparent',
+                      color: p === page ? '#fff' : 'var(--text-primary)',
+                      boxShadow: p === page ? '0 0 12px var(--primary-glow)' : 'none',
+                    }}>{p}</button>
+                );
+              })}
+              <button onClick={() => setPage(Math.min(Math.ceil(total / pageSize), page + 1))} disabled={page === Math.ceil(total / pageSize)}
+                className="px-3 py-1.5 rounded-xl btn-glass disabled:opacity-40 transition-colors"
+                style={{ color: 'var(--text-primary)' }}>下一页</button>
+            </div>
+          </div>
+        </div>
     </div>
   );
 }

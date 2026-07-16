@@ -21,9 +21,24 @@ func NewCategoryHandler(db *gorm.DB) *CategoryHandler {
 }
 
 func (h *CategoryHandler) List(c *gin.Context) {
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "100"))
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 1000 {
+		pageSize = 100
+	}
+
+	var total int64
+	h.db.Model(&model.Category{}).Count(&total)
+
 	var cats []model.Category
-	h.db.Order("sort_order ASC, name ASC").Find(&cats)
-	c.JSON(http.StatusOK, gin.H{"items": cats})
+	h.db.Order("sort_order ASC, name ASC").Offset((page-1)*pageSize).Limit(pageSize).Find(&cats)
+	if cats == nil {
+		cats = []model.Category{}
+	}
+	c.JSON(http.StatusOK, gin.H{"items": cats, "total": total, "page": page, "size": pageSize})
 }
 
 func (h *CategoryHandler) GetBySlug(c *gin.Context) {
@@ -156,21 +171,34 @@ func NewTagHandler(db *gorm.DB) *TagHandler {
 }
 
 func (h *TagHandler) List(c *gin.Context) {
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "100"))
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 1000 {
+		pageSize = 100
+	}
+
 	type TagWithCount struct {
 		model.Tag
 		PostCount int `json:"post_count"`
 	}
+	var total int64
+	h.db.Model(&model.Tag{}).Count(&total)
+
 	var tags []TagWithCount
 	h.db.Model(&model.Tag{}).
 		Select("tags.*, COUNT(post_tags.post_id) as post_count").
 		Joins("LEFT JOIN post_tags ON post_tags.tag_id = tags.id").
 		Group("tags.id").
 		Order("name ASC").
+		Offset((page - 1) * pageSize).Limit(pageSize).
 		Scan(&tags)
 	if tags == nil {
 		tags = []TagWithCount{}
 	}
-	c.JSON(http.StatusOK, gin.H{"items": tags})
+	c.JSON(http.StatusOK, gin.H{"items": tags, "total": total, "page": page, "size": pageSize})
 }
 
 func (h *TagHandler) GetBySlug(c *gin.Context) {

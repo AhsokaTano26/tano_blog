@@ -20,6 +20,19 @@ func (r *SeriesRepo) List() ([]model.Series, error) {
 	return series, err
 }
 
+func (r *SeriesRepo) Count() (int64, error) {
+	var total int64
+	err := r.db.Model(&model.Series{}).Count(&total).Error
+	return total, err
+}
+
+func (r *SeriesRepo) ListPaginated(page, pageSize int) ([]model.Series, error) {
+	var series []model.Series
+	err := r.db.Order("sort_order ASC, created_at DESC").
+		Offset((page - 1) * pageSize).Limit(pageSize).Find(&series).Error
+	return series, err
+}
+
 func (r *SeriesRepo) ListWithCount() ([]map[string]interface{}, error) {
 	var results []map[string]interface{}
 	err := r.db.Model(&model.Series{}).

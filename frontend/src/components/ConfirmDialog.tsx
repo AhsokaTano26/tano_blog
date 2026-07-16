@@ -141,7 +141,13 @@ export function Select({ value, onChange, options, placeholder }: {
   useEffect(() => {
     if (open && ref.current) {
       const rect = ref.current.getBoundingClientRect();
-      setPos({ top: rect.bottom + 4, left: rect.left, width: rect.width });
+      const estimatedHeight = options.length * 36 + 8;
+      const bottomSpace = window.innerHeight - rect.bottom;
+      if (bottomSpace < estimatedHeight && rect.top > estimatedHeight) {
+        setPos({ top: rect.top - estimatedHeight, left: rect.left, width: rect.width });
+      } else {
+        setPos({ top: rect.bottom + 4, left: rect.left, width: rect.width });
+      }
     }
   }, [open]);
 

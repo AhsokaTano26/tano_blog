@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { api } from '@/lib/api';
 import { MessageSquare, Check, X, Trash2, ExternalLink, User, CheckSquare, Square, Info, Monitor, Smartphone } from 'lucide-react';
 import { Loading } from '@/components/Loading';
-import { useConfirm } from '@/components/ConfirmDialog';
+import { useConfirm, Select } from '@/components/ConfirmDialog';
 
 function parseUA(ua: string) {
   let browser = '未知';
@@ -218,6 +218,7 @@ export default function AdminComments() {
   const [blockedItems, setBlockedItems] = useState<any[]>([]);
   const [blockedTotal, setBlockedTotal] = useState(0);
   const [blockedPage, setBlockedPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
 
   async function load() {
     setLoading(true);
@@ -229,16 +230,16 @@ export default function AdminComments() {
           setLoading(false);
           return;
         }
-        const res = await api.admin.commenters.listComments({ email: commenterEmail || undefined, ip_address: commenterIP || undefined, page: commenterPage, page_size: 20 });
+        const res = await api.admin.commenters.listComments({ email: commenterEmail || undefined, ip_address: commenterIP || undefined, page: commenterPage, page_size: pageSize });
         setCommenterResults(res.items);
         setCommenterTotal(res.total);
       } else if (filter === 'blocked') {
-        const params: Record<string, string> = { page: String(blockedPage), page_size: '20' };
+        const params: Record<string, string> = { page: String(blockedPage), page_size: String(pageSize) };
         const res = await api.admin.commenters.list(params);
         setBlockedItems(res.items);
         setBlockedTotal(res.total);
       } else {
-        const params: Record<string, string> = { page: String(page), page_size: '20' };
+        const params: Record<string, string> = { page: String(page), page_size: String(pageSize) };
         if (filter) params.status = filter;
         const res = await api.admin.comments.list(params);
         setItems(res.items);
@@ -249,7 +250,7 @@ export default function AdminComments() {
     setLoading(false);
   }
 
-  useEffect(() => { load(); }, [page, filter, commenterPage, blockedPage, commenterSearchKey]);
+  useEffect(() => { load(); }, [page, pageSize, filter, commenterPage, blockedPage, commenterSearchKey]);
 
   async function handleStatus(id: string, status: string) {
     try {
@@ -307,7 +308,7 @@ export default function AdminComments() {
     { key: 'blocked', label: '封禁列表' },
   ];
 
-  const totalPages = filter === 'commenter' ? Math.ceil(commenterTotal / 20) : filter === 'blocked' ? Math.ceil(blockedTotal / 20) : Math.ceil(total / 20);
+  const totalPages = filter === 'commenter' ? Math.ceil(commenterTotal / pageSize) : filter === 'blocked' ? Math.ceil(blockedTotal / pageSize) : Math.ceil(total / pageSize);
   const isCommentTab = !['commenter', 'blocked'].includes(filter);
 
   const handleCommenterSearch = () => {
@@ -443,15 +444,22 @@ export default function AdminComments() {
               </div>
             )}
             {/* Commenter pagination */}
-            {commenterTotal > 20 && (
+            {commenterTotal > pageSize && (
               <div className="flex items-center justify-between text-sm mt-4">
                 <span style={{ color: 'var(--text-secondary)' }}>共 {commenterTotal} 条</span>
-                <div className="flex gap-1">
-                  <button onClick={() => setCommenterPage(Math.max(1, commenterPage - 1))} disabled={commenterPage === 1}
-                    className="btn-glass px-3 py-1.5 rounded disabled:opacity-40 transition-colors" style={{ color: 'var(--text-secondary)' }}>上一页</button>
-                  <span className="px-3 py-1.5 text-sm" style={{ color: 'var(--text-secondary)' }}>{commenterPage} / {Math.ceil(commenterTotal / 20)}</span>
-                  <button onClick={() => setCommenterPage(Math.min(Math.ceil(commenterTotal / 20), commenterPage + 1))} disabled={commenterPage === Math.ceil(commenterTotal / 20)}
-                    className="btn-glass px-3 py-1.5 rounded disabled:opacity-40 transition-colors" style={{ color: 'var(--text-secondary)' }}>下一页</button>
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs" style={{ color: 'var(--text-info)' }}>每页</span>
+                    <Select value={String(pageSize)} onChange={v => { setPageSize(Number(v)); setCommenterPage(1); }}
+                      options={[10, 20, 30, 50, 100].map(v => ({ value: String(v), label: String(v) }))} />
+                  </div>
+                  <div className="flex gap-1">
+                    <button onClick={() => setCommenterPage(Math.max(1, commenterPage - 1))} disabled={commenterPage === 1}
+                      className="btn-glass px-3 py-1.5 rounded disabled:opacity-40 transition-colors" style={{ color: 'var(--text-secondary)' }}>上一页</button>
+                    <span className="px-3 py-1.5 text-sm" style={{ color: 'var(--text-secondary)' }}>{commenterPage} / {Math.ceil(commenterTotal / pageSize)}</span>
+                    <button onClick={() => setCommenterPage(Math.min(Math.ceil(commenterTotal / pageSize), commenterPage + 1))} disabled={commenterPage === Math.ceil(commenterTotal / pageSize)}
+                      className="btn-glass px-3 py-1.5 rounded disabled:opacity-40 transition-colors" style={{ color: 'var(--text-secondary)' }}>下一页</button>
+                  </div>
                 </div>
               </div>
             )}
@@ -595,23 +603,30 @@ export default function AdminComments() {
       {isCommentTab && totalPages > 1 && (
         <div className="flex items-center justify-between text-sm">
           <span style={{ color: 'var(--text-secondary)' }}>共 {total} 条</span>
-          <div className="flex gap-1">
-            <button onClick={() => setPage(Math.max(1, page - 1))} disabled={page === 1}
-              className="btn-glass px-3 py-1.5 rounded disabled:opacity-40 transition-colors" style={{ color: 'var(--text-secondary)' }}>上一页</button>
-            {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
-              const p = Math.max(1, page - 2) + i;
-              if (p > totalPages) return null;
-              return (
-                <button key={p} onClick={() => setPage(p)}
-                  className="w-8 h-8 rounded text-sm font-bold transition-all"
-                  style={{
-                    background: p === page ? 'var(--primary)' : 'var(--card-bg)',
-                    color: p === page ? '#fff' : 'var(--text-primary)',
-                  }}>{p}</button>
-              );
-            })}
-            <button onClick={() => setPage(Math.min(totalPages, page + 1))} disabled={page === totalPages}
-              className="btn-glass px-3 py-1.5 rounded disabled:opacity-40 transition-colors" style={{ color: 'var(--text-secondary)' }}>下一页</button>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <span className="text-xs" style={{ color: 'var(--text-info)' }}>每页</span>
+              <Select value={String(pageSize)} onChange={v => { setPageSize(Number(v)); setPage(1); }}
+                options={[10, 20, 30, 50, 100].map(v => ({ value: String(v), label: String(v) }))} />
+            </div>
+            <div className="flex gap-1">
+              <button onClick={() => setPage(Math.max(1, page - 1))} disabled={page === 1}
+                className="btn-glass px-3 py-1.5 rounded disabled:opacity-40 transition-colors" style={{ color: 'var(--text-secondary)' }}>上一页</button>
+              {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+                const p = Math.max(1, page - 2) + i;
+                if (p > totalPages) return null;
+                return (
+                  <button key={p} onClick={() => setPage(p)}
+                    className="w-8 h-8 rounded text-sm font-bold transition-all"
+                    style={{
+                      background: p === page ? 'var(--primary)' : 'var(--card-bg)',
+                      color: p === page ? '#fff' : 'var(--text-primary)',
+                    }}>{p}</button>
+                );
+              })}
+              <button onClick={() => setPage(Math.min(totalPages, page + 1))} disabled={page === totalPages}
+                className="btn-glass px-3 py-1.5 rounded disabled:opacity-40 transition-colors" style={{ color: 'var(--text-secondary)' }}>下一页</button>
+            </div>
           </div>
         </div>
       )}

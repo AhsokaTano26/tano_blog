@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { api } from '@/lib/api';
 import { Plus, Pencil, Trash2, Check, X, Link as LinkIcon } from 'lucide-react';
 import { Loading } from '@/components/Loading';
-import { useConfirm } from '@/components/ConfirmDialog';
+import { useConfirm, Select } from '@/components/ConfirmDialog';
 
 const tabs = [
   { key: '', label: '全部' },
@@ -43,17 +43,23 @@ export default function AdminLinks() {
   const [editing, setEditing] = useState<any>(null);
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState({ name: '', url: '', description: '', avatar: '', email: '', status: 'pending', sort_order: 0 });
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [total, setTotal] = useState(0);
 
   async function load() {
     setLoading(true);
     try {
-      const res = await api.admin.links.list();
+      const params: Record<string, string> = { page: String(page), page_size: String(pageSize) };
+      if (activeTab) params.status = activeTab;
+      const res = await api.admin.links.list(params);
       setItems(res.items);
+      setTotal(res.total);
     } catch (e) { /* empty */ }
     setLoading(false);
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [page, pageSize, activeTab]);
 
   function openCreate() {
     setEditing(null);
@@ -103,7 +109,7 @@ export default function AdminLinks() {
     } catch (e) { /* empty */ }
   }
 
-  const filtered = activeTab ? items.filter(i => i.status === activeTab) : items;
+  const filtered = items;
 
   return (
     <div>
@@ -126,14 +132,14 @@ export default function AdminLinks() {
       {/* Tabs */}
       <div className="flex gap-1 mb-4 p-1 rounded-xl" style={{ background: 'var(--card-bg)', border: '1px solid var(--glass-border)' }}>
         {tabs.map(tab => (
-          <button key={tab.key} onClick={() => setActiveTab(tab.key)}
+          <button key={tab.key} onClick={() => { setActiveTab(tab.key); setPage(1); }}
             className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer ${activeTab === tab.key ? 'text-white' : ''}`}
             style={{
               background: activeTab === tab.key ? 'var(--primary)' : 'transparent',
               color: activeTab === tab.key ? 'white' : 'var(--text-secondary)',
             }}>
             {tab.label}
-            {tab.key && <span className="ml-1.5 opacity-70">({items.filter(i => i.status === tab.key).length})</span>}
+            {!activeTab && tab.key && <span className="ml-1.5 opacity-70">(0)</span>}
           </button>
         ))}
       </div>
@@ -212,6 +218,39 @@ export default function AdminLinks() {
           </table>
         )}
       </div>
+
+      <div className="flex items-center justify-between text-sm mt-4">
+          <span style={{ color: 'var(--text-secondary)' }}>共 {total} 个</span>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <span className="text-xs" style={{ color: 'var(--text-info)' }}>每页</span>
+              <Select value={String(pageSize)} onChange={v => { setPageSize(Number(v)); setPage(1); }}
+                options={[10, 20, 30, 50, 100].map(v => ({ value: String(v), label: String(v) }))} />
+            </div>
+            <div className="flex gap-1">
+              <button onClick={() => setPage(Math.max(1, page - 1))} disabled={page === 1}
+                className="px-3 py-1.5 rounded-xl btn-glass disabled:opacity-40 transition-colors"
+                style={{ color: 'var(--text-primary)' }}>上一页</button>
+              {Array.from({ length: Math.min(Math.ceil(total / pageSize), 10) }, (_, i) => {
+                const start = Math.max(1, page - 5);
+                const p = start + i;
+                if (p > Math.ceil(total / pageSize)) return null;
+                return (
+                  <button key={p} onClick={() => setPage(p)}
+                    className="w-8 h-8 rounded-xl text-sm transition-all"
+                    style={{
+                      background: p === page ? 'var(--primary)' : 'transparent',
+                      color: p === page ? '#fff' : 'var(--text-primary)',
+                      boxShadow: p === page ? '0 0 12px var(--primary-glow)' : 'none',
+                    }}>{p}</button>
+                );
+              })}
+              <button onClick={() => setPage(Math.min(Math.ceil(total / pageSize), page + 1))} disabled={page === Math.ceil(total / pageSize)}
+                className="px-3 py-1.5 rounded-xl btn-glass disabled:opacity-40 transition-colors"
+                style={{ color: 'var(--text-primary)' }}>下一页</button>
+            </div>
+          </div>
+        </div>
 
       {/* Edit/Create Modal */}
       {showModal && (
