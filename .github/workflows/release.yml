@@ -33,10 +33,20 @@ jobs:
           FEATS=$(git log "$LATEST_TAG..HEAD" --oneline --grep="^feat" 2>/dev/null | wc -l)
           FIXES=$(git log "$LATEST_TAG..HEAD" --oneline --grep="^fix" 2>/dev/null | wc -l)
 
+          # Detect breaking changes: "BREAKING CHANGE:" footer or "type!:" syntax
+          BREAKING=$(git log "$LATEST_TAG..HEAD" --oneline --grep="BREAKING CHANGE" 2>/dev/null | wc -l)
+          if [ "$BREAKING" -eq 0 ]; then
+            BREAKING=$(git log "$LATEST_TAG..HEAD" --oneline --grep="!:" 2>/dev/null | wc -l)
+          fi
+
           BASE="${LATEST_TAG#v}"
           IFS='.' read -r MAJOR MINOR PATCH <<< "$BASE"
 
-          if [ "$FEATS" -gt 0 ]; then
+          if [ "$BREAKING" -gt 0 ]; then
+            MAJOR=$((MAJOR + 1))
+            MINOR=0
+            PATCH=0
+          elif [ "$FEATS" -gt 0 ]; then
             MINOR=$((MINOR + 1))
             PATCH=0
           elif [ "$FIXES" -gt 0 ]; then
@@ -54,8 +64,8 @@ jobs:
             fi
           fi
 
-          # Only set VERSION from semver calc when feat or fix found
-          if [ "$FEATS" -gt 0 ] || [ "$FIXES" -gt 0 ]; then
+          # Only set VERSION from semver calc when breaking, feat or fix found
+          if [ "$BREAKING" -gt 0 ] || [ "$FEATS" -gt 0 ] || [ "$FIXES" -gt 0 ]; then
             NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
             echo "VERSION=$NEW_VERSION" >> "$GITHUB_OUTPUT"
             echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
