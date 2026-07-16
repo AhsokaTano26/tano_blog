@@ -44,8 +44,6 @@ export default function AdminSettings() {
   const [checkingVersion, setCheckingVersion] = useState(true);
   const [versionError, setVersionError] = useState(false);
   const [changelog, setChangelog] = useState<string[]>([]);
-  const [loadingChangelog, setLoadingChangelog] = useState(false);
-  const [testVersionInput, setTestVersionInput] = useState('');
 
   function parseSemver(v: string): number[] {
     return v.replace(/^v/, '').split('.').map(Number);
@@ -77,37 +75,32 @@ export default function AdminSettings() {
   }, [activeTab]);
 
   useEffect(() => {
-    const current = process.env.NEXT_PUBLIC_APP_VERSION;
-    api.admin.checkVersion(current && current !== 'dev' ? current : undefined)
-      .then(data => {
-        if (data.latest) {
-          if (!current || current === 'dev') {
-            setLatestVersion(data.latest);
-          } else if (isNewerVersion(data.latest, current)) {
-            setLatestVersion(data.latest);
-          }
-        }
-        if (data.changelog && data.changelog.length > 0) {
-          setChangelog(data.changelog);
-        }
-      })
-      .catch(() => setVersionError(true))
-      .finally(() => setCheckingVersion(false));
-  }, []);
+    async function fetchVersionInfo() {
+      const current = process.env.NEXT_PUBLIC_APP_VERSION;
+      const isDev = !current || current === 'dev';
 
-  async function handleTestChangelog() {
-    const v = testVersionInput.trim();
-    if (!v) return;
-    setLoadingChangelog(true);
-    setChangelog([]);
-    try {
-      const data = await api.admin.checkVersion(v);
-      setChangelog(data.changelog || []);
-    } catch {
-      setChangelog([]);
+      const data = await api.admin.checkVersion(isDev ? undefined : current);
+
+      if (data.latest) {
+        if (isDev) {
+          setLatestVersion(data.latest);
+        } else if (isNewerVersion(data.latest, current)) {
+          setLatestVersion(data.latest);
+        }
+      }
+
+      if (data.changelog && data.changelog.length > 0) {
+        setChangelog(data.changelog);
+      } else if (isDev && data.latest) {
+        const clData = await api.admin.checkVersion(data.latest);
+        if (clData.changelog) {
+          setChangelog(clData.changelog);
+        }
+      }
     }
-    setLoadingChangelog(false);
-  }
+
+    fetchVersionInfo().catch(() => setVersionError(true)).finally(() => setCheckingVersion(false));
+  }, []);
 
   async function handleSave() {
     setSaving(true);
@@ -681,24 +674,10 @@ export default function AdminSettings() {
                     : '更新日志'}
                 </h3>
 
-                {/* Dev mode: test version input */}
-                {(!process.env.NEXT_PUBLIC_APP_VERSION || process.env.NEXT_PUBLIC_APP_VERSION === 'dev') && (
-                  <div className="flex gap-2 mb-3">
-                    <input type="text" value={testVersionInput} onChange={e => setTestVersionInput(e.target.value)}
-                      placeholder="输入版本号，如 v1.0.3"
-                      className="flex-1 px-3 py-2 rounded-lg text-sm outline-none"
-                      style={{ background: 'var(--surface-bg)', color: 'var(--text-primary)', border: '1px solid var(--glass-border)' }}
-                      onKeyDown={e => e.key === 'Enter' && handleTestChangelog()} />
-                    <button onClick={handleTestChangelog} disabled={loadingChangelog || !testVersionInput.trim()}
-                      className="px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-50 transition-colors"
-                      style={{ background: 'var(--primary)' }}>
-                      {loadingChangelog ? '查询中...' : '查询'}
-                    </button>
-                  </div>
-                )}
-
                 {/* Changelog content */}
-                {changelog.length > 0 ? (
+                {checkingVersion ? (
+                  <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>加载中...</p>
+                ) : changelog.length > 0 ? (
                   <div className="space-y-1 text-sm">
                     {changelog.map((msg, i) => (
                       <div key={i} className="py-1.5 px-3 rounded-lg font-mono text-xs" style={{ background: 'var(--surface-bg)', color: 'var(--text-secondary)' }}>
@@ -707,13 +686,7 @@ export default function AdminSettings() {
                     ))}
                   </div>
                 ) : (
-                  !loadingChangelog && (
-                    <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                      {process.env.NEXT_PUBLIC_APP_VERSION && process.env.NEXT_PUBLIC_APP_VERSION !== 'dev'
-                        ? '暂无更新日志'
-                        : '输入版本号查询更新日志'}
-                    </p>
-                  )
+                  <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>暂无更新日志</p>
                 )}
               </div>
 
