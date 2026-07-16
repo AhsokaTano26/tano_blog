@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -140,12 +141,18 @@ func (h *SiteConfigHandler) TestEmail(c *gin.Context) {
 
 // CheckVersion fetches the latest release tag from Docker Hub (used to avoid browser CORS).
 func (h *SiteConfigHandler) CheckVersion(c *gin.Context) {
-	resp, err := http.Get("https://hub.docker.com/v2/repositories/tano26/tano_blog/tags?page_size=30")
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Get("https://hub.docker.com/v2/repositories/tano26/tano_blog/tags?page_size=30")
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"latest": ""})
 		return
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		c.JSON(http.StatusOK, gin.H{"latest": ""})
+		return
+	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
