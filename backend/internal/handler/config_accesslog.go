@@ -140,7 +140,10 @@ func (h *SiteConfigHandler) TestEmail(c *gin.Context) {
 }
 
 // CheckVersion fetches the latest release tag from Docker Hub (used to avoid browser CORS).
+// If version query param is provided, also returns the changelog (commits) for that version.
 func (h *SiteConfigHandler) CheckVersion(c *gin.Context) {
+	reqVersion := c.Query("version")
+
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Get("https://hub.docker.com/v2/repositories/tano26/tano_blog/tags?page_size=30")
 	if err != nil {
@@ -193,7 +196,48 @@ func (h *SiteConfigHandler) CheckVersion(c *gin.Context) {
 	if len(versions) > 0 {
 		latest = versions[len(versions)-1]
 	}
-	c.JSON(http.StatusOK, gin.H{"latest": latest})
+
+	// Fetch changelog if requested
+	var changelog []string
+	if reqVersion != "" && re.MatchString(reqVersion) {
+		for i, v := range versions {
+			if v == reqVersion {
+				prevVersion := ""
+				if i > 0 {
+					prevVersion = versions[i-1]
+				}
+				if prevVersion != "" {
+					githubURL := "https://api.github.com/repos/AhsokaTano26/tano_blog/compare/" + prevVersion + "..." + reqVersion
+					ghResp, ghErr := client.Get(githubURL)
+					if ghErr == nil {
+						defer ghResp.Body.Close()
+						if ghResp.StatusCode == http.StatusOK {
+							var ghData struct {
+								Commits []struct {
+									Commit struct {
+										Message string `json:"message"`
+									} `json:"commit"`
+								} `json:"commits"`
+							}
+							if body, err := io.ReadAll(ghResp.Body); err == nil {
+								json.Unmarshal(body, &ghData)
+								for _, c := range ghData.Commits {
+									msg := strings.SplitN(c.Commit.Message, "\n", 2)[0]
+									changelog = append(changelog, msg)
+								}
+							}
+						}
+					}
+				}
+				break
+			}
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"latest":    latest,
+		"changelog": changelog,
+	})
 }
 
 func parseSemver(v string) []int {

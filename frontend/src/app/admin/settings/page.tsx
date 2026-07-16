@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { api } from '@/lib/api';
-import { Save, Globe, FileText, Palette, MessageSquare, Code, Mail, User, Plus, Trash2, Cpu, Zap, AlertTriangle, Info, ArrowUpCircle } from 'lucide-react';
+import { Save, Globe, FileText, Palette, MessageSquare, Code, Mail, User, Plus, Trash2, Cpu, Zap, AlertTriangle, Info, ArrowUpCircle, GitCompare } from 'lucide-react';
 import { Loading } from '@/components/Loading';
 import { Select } from '@/components/ConfirmDialog';
 import { MediaField } from '@/components/MediaField';
@@ -43,6 +43,8 @@ export default function AdminSettings() {
   const [latestVersion, setLatestVersion] = useState<string | null>(null);
   const [checkingVersion, setCheckingVersion] = useState(true);
   const [versionError, setVersionError] = useState(false);
+  const [changelog, setChangelog] = useState<string[]>([]);
+  const [loadingChangelog, setLoadingChangelog] = useState(false);
 
   function parseSemver(v: string): number[] {
     return v.replace(/^v/, '').split('.').map(Number);
@@ -75,15 +77,17 @@ export default function AdminSettings() {
 
   useEffect(() => {
     const current = process.env.NEXT_PUBLIC_APP_VERSION;
-    api.admin.checkVersion()
+    api.admin.checkVersion(current && current !== 'dev' ? current : undefined)
       .then(data => {
-        if (!data.latest) return;
-        if (!current || current === 'dev') {
-          // Dev mode: always show latest available version
-          setLatestVersion(data.latest);
-        } else if (isNewerVersion(data.latest, current)) {
-          // Production: only show if newer
-          setLatestVersion(data.latest);
+        if (data.latest) {
+          if (!current || current === 'dev') {
+            setLatestVersion(data.latest);
+          } else if (isNewerVersion(data.latest, current)) {
+            setLatestVersion(data.latest);
+          }
+        }
+        if (data.changelog) {
+          setChangelog(data.changelog);
         }
       })
       .catch(() => setVersionError(true))
@@ -653,6 +657,25 @@ export default function AdminSettings() {
                 </div>
               </div>
 
+              {/* Changelog */}
+              {changelog.length > 0 && (
+                <div className="p-5 rounded-xl" style={{ background: 'var(--glass-bg)', border: '1px solid var(--glass-border)' }}>
+                  <h3 className="text-sm font-semibold mb-3 flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
+                    <FileText className="w-4 h-4" style={{ color: 'var(--primary)' }} />
+                    {process.env.NEXT_PUBLIC_APP_VERSION && process.env.NEXT_PUBLIC_APP_VERSION !== 'dev'
+                      ? `更新日志 (${process.env.NEXT_PUBLIC_APP_VERSION})`
+                      : '最近更新'}
+                  </h3>
+                  <div className="space-y-1 text-sm">
+                    {changelog.map((msg, i) => (
+                      <div key={i} className="py-1.5 px-3 rounded-lg font-mono text-xs" style={{ background: 'var(--surface-bg)', color: 'var(--text-secondary)' }}>
+                        {msg}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Version upgrade banner */}
               {latestVersion && (
                 <div className="p-4 rounded-xl flex items-start gap-3" style={{ background: 'rgba(34, 197, 94, 0.1)', border: '1px solid rgba(34, 197, 94, 0.3)' }}>
@@ -661,8 +684,24 @@ export default function AdminSettings() {
                     <div className="font-medium mb-1" style={{ color: '#22c55e' }}>新版本可用</div>
                     <p style={{ color: 'var(--text-secondary)', lineHeight: 1.6 }}>
                       {latestVersion} 已发布，当前版本为 {process.env.NEXT_PUBLIC_APP_VERSION || 'dev'}。
-                      前往 <a href="https://hub.docker.com/repository/docker/tano26/tano_blog/tags" target="_blank" rel="noopener noreferrer" style={{ color: '#22c55e', textDecoration: 'underline' }}>Docker Hub</a> 查看更新内容。
                     </p>
+                    <div className="mt-2 flex gap-3 text-xs">
+                      <a href={`https://github.com/AhsokaTano26/tano_blog/releases/tag/${latestVersion}`} target="_blank" rel="noopener noreferrer"
+                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg transition-colors"
+                        style={{ background: 'rgba(34, 197, 94, 0.15)', color: '#22c55e' }}>
+                        <FileText className="w-3.5 h-3.5" />
+                        更新日志
+                      </a>
+                      <a href={process.env.NEXT_PUBLIC_APP_VERSION && process.env.NEXT_PUBLIC_APP_VERSION !== 'dev'
+                        ? `https://github.com/AhsokaTano26/tano_blog/compare/${process.env.NEXT_PUBLIC_APP_VERSION}...${latestVersion}`
+                        : `https://github.com/AhsokaTano26/tano_blog/releases/tag/${latestVersion}`
+                      } target="_blank" rel="noopener noreferrer"
+                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg transition-colors"
+                        style={{ background: 'rgba(34, 197, 94, 0.1)', color: '#22c55e' }}>
+                        <GitCompare className="w-3.5 h-3.5" />
+                        变更对比
+                      </a>
+                    </div>
                   </div>
                 </div>
               )}

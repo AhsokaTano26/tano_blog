@@ -307,8 +307,8 @@ export const api = {
       testEmail: () =>
         request<{ message: string }>('/api/v1/admin/config/test-email', { method: 'POST' }),
     },
-    checkVersion: () =>
-      request<{ latest: string }>('/api/v1/admin/check-version'),
+    checkVersion: (version?: string) =>
+      request<{ latest: string; changelog?: string[] }>('/api/v1/admin/check-version' + (version ? `?version=${version}` : '')),
     series: {
       list: () => request<{ items: any[] }>('/api/v1/admin/series'),
       create: (data: any) => request('/api/v1/admin/series', { method: 'POST', body: JSON.stringify(data) }),
