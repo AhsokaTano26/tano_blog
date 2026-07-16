@@ -1,0 +1,91 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - 'Dockerfile'
+      - 'docker-entrypoint.sh'
+      - 'VERSION'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Determine next version
+        id: version
+        run: |
+          # Get latest tag, default to v0.1.0
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          echo "Latest tag: $LATEST_TAG"
+
+          # Count conventional commits since last tag — minor if any feat, patch if any fix
+          FEATS=$(git log "$LATEST_TAG..HEAD" --oneline --grep="^feat" 2>/dev/null | wc -l)
+          FIXES=$(git log "$LATEST_TAG..HEAD" --oneline --grep="^fix" 2>/dev/null | wc -l)
+
+          # Parse semver
+          BASE="${LATEST_TAG#v}"
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$BASE"
+
+          if [ "$FEATS" -gt 0 ]; then
+            MINOR=$((MINOR + 1))
+            PATCH=0
+          elif [ "$FIXES" -gt 0 ]; then
+            PATCH=$((PATCH + 1))
+          else
+            # No conventional commits — use VERSION file or skip
+            echo "no-feat-or-fix=true" >> "$GITHUB_OUTPUT"
+            echo "VERSION=$(cat VERSION)" >> "$GITHUB_OUTPUT"
+            echo "Git tag will come from VERSION file"
+          fi
+
+          NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
+          echo "VERSION=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+          echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+          echo "New version: v$NEW_VERSION"
+
+      - name: Create Git tag
+        run: |
+          VERSION="v${{ steps.version.outputs.VERSION }}"
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git tag -a "$VERSION" -m "Release $VERSION"
+          git push origin "$VERSION"
+
+      - name: Update VERSION file
+        run: |
+          echo "${{ steps.version.outputs.VERSION }}" > VERSION
+          git add VERSION
+          git commit -m "chore: bump version to ${{ steps.version.outputs.VERSION }}"
+          git push
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          build-args: |
+            VERSION=v${{ steps.version.outputs.VERSION }}
+          tags: |
+            tano26/tano_blog:v${{ steps.version.outputs.VERSION }}
+            tano26/tano_blog:latest

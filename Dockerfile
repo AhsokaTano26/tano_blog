@@ -1,13 +1,15 @@
 # ============================================
 # Stage 1: Build Go backend binary
 # ============================================
+ARG VERSION=dev
+
 FROM golang:1.26-alpine AS go-builder
 RUN apk add --no-cache gcc musl-dev
 WORKDIR /build
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download
 COPY backend/ ./
-RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /build/server ./cmd/server/main.go
+RUN CGO_ENABLED=0 go build -ldflags="-s -w -X tano_blog/backend/internal/version.Version=${VERSION}" -o /build/server ./cmd/server/main.go
 
 # ============================================
 # Stage 2: Build Next.js frontend (standalone)
@@ -20,6 +22,7 @@ COPY frontend/ ./
 
 # In Docker, API calls use relative paths (proxied via Next.js rewrites)
 ENV NEXT_PUBLIC_API_URL=
+ENV NEXT_PUBLIC_APP_VERSION=${VERSION}
 
 RUN npm run build
 

@@ -26,6 +26,7 @@ import (
 	"tano_blog/backend/internal/repository"
 	"tano_blog/backend/internal/service"
 	"tano_blog/backend/internal/utils"
+	"tano_blog/backend/internal/version"
 )
 
 func main() {
@@ -357,7 +358,7 @@ func main() {
 			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "error", "error": "database unreachable"})
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+		c.JSON(http.StatusOK, gin.H{"status": "ok", "version": version.Version})
 	})
 
 	port := cfg.Server.Port
@@ -498,12 +499,12 @@ func init() {
 	}
 	gin.SetMode(mode)
 
-	fmt.Println(`
+	fmt.Printf(`
   ╔══════════════════════════════════════╗
-  ║        Tano Blog Backend API         ║
+  ║      Tano Blog Backend API %-8s ║
   ║        Powered by Go + Gin           ║
   ╚══════════════════════════════════════╝
-	`)
+`, version.Version)
 }
 
 // maxBodySize limits the request body size.

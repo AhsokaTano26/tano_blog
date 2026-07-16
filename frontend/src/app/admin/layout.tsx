@@ -385,6 +385,17 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               </button>
             )}
           </div>
+
+          {/* Version */}
+          <div className={`px-3 py-1.5 text-xs ${collapsed ? 'text-center' : ''}`} style={{ color: 'var(--text-info)' }}>
+            {collapsed ? (
+              <span title={`v${process.env.NEXT_PUBLIC_APP_VERSION || 'dev'}`}>
+                v{(process.env.NEXT_PUBLIC_APP_VERSION || 'dev').slice(0, 4)}
+              </span>
+            ) : (
+              <span>v{process.env.NEXT_PUBLIC_APP_VERSION || 'dev'}</span>
+            )}
+          </div>
         </div>
       </aside>
 
