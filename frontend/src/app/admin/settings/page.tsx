@@ -75,13 +75,14 @@ export default function AdminSettings() {
 
   useEffect(() => {
     const current = process.env.NEXT_PUBLIC_APP_VERSION;
-    if (!current || current === 'dev') {
-      setCheckingVersion(false);
-      return;
-    }
     api.admin.checkVersion()
       .then(data => {
-        if (data.latest && isNewerVersion(data.latest, current)) {
+        if (!data.latest) return;
+        if (!current || current === 'dev') {
+          // Dev mode: always show latest available version
+          setLatestVersion(data.latest);
+        } else if (isNewerVersion(data.latest, current)) {
+          // Production: only show if newer
           setLatestVersion(data.latest);
         }
       })
