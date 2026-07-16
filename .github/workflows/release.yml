@@ -80,15 +80,20 @@ jobs:
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git tag -a "$VERSION" -m "Release $VERSION"
-          git push origin "$VERSION"
+          git push origin tag "$VERSION"
 
       - name: Update VERSION file
         if: steps.check.outputs.exists == 'false'
         run: |
           echo "${{ steps.version.outputs.VERSION }}" > VERSION
           git add VERSION
-          git commit -m "chore: bump version to ${{ steps.version.outputs.VERSION }}"
-          git push
+          # Only commit if VERSION actually changed
+          if git diff --cached --quiet HEAD -- VERSION; then
+            echo "VERSION unchanged, skipping commit"
+          else
+            git commit -m "chore: bump version to ${{ steps.version.outputs.VERSION }}"
+            git push origin HEAD:main
+          fi
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
