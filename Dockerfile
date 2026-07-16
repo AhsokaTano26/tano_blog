@@ -2,6 +2,7 @@
 # Stage 1: Build Go backend binary
 # ============================================
 ARG VERSION=dev
+ARG BUILD_TIME=unknown
 
 FROM golang:1.26-alpine AS go-builder
 RUN apk add --no-cache gcc musl-dev
@@ -23,6 +24,7 @@ COPY frontend/ ./
 # In Docker, API calls use relative paths (proxied via Next.js rewrites)
 ENV NEXT_PUBLIC_API_URL=
 ENV NEXT_PUBLIC_APP_VERSION=${VERSION}
+ENV NEXT_PUBLIC_BUILD_TIME=${BUILD_TIME}
 
 RUN npm run build
 

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { api } from '@/lib/api';
-import { Save, Globe, FileText, Palette, MessageSquare, Code, Mail, User, Plus, Trash2, Cpu, Zap, AlertTriangle } from 'lucide-react';
+import { Save, Globe, FileText, Palette, MessageSquare, Code, Mail, User, Plus, Trash2, Cpu, Zap, AlertTriangle, Info } from 'lucide-react';
 import { Loading } from '@/components/Loading';
 import { Select } from '@/components/ConfirmDialog';
 import { MediaField } from '@/components/MediaField';
@@ -28,6 +28,7 @@ const tabs = [
   { key: 'email', label: '邮件通知', icon: Mail },
   { key: 'injection', label: '代码注入', icon: Code },
   { key: 'danger', label: '危险操作', icon: AlertTriangle },
+  { key: 'about', label: '关于', icon: Info },
 ];
 
 export default function AdminSettings() {
@@ -590,7 +591,54 @@ export default function AdminSettings() {
             </div>
           )}
 
-          {activeTab !== 'danger' && (
+          {activeTab === 'about' && (
+            <div className="space-y-5 max-w-2xl">
+              {/* Version */}
+              <div className="p-5 rounded-xl" style={{ background: 'var(--glass-bg)', border: '1px solid var(--glass-border)' }}>
+                <h3 className="text-sm font-semibold mb-3 flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
+                  <Info className="w-4 h-4" style={{ color: 'var(--primary)' }} />
+                  系统版本
+                </h3>
+                <div className="space-y-2 text-sm">
+                  <div className="flex items-center justify-between py-2 px-3 rounded-lg" style={{ background: 'var(--surface-bg)' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>应用版本</span>
+                    <span className="font-mono" style={{ color: 'var(--text-primary)' }}>v{process.env.NEXT_PUBLIC_APP_VERSION || 'dev'}</span>
+                  </div>
+                  <div className="flex items-center justify-between py-2 px-3 rounded-lg" style={{ background: 'var(--surface-bg)' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>前端框架</span>
+                    <span className="font-mono" style={{ color: 'var(--text-primary)' }}>Next.js 16</span>
+                  </div>
+                  <div className="flex items-center justify-between py-2 px-3 rounded-lg" style={{ background: 'var(--surface-bg)' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>后端框架</span>
+                    <span className="font-mono" style={{ color: 'var(--text-primary)' }}>Go + Gin</span>
+                  </div>
+                  <div className="flex items-center justify-between py-2 px-3 rounded-lg" style={{ background: 'var(--surface-bg)' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>构建时间</span>
+                    <span className="font-mono" style={{ color: 'var(--text-primary)' }}>{process.env.NEXT_PUBLIC_BUILD_TIME || '—'}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Links */}
+              <div className="p-5 rounded-xl" style={{ background: 'var(--glass-bg)', border: '1px solid var(--glass-border)' }}>
+                <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--text-primary)' }}>相关链接</h3>
+                <div className="space-y-2 text-sm">
+                  <a href="https://github.com/AhsokaTano26/tano_blog" target="_blank" rel="noopener noreferrer"
+                    className="block py-2 px-3 rounded-lg transition-colors hover:bg-white/5"
+                    style={{ color: 'var(--primary)' }}>
+                    GitHub 仓库 ↗
+                  </a>
+                  <a href="/" target="_blank" rel="noopener noreferrer"
+                    className="block py-2 px-3 rounded-lg transition-colors hover:bg-white/5"
+                    style={{ color: 'var(--primary)' }}>
+                    前台首页 ↗
+                  </a>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab !== 'danger' && activeTab !== 'about' && (
             <div className="pt-4 mt-6" style={{ borderTop: '1px solid var(--glass-border)' }}>
               <button onClick={handleSave} disabled={saving}
                 className="flex items-center gap-1.5 px-6 py-2.5 rounded-lg text-sm font-medium text-white disabled:opacity-50 transition-colors"

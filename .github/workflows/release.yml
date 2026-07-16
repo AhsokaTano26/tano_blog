@@ -86,6 +86,7 @@ jobs:
           push: true
           build-args: |
             VERSION=v${{ steps.version.outputs.VERSION }}
+            BUILD_TIME=${{ github.event.head_commit.timestamp }}
           tags: |
             tano26/tano_blog:v${{ steps.version.outputs.VERSION }}
             tano26/tano_blog:latest

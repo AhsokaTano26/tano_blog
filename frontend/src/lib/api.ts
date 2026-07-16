@@ -37,10 +37,11 @@ async function request<T>(path: string, options: FetchOptions = {}): Promise<T> 
   }
 
   if (!res.ok) {
-    // Session expired — redirect to login if not already there
+    // Session expired — redirect to login and suppress the error
     if (res.status === 401 && typeof window !== 'undefined' && !window.location.pathname.startsWith('/admin/login')) {
       window.location.href = '/admin/login';
-      // Keep throwing so the caller knows the request failed
+      // Don't throw — navigation is already in progress
+      return new Promise(() => {}) as never;
     }
 
     let errMsg = `HTTP ${res.status}`;
