@@ -79,24 +79,10 @@ export default function AdminSettings() {
       setCheckingVersion(false);
       return;
     }
-    fetch('https://hub.docker.com/v2/repositories/tano26/tano_blog/tags?page_size=30')
-      .then(res => res.json())
+    api.admin.checkVersion()
       .then(data => {
-        if (!data.results) { setVersionError(true); return; }
-        const tags = data.results
-          .map((r: any) => r.name)
-          .filter((n: string) => /^v\d+\.\d+\.\d+$/.test(n))
-          .sort((a: string, b: string) => {
-            const pa = parseSemver(a);
-            const pb = parseSemver(b);
-            for (let i = 0; i < 3; i++) {
-              if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) - (pb[i] || 0);
-            }
-            return 0;
-          });
-        const latest = tags[tags.length - 1];
-        if (latest && isNewerVersion(latest, current)) {
-          setLatestVersion(latest);
+        if (data.latest && isNewerVersion(data.latest, current)) {
+          setLatestVersion(data.latest);
         }
       })
       .catch(() => setVersionError(true))

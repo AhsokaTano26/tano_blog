@@ -2,15 +2,20 @@ package handler
 
 import (
 	"encoding/csv"
+	"encoding/json"
+	"io"
 	"net/http"
+	"regexp"
+	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
 	"tano_blog/backend/internal/model"
-		"tano_blog/backend/internal/repository"
+	"tano_blog/backend/internal/repository"
 	"tano_blog/backend/internal/service"
 	"tano_blog/backend/internal/utils"
 )
@@ -131,6 +136,69 @@ func (h *SiteConfigHandler) TestEmail(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "测试邮件已发送至 " + admin.Email + "，请检查收件箱"})
+}
+
+// CheckVersion fetches the latest release tag from Docker Hub (used to avoid browser CORS).
+func (h *SiteConfigHandler) CheckVersion(c *gin.Context) {
+	resp, err := http.Get("https://hub.docker.com/v2/repositories/tano26/tano_blog/tags?page_size=30")
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"latest": ""})
+		return
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"latest": ""})
+		return
+	}
+
+	var data struct {
+		Results []struct {
+			Name string `json:"name"`
+		} `json:"results"`
+	}
+	if err := json.Unmarshal(body, &data); err != nil {
+		c.JSON(http.StatusOK, gin.H{"latest": ""})
+		return
+	}
+
+	re := regexp.MustCompile(`^v\d+\.\d+\.\d+$`)
+	var versions []string
+	for _, t := range data.Results {
+		if re.MatchString(t.Name) {
+			versions = append(versions, t.Name)
+		}
+	}
+
+	sort.Slice(versions, func(i, j int) bool {
+		ai := parseSemver(versions[i])
+		aj := parseSemver(versions[j])
+		for k := 0; k < 3; k++ {
+			if ai[k] != aj[k] {
+				return ai[k] < aj[k]
+			}
+		}
+		return false
+	})
+
+	latest := ""
+	if len(versions) > 0 {
+		latest = versions[len(versions)-1]
+	}
+	c.JSON(http.StatusOK, gin.H{"latest": latest})
+}
+
+func parseSemver(v string) []int {
+	parts := strings.Split(strings.TrimPrefix(v, "v"), ".")
+	res := make([]int, 3)
+	for i, p := range parts {
+		n, _ := strconv.Atoi(p)
+		if i < 3 {
+			res[i] = n
+		}
+	}
+	return res
 }
 
 type AccessLogHandler struct {

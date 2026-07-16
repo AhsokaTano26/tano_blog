@@ -291,6 +291,7 @@ func main() {
 				admin.GET("/config", siteConfigHandler.Get)
 				admin.PUT("/config", siteConfigHandler.Update)
 				admin.POST("/config/test-email", siteConfigHandler.TestEmail)
+				admin.GET("/check-version", siteConfigHandler.CheckVersion)
 
 				admin.GET("/users", authHandler.ListUsers)
 
