@@ -173,7 +173,6 @@ export default function AdminSeries() {
         </div>
       )}
 
-      {/* Set Posts Modal */}
       <div className="flex items-center justify-between text-sm mt-4">
           <span style={{ color: 'var(--text-secondary)' }}>共 {total} 个</span>
           <div className="flex items-center gap-3">
@@ -207,6 +206,7 @@ export default function AdminSeries() {
           </div>
         </div>
 
+      {/* Set Posts Modal */}
       {showPosts && <SetPostsModal series={showPosts} onClose={() => { setShowPosts(null); load(); }} />}
     </div>
   );

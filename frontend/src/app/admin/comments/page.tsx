@@ -600,7 +600,7 @@ export default function AdminComments() {
         )}
 
       {/* Pagination */}
-      {isCommentTab && totalPages > 1 && (
+      {isCommentTab && (
         <div className="flex items-center justify-between text-sm">
           <span style={{ color: 'var(--text-secondary)' }}>共 {total} 条</span>
           <div className="flex items-center gap-3">

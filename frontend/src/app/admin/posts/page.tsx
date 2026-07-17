@@ -577,8 +577,7 @@ export default function AdminPosts() {
         )}
       </div>
 
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between text-sm">
+      <div className="flex items-center justify-between text-sm">
           <span style={{ color: 'var(--text-secondary)' }}>共 {total} 篇</span>
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2">
@@ -610,7 +609,6 @@ export default function AdminPosts() {
             </div>
           </div>
         </div>
-      )}
       {detailPost && (
         <PostDetailDialog
           post={detailPost}
