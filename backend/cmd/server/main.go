@@ -103,7 +103,6 @@ func main() {
 	friendLinkHandler := handler.NewFriendLinkHandler(db)
 	navLinkHandler := handler.NewNavLinkHandler(db)
 	galleryHandler := handler.NewGalleryHandler(galleryRepo)
-	commenterHandler := handler.NewCommenterHandler(db)
 		ipBanRepo := repository.NewIPBanRepo(db)
 		ipBanHandler := handler.NewIPBanHandler(ipBanRepo, repository.NewSiteConfigRepo(db))
 	notifHandler := handler.NewNotificationHandler(db)
@@ -269,10 +268,6 @@ func main() {
 				admin.PUT("/comments/:id", commentHandler.AdminUpdate)
 				admin.GET("/comments/:id/revisions", commentHandler.ListRevisions)
 
-				admin.GET("/commenters", commenterHandler.ListBlocks)
-				admin.POST("/commenters", commenterHandler.Block)
-				admin.DELETE("/commenters/:id", commenterHandler.Unblock)
-				admin.GET("/commenters/comments", commenterHandler.ListCommenterComments)
 
 					admin.GET("/ip-bans", ipBanHandler.ListBans)
 					admin.POST("/ip-bans", ipBanHandler.CreateBan)

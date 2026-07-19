@@ -7,7 +7,6 @@ import (
 	"net/mail"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -153,12 +152,16 @@ func (h *CommentHandler) Create(c *gin.Context) {
 		return
 	}
 
-	// Check blocklist
-	blockRepo := repository.NewCommenterBlockRepo(h.db)
-	if blockRepo.IsBlocked(input.Email, c.ClientIP()) {
-		c.JSON(http.StatusOK, gin.H{"comment": gin.H{"id": "", "content": input.Content, "nickname": input.Nickname, "created_at": time.Now().Format(time.RFC3339)}})
-		return
-	}
+		// Check ban list (IP and email)
+		ipBanRepo := repository.NewIPBanRepo(h.db)
+		ipBans, _ := ipBanRepo.FindActiveByIP(c.ClientIP())
+		emailBans, _ := ipBanRepo.FindActiveByEmail(input.Email)
+		if len(ipBans) > 0 || len(emailBans) > 0 {
+			c.JSON(http.StatusForbidden, gin.H{"error": "您已被封禁"})
+			return
+		}
+
+		// Turnstile verification
 
 	// Turnstile verification
 	if !verifyTurnstile(h.db, "comment", input.CfTurnstileResponse, c.ClientIP()) {
