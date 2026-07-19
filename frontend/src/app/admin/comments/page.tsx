@@ -230,12 +230,18 @@ export default function AdminComments() {
           setLoading(false);
           return;
         }
-        const res = await api.admin.commenters.listComments({ email: commenterEmail || undefined, ip_address: commenterIP || undefined, page: commenterPage, page_size: pageSize });
+	        const cParams: Record<string, string> = {
+	          page: String(commenterPage),
+	          page_size: String(pageSize),
+	        };
+	        if (commenterEmail) cParams.email = commenterEmail;
+	        if (commenterIP) cParams.ip_address = commenterIP;
+	        const res = await api.admin.comments.list(cParams);
         setCommenterResults(res.items);
         setCommenterTotal(res.total);
       } else if (filter === 'blocked') {
         const params: Record<string, string> = { page: String(blockedPage), page_size: String(pageSize) };
-        const res = await api.admin.commenters.list(params);
+        const res = await api.admin.ipBans.list(params);
         setBlockedItems(res.items);
         setBlockedTotal(res.total);
       } else {
@@ -430,7 +436,7 @@ export default function AdminComments() {
                       </div>
                       <button onClick={async () => {
                         try {
-                          await api.admin.commenters.block({ email: item.email, ip_address: item.ip_address, reason: '管理员封禁' });
+                          await api.admin.ipBans.create({ scope: "comment", email: item.email, ip_address: item.ip_address, reason: '管理员封禁' });
                           load();
                         } catch (e) { /* empty */ }
                       }}
@@ -493,7 +499,7 @@ export default function AdminComments() {
                       </div>
                       <button onClick={async () => {
                         try {
-                          await api.admin.commenters.unblock(item.id);
+                          await api.admin.ipBans.remove(item.id);
                           load();
                         } catch (e) { /* empty */ }
                       }}

@@ -163,7 +163,7 @@ const sections: HelpSection[] = [
       {
         title: '评论人管理',
         content: [
-          '评论人管理 (/admin/commenters) 用于管理评论者：',
+          '评论人管理 (封禁管理 (/admin/blocked) 用于管理评论者：',
           '• 查看所有评论者的发言记录',
           '• 按邮箱或 IP 封禁评论者',
           '• 封禁后该用户/IP 发表评论会被自动拦截',

@@ -403,26 +403,10 @@ export const api = {
       reorder: (ids: string[]) =>
         request('/api/v1/admin/nav-links/reorder', { method: 'PUT', body: JSON.stringify({ ids }) }),
     },
-    commenters: {
-      list: (params?: Record<string, string>) =>
-        request<{ items: any[]; total: number; page: number; size: number }>('/api/v1/admin/commenters', { params }),
-      block: (data: { email?: string; ip_address?: string; reason?: string }) =>
-        request('/api/v1/admin/commenters', { method: 'POST', body: JSON.stringify(data) }),
-      unblock: (id: string) =>
-        request(`/api/v1/admin/commenters/${id}`, { method: 'DELETE' }),
-      listComments: (params: { email?: string; ip_address?: string; page?: number; page_size?: number }) => {
-        const query: Record<string, string> = {};
-        if (params.email) query.email = params.email;
-        if (params.ip_address) query.ip_address = params.ip_address;
-        if (params.page) query.page = String(params.page);
-        if (params.page_size) query.page_size = String(params.page_size);
-        return request<{ items: any[]; total: number; page: number; size: number }>('/api/v1/admin/commenters/comments', { params: query });
-      },
-    },
     ipBans: {
       list: (params?: Record<string, string>) =>
         request<{ items: any[]; total: number; page: number; size: number }>('/api/v1/admin/ip-bans', { params }),
-      create: (data: { ip_address: string; scope: string; reason?: string; expires_at?: string }) =>
+      create: (data: { ip_address?: string; email?: string; scope: string; reason?: string; expires_at?: string }) =>
         request('/api/v1/admin/ip-bans', { method: 'POST', body: JSON.stringify(data) }),
       remove: (id: string) =>
         request(`/api/v1/admin/ip-bans/${id}`, { method: 'DELETE' }),
