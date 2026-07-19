@@ -104,6 +104,8 @@ func main() {
 	navLinkHandler := handler.NewNavLinkHandler(db)
 	galleryHandler := handler.NewGalleryHandler(galleryRepo)
 	commenterHandler := handler.NewCommenterHandler(db)
+		ipBanRepo := repository.NewIPBanRepo(db)
+		ipBanHandler := handler.NewIPBanHandler(ipBanRepo, repository.NewSiteConfigRepo(db))
 	notifHandler := handler.NewNotificationHandler(db)
 	aiHandler := handler.NewAIHandler(aiService, db)
 
@@ -270,6 +272,12 @@ func main() {
 				admin.POST("/commenters", commenterHandler.Block)
 				admin.DELETE("/commenters/:id", commenterHandler.Unblock)
 				admin.GET("/commenters/comments", commenterHandler.ListCommenterComments)
+
+					admin.GET("/ip-bans", ipBanHandler.ListBans)
+					admin.POST("/ip-bans", ipBanHandler.CreateBan)
+					admin.DELETE("/ip-bans/:id", ipBanHandler.DeleteBan)
+					admin.GET("/ip-bans/config", ipBanHandler.GetBanConfig)
+					admin.PUT("/ip-bans/config", ipBanHandler.UpdateBanConfig)
 
 				admin.GET("/media", mediaHandler.List)
 				admin.DELETE("/media/:id", mediaHandler.Delete)

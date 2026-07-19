@@ -96,6 +96,8 @@ func (h *SiteConfigHandler) Update(c *gin.Context) {
 		"site_favicon": true, "about_content": true, "music_playlist": true, "music_page_config": true,
 		"ai_enabled": true, "ai_api_url": true, "ai_api_key": true, "ai_model": true,
 		"turnstile_enabled": true, "turnstile_sitekey": true, "turnstile_secret": true,
+		"ip_ban_auto_enabled": true, "ip_ban_auto_threshold": true, "ip_ban_auto_window": true,
+		"ip_ban_auto_scope": true, "ip_ban_auto_duration": true,
 	}
 
 	for key, value := range input {
