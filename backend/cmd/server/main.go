@@ -122,6 +122,7 @@ func main() {
 	}
 	r.Use(middleware.CORS(allowedOrigins))
 	r.Use(middleware.SecurityHeaders())
+	r.Use(middleware.IPBan(ipBanRepo))
 
 	// Serve uploaded files
 	r.Static("/uploads", cfg.Upload.Dir)
