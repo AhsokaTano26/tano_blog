@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { api } from '@/lib/api';
-import { Save, Globe, FileText, Palette, MessageSquare, Code, Mail, User, Plus, Trash2, Cpu, Zap, AlertTriangle, Info, ArrowUpCircle, GitCompare } from 'lucide-react';
+import { Save, Globe, FileText, Palette, MessageSquare, Code, Mail, User, Plus, Trash2, Cpu, Zap, AlertTriangle, Info, ArrowUpCircle, GitCompare, Shield } from 'lucide-react';
 import { Loading } from '@/components/Loading';
 import { Select } from '@/components/ConfirmDialog';
 import { MediaField } from '@/components/MediaField';
@@ -19,11 +19,11 @@ const contactTypes = [
 ];
 
 const tabs = [
-  { key: 'profile', label: '个人资料', icon: User },
   { key: 'basic', label: '基本设置', icon: Globe },
   { key: 'article', label: '文章设置', icon: FileText },
   { key: 'appearance', label: '外观设置', icon: Palette },
   { key: 'comment', label: '评论设置', icon: MessageSquare },
+  { key: 'turnstile', label: '人机验证', icon: Shield },
   { key: 'ai', label: 'AI 设置', icon: Cpu },
   { key: 'email', label: '邮件通知', icon: Mail },
   { key: 'injection', label: '代码注入', icon: Code },
@@ -181,86 +181,6 @@ export default function AdminSettings() {
 
         {/* Tab content */}
         <div className="p-6">
-          {activeTab === 'profile' && (
-            <div className="space-y-5 max-w-2xl">
-              <div>
-                <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>头像</label>
-                <MediaField value={config.profile_avatar || ''} onChange={url => setConfig({ ...config, profile_avatar: url })} rounded="circle" placeholder="/aimi.png" filterType="image" />
-                <p className="text-xs mt-1" style={{ color: 'var(--text-info)' }}>图片路径或 URL</p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>显示名称</label>
-                <input type="text" value={config.profile_name || ''} onChange={e => setConfig({ ...config, profile_name: e.target.value })}
-                  placeholder="Tano" className={inputClass} style={inputStyle} />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>个人简介</label>
-                <textarea value={config.profile_bio || ''} onChange={e => setConfig({ ...config, profile_bio: e.target.value })}
-                  rows={2} placeholder="A BanG Dreamer!" className={`${inputClass} resize-none`} style={inputStyle} />
-              </div>
-
-              {/* Contacts */}
-              <div>
-                <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>联系方式</label>
-                <div className="space-y-2">
-                  {getContacts().map((c, i) => (
-                    <div key={i} className="flex items-center gap-2">
-                      <div className="w-32">
-                        <Select value={c.type}
-                          onChange={v => {
-                            const list = getContacts();
-                            list[i] = { ...list[i], type: v };
-                            setContacts(list);
-                          }}
-                          options={contactTypes.map(t => ({ value: t.value, label: t.label }))} />
-                      </div>
-                      <input type="text" value={c.value}
-                        onChange={e => {
-                          const list = getContacts();
-                          list[i] = { ...list[i], value: e.target.value };
-                          setContacts(list);
-                        }}
-                        placeholder={contactTypes.find(t => t.value === c.type)?.label || ''}
-                        className={`flex-1 ${inputClass}`} style={inputStyle} />
-                      <button onClick={() => setContacts(getContacts().filter((_, j) => j !== i))}
-                        className="p-2 rounded-lg transition-colors hover:bg-red-500/10"
-                        style={{ color: 'hsl(0, 60%, 55%)' }}>
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-                <button onClick={() => {
-                  const used = getContacts().map(c => c.type);
-                  const next = contactTypes.find(t => !used.includes(t.value));
-                  if (next) setContacts([...getContacts(), { type: next.value, value: '' }]);
-                }}
-                  className="mt-2 flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm transition-colors"
-                  style={{ color: 'var(--primary)', background: 'var(--primary-sub)' }}>
-                  <Plus className="w-4 h-4" />
-                  添加联系方式
-                </button>
-              </div>
-
-              {/* About page content */}
-              <div className="pt-4" style={{ borderTop: '1px solid var(--glass-border)' }}>
-                <div className="flex items-center gap-2 mb-3">
-                  <FileText className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
-                  <span className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>关于页面</span>
-                </div>
-                <p className="text-xs mb-2" style={{ color: 'var(--text-info)' }}>支持 Markdown 格式，将显示在关于页面头像/简介下方</p>
-                <textarea
-                  value={config.about_content || ''}
-                  onChange={e => setConfig({ ...config, about_content: e.target.value })}
-                  rows={12}
-                  placeholder="在此编写关于页面的详细内容，支持 Markdown 格式..."
-                  className={`${inputClass} resize-y font-mono text-sm leading-relaxed`}
-                  style={inputStyle}
-                />
-              </div>
-            </div>
-          )}
-
           {activeTab === 'basic' && (
             <div className="space-y-5 max-w-2xl">
               <div>
@@ -287,6 +207,23 @@ export default function AdminSettings() {
                 <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>站点 Favicon</label>
                 <MediaField value={config.site_favicon || ''} onChange={url => setConfig({ ...config, site_favicon: url })} previewSize={32} placeholder="/favicon.ico" filterType="image" />
                 <p className="text-xs mt-1" style={{ color: 'var(--text-info)' }}>建议尺寸 32×32，支持 .ico / .png / .svg</p>
+              </div>
+
+              {/* About page content */}
+              <div className="pt-4" style={{ borderTop: '1px solid var(--glass-border)' }}>
+                <div className="flex items-center gap-2 mb-3">
+                  <FileText className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
+                  <span className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>关于页面</span>
+                </div>
+                <p className="text-xs mb-2" style={{ color: 'var(--text-info)' }}>支持 Markdown 格式，将显示在关于页面头像/简介下方</p>
+                <textarea
+                  value={config.about_content || ''}
+                  onChange={e => setConfig({ ...config, about_content: e.target.value })}
+                  rows={12}
+                  placeholder="在此编写关于页面的详细内容，支持 Markdown 格式..."
+                  className={`${inputClass} resize-y font-mono text-sm leading-relaxed`}
+                  style={inputStyle}
+                />
               </div>
             </div>
           )}
@@ -384,9 +321,13 @@ export default function AdminSettings() {
                 </div>
               </div>
 
-              {/* Turnstile settings */}
-              <div className="pt-4" style={{ borderTop: '1px solid var(--glass-border)' }}>
-                <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>Turnstile 全站人机验证</label>
+            </div>
+          )}
+
+          {activeTab === 'turnstile' && (
+            <div className="space-y-5 max-w-2xl">
+              <div>
+                <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>Turnstile 人机验证</label>
                 <div className="flex gap-2 mb-3">
                   <button onClick={() => setConfig({ ...config, turnstile_enabled: 'true' })}
                     className="px-4 py-2 rounded-lg text-sm transition-colors"
@@ -403,13 +344,27 @@ export default function AdminSettings() {
                       border: config.turnstile_enabled === 'false' ? 'none' : '1px solid var(--glass-border)',
                     }}>关闭</button>
                 </div>
-                <p className="text-xs mb-3" style={{ color: 'var(--text-info)' }}>Cloudflare 提供的免费人机验证服务，可为不同模块分别启用</p>
+                <p className="text-xs mb-3" style={{ color: 'var(--text-info)' }}>Cloudflare 提供的免费人机验证服务，开启后可为不同模块分别启用验证</p>
 
                 {config.turnstile_enabled === 'true' && (
-                  <div className="space-y-3 pl-3" style={{ borderLeft: '2px solid var(--glass-border)' }}>
+                  <div className="space-y-4">
                     <div>
-                      <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>启用模块</label>
-                      <div className="flex flex-wrap gap-3 mb-3">
+                      <label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>Site Key</label>
+                      <input type="text" value={config.turnstile_sitekey || ''} onChange={e => setConfig({ ...config, turnstile_sitekey: e.target.value })}
+                        placeholder="0x4AAAAAAA..."
+                        className="w-full px-3 py-2 rounded-lg text-sm font-mono outline-none"
+                        style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>Secret Key</label>
+                      <input type="password" value={config.turnstile_secret || ''} onChange={e => setConfig({ ...config, turnstile_secret: e.target.value })}
+                        placeholder="输入 Secret Key"
+                        className="w-full px-3 py-2 rounded-lg text-sm font-mono outline-none"
+                        style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>启用模块</label>
+                      <div className="flex flex-wrap gap-4">
                         {[
                           { key: 'comment', label: '评论提交' },
                           { key: 'link', label: '友链申请' },
@@ -417,7 +372,7 @@ export default function AdminSettings() {
                           const modules = (config.turnstile_modules || 'comment,link').split(',').map(s => s.trim());
                           const checked = modules.includes(mod.key);
                           return (
-                            <label key={mod.key} className="flex items-center gap-1.5 text-sm cursor-pointer" style={{ color: 'var(--text-primary)' }}>
+                            <label key={mod.key} className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: 'var(--text-primary)' }}>
                               <input type="checkbox" checked={checked} onChange={() => {
                                 const cur = (config.turnstile_modules || 'comment,link').split(',').map(s => s.trim()).filter(Boolean);
                                 const next = checked ? cur.filter(k => k !== mod.key) : [...cur, mod.key];
@@ -429,20 +384,6 @@ export default function AdminSettings() {
                           );
                         })}
                       </div>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>Site Key</label>
-                      <input type="text" value={config.turnstile_sitekey || ''} onChange={e => setConfig({ ...config, turnstile_sitekey: e.target.value })}
-                        placeholder="0x4AAAAAAA..."
-                        className="w-full px-3 py-2 rounded-lg text-sm font-mono outline-none"
-                        style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>Secret Key</label>
-                      <input type="password" value={config.turnstile_secret || ''} onChange={e => setConfig({ ...config, turnstile_secret: e.target.value })}
-                        placeholder="输入 Secret Key"
-                        className="w-full px-3 py-2 rounded-lg text-sm font-mono outline-none"
-                        style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
                     </div>
                   </div>
                 )}

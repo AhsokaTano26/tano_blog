@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { api } from '@/lib/api';
 import QRCode from 'qrcode';
-import { Save, Lock, User, Shield, KeyRound, Trash2, Plus, AlertTriangle } from 'lucide-react';
+import { Save, Lock, User, Shield, KeyRound, Trash2, Plus, AlertTriangle, Globe } from 'lucide-react';
 import { Loading } from '@/components/Loading';
 import { useConfirm } from '@/components/ConfirmDialog';
 import { MediaField } from '@/components/MediaField';
@@ -30,6 +30,27 @@ export default function AdminProfile() {
   const [avatarUrl, setAvatarUrl] = useState('');
   const [bio, setBio] = useState('');
 
+  // Site public profile fields
+  const [siteConfig, setSiteConfig] = useState<Record<string, string>>({});
+  const [pubSaving, setPubSaving] = useState(false);
+
+  const contactTypes = [
+    { value: 'email', label: '邮箱' },
+    { value: 'github', label: 'GitHub' },
+    { value: 'twitter', label: 'Twitter/X' },
+    { value: 'bilibili', label: 'B站' },
+    { value: 'telegram', label: 'Telegram' },
+    { value: 'qq', label: 'QQ' },
+    { value: 'link', label: '链接' },
+  ];
+
+  function getPubContacts(): { type: string; value: string }[] {
+    try { return JSON.parse(siteConfig.profile_contacts || '[]'); } catch { return []; }
+  }
+  function setPubContacts(contacts: { type: string; value: string }[]) {
+    setSiteConfig({ ...siteConfig, profile_contacts: JSON.stringify(contacts) });
+  }
+
   // Password fields
   const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -52,6 +73,8 @@ export default function AdminProfile() {
         setTab('password');
       }
     }).finally(() => setLoading(false));
+
+    api.admin.config.get().then(res => setSiteConfig(res.config)).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -74,6 +97,18 @@ export default function AdminProfile() {
       setMessage(e.message || '保存失败');
     }
     setSaving(false);
+  }
+
+  async function handleSavePublicProfile() {
+    setPubSaving(true);
+    try {
+      await api.admin.config.update(siteConfig);
+      setMessage('公开资料已保存');
+      setTimeout(() => setMessage(''), 3000);
+    } catch (e: any) {
+      setMessage(e.message || '保存失败');
+    }
+    setPubSaving(false);
   }
 
   async function handleChangePassword() {
@@ -314,6 +349,85 @@ export default function AdminProfile() {
                 <Save className="w-4 h-4" />
                 {saving ? '保存中...' : '保存'}
               </button>
+
+              {/* Public profile (site config) */}
+              <div className="pt-6 mt-6" style={{ borderTop: '2px solid var(--glass-border)' }}>
+                <div className="flex items-center gap-2 mb-4">
+                  <Globe className="w-5 h-5" style={{ color: 'var(--primary)' }} />
+                  <h3 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>公开资料</h3>
+                  <span className="text-xs" style={{ color: 'var(--text-info)' }}>显示在关于页面</span>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>头像</label>
+                  <MediaField value={siteConfig.profile_avatar || ''} onChange={url => setSiteConfig({ ...siteConfig, profile_avatar: url })} rounded="circle" placeholder="/aimi.png" filterType="image" />
+                  <p className="text-xs mt-1" style={{ color: 'var(--text-info)' }}>图片路径或 URL</p>
+                </div>
+                <div className="mt-4">
+                  <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>显示名称</label>
+                  <input type="text" value={siteConfig.profile_name || ''} onChange={e => setSiteConfig({ ...siteConfig, profile_name: e.target.value })}
+                    placeholder="Tano" className={inputClass} style={inputStyle} />
+                </div>
+                <div className="mt-4">
+                  <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>个人简介</label>
+                  <textarea value={siteConfig.profile_bio || ''} onChange={e => setSiteConfig({ ...siteConfig, profile_bio: e.target.value })}
+                    rows={2} placeholder="A BanG Dreamer!" className={`${inputClass} resize-none`} style={inputStyle} />
+                </div>
+
+                {/* Contacts */}
+                <div className="mt-4">
+                  <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>联系方式</label>
+                  <div className="space-y-2">
+                    {getPubContacts().map((c, i) => (
+                      <div key={i} className="flex items-center gap-2">
+                        <div className="w-32">
+                          <select value={c.type} onChange={v => {
+                            const list = getPubContacts();
+                            list[i] = { ...list[i], type: v.target.value };
+                            setPubContacts(list);
+                          }}
+                            className="w-full px-2 py-1.5 rounded-lg text-sm outline-none"
+                            style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }}>
+                            {contactTypes.map(t => (
+                              <option key={t.value} value={t.value}>{t.label}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <input type="text" value={c.value}
+                          onChange={e => {
+                            const list = getPubContacts();
+                            list[i] = { ...list[i], value: e.target.value };
+                            setPubContacts(list);
+                          }}
+                          placeholder={contactTypes.find(t => t.value === c.type)?.label || ''}
+                          className={`flex-1 ${inputClass}`} style={inputStyle} />
+                        <button onClick={() => setPubContacts(getPubContacts().filter((_, j) => j !== i))}
+                          className="p-2 rounded-lg transition-colors hover:bg-red-500/10"
+                          style={{ color: 'hsl(0, 60%, 55%)' }}>
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <button onClick={() => {
+                    const used = getPubContacts().map(c => c.type);
+                    const next = contactTypes.find(t => !used.includes(t.value));
+                    if (next) setPubContacts([...getPubContacts(), { type: next.value, value: '' }]);
+                  }}
+                    className="mt-2 flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm transition-colors"
+                    style={{ color: 'var(--primary)', background: 'var(--primary-sub)' }}>
+                    <Plus className="w-4 h-4" />
+                    添加联系方式
+                  </button>
+                </div>
+
+                <button onClick={handleSavePublicProfile} disabled={pubSaving}
+                  className="mt-6 flex items-center gap-1.5 px-6 py-2.5 rounded-lg text-sm font-medium text-white disabled:opacity-50 transition-colors"
+                  style={{ background: 'var(--primary)' }}>
+                  <Save className="w-4 h-4" />
+                  {pubSaving ? '保存中...' : '保存公开资料'}
+                </button>
+              </div>
             </div>
           )}
 
