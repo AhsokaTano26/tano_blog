@@ -386,10 +386,6 @@ func (h *AuthHandler) TOTPVerify(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "验证码错误"})
 		return
 	}
-
-		checkAutoBan(h.db, c.ClientIP())
-		flc.reset(c.ClientIP())
-
 	h.db.Model(&user).Update("totp_enabled", true)
 	c.JSON(http.StatusOK, gin.H{"message": "TOTP 已启用"})
 }
