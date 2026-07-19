@@ -17,12 +17,35 @@ export default function LinksPage() {
   const [submitted, setSubmitted] = useState(false);
   const [formError, setFormError] = useState('');
 
+  // Turnstile
+  const [turnstileEnabled, setTurnstileEnabled] = useState(false);
+  const [turnstileSitekey, setTurnstileSitekey] = useState('');
+  const [turnstileToken, setTurnstileToken] = useState('');
+  const [turnstileLoaded, setTurnstileLoaded] = useState(false);
+
   useEffect(() => {
     api.getLinks().then(res => {
       setLinks(res.items);
     }).catch(() => {
       setError('加载失败');
     }).finally(() => setLoading(false));
+
+    api.getPublicConfig().then(res => {
+      if (res.config?.turnstile_enabled === 'true' && res.config?.turnstile_sitekey && (res.config?.turnstile_modules || 'comment,link').split(',').map(s => s.trim()).includes('link')) {
+        setTurnstileEnabled(true);
+        setTurnstileSitekey(res.config.turnstile_sitekey);
+        if (!document.querySelector('script[src*="turnstile"]')) {
+          const script = document.createElement('script');
+          script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js';
+          script.async = true;
+          script.defer = true;
+          script.onload = () => setTurnstileLoaded(true);
+          document.head.appendChild(script);
+        } else {
+          setTurnstileLoaded(true);
+        }
+      }
+    });
   }, []);
 
   function handleSubmit(e: React.FormEvent) {
@@ -35,7 +58,7 @@ export default function LinksPage() {
     catch { setFormError('请输入有效的网站地址'); return; }
 
     setSubmitting(true);
-    api.applyLink(form).then(() => {
+    api.applyLink({ ...form, cf_turnstile_response: turnstileToken }).then(() => {
       setSubmitted(true);
       setForm({ name: '', url: '', description: '', avatar: '', email: '' });
     }).catch((e) => {
@@ -161,6 +184,12 @@ export default function LinksPage() {
 
             {formError && (
               <p className="text-sm" style={{ color: 'var(--danger)' }}>{formError}</p>
+            )}
+
+            {turnstileEnabled && (
+              <div className="cf-turnstile" data-sitekey={turnstileSitekey}
+                data-action="turnstile-link-v2"
+                data-callback={(token: string) => setTurnstileToken(token)} />
             )}
 
             <button type="submit" disabled={submitting}

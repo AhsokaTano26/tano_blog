@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/url"
 	"regexp"
 	"sort"
 	"strconv"
@@ -462,6 +463,55 @@ func (h *AccessLogHandler) Clear(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "已清空"})
 }
+
+
+func verifyTurnstile(db *gorm.DB, module, token, ip string) bool {
+	configRepo := repository.NewSiteConfigRepo(db)
+	enabled, _ := configRepo.Get("turnstile_enabled")
+	if enabled != "true" {
+		return true
+	}
+
+	modules, _ := configRepo.Get("turnstile_modules")
+	if modules != "" {
+		found := false
+		for _, m := range strings.Split(modules, ",") {
+			if strings.TrimSpace(m) == module {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return true
+		}
+	} else if module != "comment" {
+		return true
+	}
+
+	secret, err := configRepo.Get("turnstile_secret")
+	if err != nil || secret == "" {
+		return true
+	}
+
+	resp, err := http.PostForm("https://challenges.cloudflare.com/turnstile/v0/siteverify", url.Values{
+		"secret":   {secret},
+		"response": {token},
+		"remoteip": {ip},
+	})
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	var result struct {
+		Success bool `json:"success"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil || !result.Success {
+		return false
+	}
+	return true
+}
+
 
 func parseInt(s string, defaultVal int) int {
 	if s == "" {

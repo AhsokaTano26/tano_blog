@@ -39,14 +39,21 @@ func (h *FriendLinkHandler) ListPublic(c *gin.Context) {
 // Apply creates a new friend link application with pending status
 func (h *FriendLinkHandler) Apply(c *gin.Context) {
 	var input struct {
-		Name        string `json:"name" binding:"required"`
-		URL         string `json:"url" binding:"required"`
-		Description string `json:"description"`
-		Avatar      string `json:"avatar"`
-		Email       string `json:"email"`
+		Name                string `json:"name" binding:"required"`
+		URL                 string `json:"url" binding:"required"`
+		Description         string `json:"description"`
+		Avatar              string `json:"avatar"`
+		Email               string `json:"email"`
+		CfTurnstileResponse string `json:"cf_turnstile_response"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "请输入名称和网站地址"})
+		return
+	}
+
+	// Turnstile verification
+	if !verifyTurnstile(h.db, "link", input.CfTurnstileResponse, c.ClientIP()) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "验证失败，请刷新页面重试"})
 		return
 	}
 

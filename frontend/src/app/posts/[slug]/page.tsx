@@ -273,7 +273,7 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
   // Load Turnstile config
   useEffect(() => {
     api.getPublicConfig().then(res => {
-      if (res.config?.turnstile_enabled === 'true' && res.config?.turnstile_sitekey) {
+      if (res.config?.turnstile_enabled === 'true' && res.config?.turnstile_sitekey && (res.config?.turnstile_modules || 'comment,link').split(',').map(s => s.trim()).includes('comment')) {
         setTurnstileEnabled(true);
         setTurnstileSitekey(res.config.turnstile_sitekey);
         // Load Turnstile script

@@ -2,12 +2,9 @@ package handler
 
 import (
 	"encoding/csv"
-	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/mail"
-	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -163,29 +160,10 @@ func (h *CommentHandler) Create(c *gin.Context) {
 		return
 	}
 
-	// Turnstile verification (only if enabled in config)
-	configRepo := repository.NewSiteConfigRepo(h.db)
-	turnstileEnabled, _ := configRepo.Get("turnstile_enabled")
-	if turnstileEnabled == "true" {
-		secret, err := configRepo.Get("turnstile_secret")
-		if err == nil && secret != "" {
-			resp, err := http.PostForm("https://challenges.cloudflare.com/turnstile/v0/siteverify", url.Values{
-				"secret":   {secret},
-				"response": {input.CfTurnstileResponse},
-				"remoteip": {c.ClientIP()},
-			})
-			if err == nil {
-				body, _ := io.ReadAll(resp.Body)
-				resp.Body.Close()
-				var result struct {
-					Success bool `json:"success"`
-				}
-				if err := json.Unmarshal(body, &result); err == nil && !result.Success {
-					c.JSON(http.StatusForbidden, gin.H{"error": "验证失败，请刷新页面重试"})
-					return
-				}
-			}
-		}
+	// Turnstile verification
+	if !verifyTurnstile(h.db, "comment", input.CfTurnstileResponse, c.ClientIP()) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "验证失败，请刷新页面重试"})
+		return
 	}
 
 	if len(input.Nickname) == 0 {

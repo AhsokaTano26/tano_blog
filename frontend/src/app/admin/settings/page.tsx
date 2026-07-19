@@ -386,7 +386,7 @@ export default function AdminSettings() {
 
               {/* Turnstile settings */}
               <div className="pt-4" style={{ borderTop: '1px solid var(--glass-border)' }}>
-                <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>Turnstile 人机验证</label>
+                <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>Turnstile 全站人机验证</label>
                 <div className="flex gap-2 mb-3">
                   <button onClick={() => setConfig({ ...config, turnstile_enabled: 'true' })}
                     className="px-4 py-2 rounded-lg text-sm transition-colors"
@@ -403,10 +403,33 @@ export default function AdminSettings() {
                       border: config.turnstile_enabled === 'false' ? 'none' : '1px solid var(--glass-border)',
                     }}>关闭</button>
                 </div>
-                <p className="text-xs mb-3" style={{ color: 'var(--text-info)' }}>开启后，评论提交需要完成 Turnstile 人机验证（Cloudflare 提供的免费验证服务）</p>
+                <p className="text-xs mb-3" style={{ color: 'var(--text-info)' }}>Cloudflare 提供的免费人机验证服务，可为不同模块分别启用</p>
 
                 {config.turnstile_enabled === 'true' && (
                   <div className="space-y-3 pl-3" style={{ borderLeft: '2px solid var(--glass-border)' }}>
+                    <div>
+                      <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>启用模块</label>
+                      <div className="flex flex-wrap gap-3 mb-3">
+                        {[
+                          { key: 'comment', label: '评论提交' },
+                          { key: 'link', label: '友链申请' },
+                        ].map(mod => {
+                          const modules = (config.turnstile_modules || 'comment,link').split(',').map(s => s.trim());
+                          const checked = modules.includes(mod.key);
+                          return (
+                            <label key={mod.key} className="flex items-center gap-1.5 text-sm cursor-pointer" style={{ color: 'var(--text-primary)' }}>
+                              <input type="checkbox" checked={checked} onChange={() => {
+                                const cur = (config.turnstile_modules || 'comment,link').split(',').map(s => s.trim()).filter(Boolean);
+                                const next = checked ? cur.filter(k => k !== mod.key) : [...cur, mod.key];
+                                setConfig({ ...config, turnstile_modules: next.join(',') });
+                              }}
+                                className="rounded" style={{ accentColor: 'var(--primary)' }} />
+                              {mod.label}
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
                     <div>
                       <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>Site Key</label>
                       <input type="text" value={config.turnstile_sitekey || ''} onChange={e => setConfig({ ...config, turnstile_sitekey: e.target.value })}
