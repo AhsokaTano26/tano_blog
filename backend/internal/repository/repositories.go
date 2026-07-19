@@ -984,6 +984,15 @@ func (r *CommenterBlockRepo) ListCommentsByEmailOrIP(email, ip string, page, pag
 	return items, total, err
 }
 
+func (r *SiteConfigRepo) Get(key string) (string, error) {
+	var config model.SiteConfig
+	err := r.db.Where("key = ?", key).First(&config).Error
+	if err != nil {
+		return "", err
+	}
+	return config.Value, nil
+}
+
 func (r *SiteConfigRepo) Upsert(key, value, valueType string) error {
 	var config model.SiteConfig
 	result := r.db.Where("key = ?", key).First(&config)

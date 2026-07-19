@@ -43,6 +43,7 @@ func (h *SiteConfigHandler) GetPublic(c *gin.Context) {
 		"accent_color", "head_injection", "content_head_injection", "footer_injection",
 		"profile_avatar", "profile_name", "profile_bio", "profile_contacts",
 		"site_favicon", "about_content", "music_playlist", "music_page_config",
+		"turnstile_enabled", "turnstile_sitekey",
 	}
 
 	configs, err := h.repo.GetByKeys(publicKeys)
@@ -93,6 +94,7 @@ func (h *SiteConfigHandler) Update(c *gin.Context) {
 		"profile_avatar": true, "profile_name": true, "profile_bio": true, "profile_contacts": true,
 		"site_favicon": true, "about_content": true, "music_playlist": true, "music_page_config": true,
 		"ai_enabled": true, "ai_api_url": true, "ai_api_key": true, "ai_model": true,
+		"turnstile_enabled": true, "turnstile_sitekey": true, "turnstile_secret": true,
 	}
 
 	for key, value := range input {

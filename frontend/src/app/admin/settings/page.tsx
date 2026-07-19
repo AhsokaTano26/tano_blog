@@ -383,6 +383,47 @@ export default function AdminSettings() {
                     }}>关闭</button>
                 </div>
               </div>
+
+              {/* Turnstile settings */}
+              <div className="pt-4" style={{ borderTop: '1px solid var(--glass-border)' }}>
+                <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>Turnstile 人机验证</label>
+                <div className="flex gap-2 mb-3">
+                  <button onClick={() => setConfig({ ...config, turnstile_enabled: 'true' })}
+                    className="px-4 py-2 rounded-lg text-sm transition-colors"
+                    style={{
+                      background: config.turnstile_enabled === 'true' ? 'hsl(142, 60%, 50%)' : 'var(--surface-bg)',
+                      color: config.turnstile_enabled === 'true' ? '#fff' : 'var(--text-secondary)',
+                      border: config.turnstile_enabled === 'true' ? 'none' : '1px solid var(--glass-border)',
+                    }}>开启</button>
+                  <button onClick={() => setConfig({ ...config, turnstile_enabled: 'false' })}
+                    className="px-4 py-2 rounded-lg text-sm transition-colors"
+                    style={{
+                      background: config.turnstile_enabled === 'false' ? 'hsl(0, 60%, 55%)' : 'var(--surface-bg)',
+                      color: config.turnstile_enabled === 'false' ? '#fff' : 'var(--text-secondary)',
+                      border: config.turnstile_enabled === 'false' ? 'none' : '1px solid var(--glass-border)',
+                    }}>关闭</button>
+                </div>
+                <p className="text-xs mb-3" style={{ color: 'var(--text-info)' }}>开启后，评论提交需要完成 Turnstile 人机验证（Cloudflare 提供的免费验证服务）</p>
+
+                {config.turnstile_enabled === 'true' && (
+                  <div className="space-y-3 pl-3" style={{ borderLeft: '2px solid var(--glass-border)' }}>
+                    <div>
+                      <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>Site Key</label>
+                      <input type="text" value={config.turnstile_sitekey || ''} onChange={e => setConfig({ ...config, turnstile_sitekey: e.target.value })}
+                        placeholder="0x4AAAAAAA..."
+                        className="w-full px-3 py-2 rounded-lg text-sm font-mono outline-none"
+                        style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>Secret Key</label>
+                      <input type="password" value={config.turnstile_secret || ''} onChange={e => setConfig({ ...config, turnstile_secret: e.target.value })}
+                        placeholder="输入 Secret Key"
+                        className="w-full px-3 py-2 rounded-lg text-sm font-mono outline-none"
+                        style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 

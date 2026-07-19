@@ -2,9 +2,12 @@ package handler
 
 import (
 	"encoding/csv"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/mail"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -134,12 +137,13 @@ func (h *CommentHandler) Create(c *gin.Context) {
 	}
 
 	var input struct {
-		ParentID string `json:"parent_id"`
-		Nickname string `json:"nickname" binding:"required"`
-		Email    string `json:"email"`
-		Website  string `json:"website"`
-		Content  string `json:"content" binding:"required"`
-		HpField  string `json:"hp_field"`
+		ParentID          string `json:"parent_id"`
+		Nickname          string `json:"nickname" binding:"required"`
+		Email             string `json:"email"`
+		Website           string `json:"website"`
+		Content           string `json:"content" binding:"required"`
+		HpField           string `json:"hp_field"`
+		CfTurnstileResponse string `json:"cf_turnstile_response"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "请输入评论内容"})
@@ -157,6 +161,31 @@ func (h *CommentHandler) Create(c *gin.Context) {
 	if blockRepo.IsBlocked(input.Email, c.ClientIP()) {
 		c.JSON(http.StatusOK, gin.H{"comment": gin.H{"id": "", "content": input.Content, "nickname": input.Nickname, "created_at": time.Now().Format(time.RFC3339)}})
 		return
+	}
+
+	// Turnstile verification (only if enabled in config)
+	configRepo := repository.NewSiteConfigRepo(h.db)
+	turnstileEnabled, _ := configRepo.Get("turnstile_enabled")
+	if turnstileEnabled == "true" {
+		secret, err := configRepo.Get("turnstile_secret")
+		if err == nil && secret != "" {
+			resp, err := http.PostForm("https://challenges.cloudflare.com/turnstile/v0/siteverify", url.Values{
+				"secret":   {secret},
+				"response": {input.CfTurnstileResponse},
+				"remoteip": {c.ClientIP()},
+			})
+			if err == nil {
+				body, _ := io.ReadAll(resp.Body)
+				resp.Body.Close()
+				var result struct {
+					Success bool `json:"success"`
+				}
+				if err := json.Unmarshal(body, &result); err == nil && !result.Success {
+					c.JSON(http.StatusForbidden, gin.H{"error": "验证失败，请刷新页面重试"})
+					return
+				}
+			}
+		}
 	}
 
 	if len(input.Nickname) == 0 {
