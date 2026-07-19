@@ -17,6 +17,7 @@ import (
 	"github.com/joho/godotenv"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"github.com/google/uuid"
 	"gorm.io/gorm/logger"
 
 	"tano_blog/backend/internal/config"
@@ -76,6 +77,8 @@ func main() {
 
 	// Seed default configs
 	seedSiteConfigs(db)
+	// Migrate old CommenterBlock records to IPBan
+	migrateCommenterBlocks(db)
 
 	// Initialize repositories
 	postRepo := repository.NewPostRepo(db)
@@ -499,6 +502,43 @@ func seedSiteConfigs(db *gorm.DB) {
 	}
 }
 
+
+// migrateCommenterBlocks migrates legacy CommenterBlock records to IPBan.
+func migrateCommenterBlocks(db *gorm.DB) {
+	if db.Migrator().HasTable("commenter_blocks") {
+		type oldBlock struct {
+			ID        string
+			Email     string
+			IPAddress string
+			Reason    string
+			CreatedBy string
+			CreatedAt time.Time
+		}
+		var old []oldBlock
+		db.Table("commenter_blocks").Find(&old)
+		for _, b := range old {
+			if b.Email == "" && b.IPAddress == "" {
+				continue
+			}
+			ban := model.IPBan{
+				Email:     b.Email,
+				IPAddress: b.IPAddress,
+				Scope:     "comment",
+				Reason:    b.Reason,
+				CreatedAt: b.CreatedAt,
+			}
+			if b.CreatedBy != "" {
+				id, err := uuid.Parse(b.CreatedBy)
+				if err == nil {
+					ban.CreatedBy = &id
+				}
+			}
+			db.Where("(ip_address = ? OR email = ?) AND scope = ?", b.IPAddress, b.Email, "comment").
+				FirstOrCreate(&ban)
+		}
+		db.Migrator().DropTable("commenter_blocks")
+	}
+}
 func init() {
 	_ = godotenv.Load()
 
