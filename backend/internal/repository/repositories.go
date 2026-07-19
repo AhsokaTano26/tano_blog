@@ -932,57 +932,6 @@ func (r *SiteConfigRepo) GetByKeys(keys []string) ([]model.SiteConfig, error) {
 	return configs, err
 }
 
-type CommenterBlockRepo struct {
-	db *gorm.DB
-}
-
-func NewCommenterBlockRepo(db *gorm.DB) *CommenterBlockRepo {
-	return &CommenterBlockRepo{db: db}
-}
-
-func (r *CommenterBlockRepo) Create(block *model.CommenterBlock) error {
-	return r.db.Create(block).Error
-}
-
-func (r *CommenterBlockRepo) Delete(id uuid.UUID) error {
-	return r.db.Delete(&model.CommenterBlock{}, id).Error
-}
-
-func (r *CommenterBlockRepo) List(page, pageSize int) ([]model.CommenterBlock, int64, error) {
-	var items []model.CommenterBlock
-	var total int64
-	r.db.Model(&model.CommenterBlock{}).Count(&total)
-	err := r.db.Order("created_at DESC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&items).Error
-	return items, total, err
-}
-
-func (r *CommenterBlockRepo) IsBlocked(email, ip string) bool {
-	query := r.db.Model(&model.CommenterBlock{})
-	if email != "" {
-		query = query.Where("email = ?", email)
-	}
-	if ip != "" {
-		query = query.Where("ip_address = ?", ip)
-	}
-	var count int64
-	query.Count(&count)
-	return count > 0
-}
-
-func (r *CommenterBlockRepo) ListCommentsByEmailOrIP(email, ip string, page, pageSize int) ([]model.Comment, int64, error) {
-	var items []model.Comment
-	var total int64
-	q := r.db.Model(&model.Comment{}).Preload("Post")
-	if email != "" {
-		q = q.Where("email = ?", email)
-	}
-	if ip != "" {
-		q = q.Where("ip_address = ?", ip)
-	}
-	q.Count(&total)
-	err := q.Order("created_at DESC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&items).Error
-	return items, total, err
-}
 
 func (r *SiteConfigRepo) Get(key string) (string, error) {
 	var config model.SiteConfig
@@ -1029,6 +978,14 @@ func (r *IPBanRepo) List(page, pageSize int) ([]model.IPBan, int64, error) {
 func (r *IPBanRepo) FindActiveByIP(ip string) ([]model.IPBan, error) {
 	var items []model.IPBan
 	err := r.db.Where("ip_address = ?", ip).
+		Where("(expires_at IS NULL OR expires_at > NOW())").
+		Find(&items).Error
+	return items, err
+}
+
+func (r *IPBanRepo) FindActiveByEmail(email string) ([]model.IPBan, error) {
+	var items []model.IPBan
+	err := r.db.Where("email = ?", email).
 		Where("(expires_at IS NULL OR expires_at > NOW())").
 		Find(&items).Error
 	return items, err

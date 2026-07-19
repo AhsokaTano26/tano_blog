@@ -236,18 +236,10 @@ type NavLink struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
-type CommenterBlock struct {
-	ID        uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
-	Email     string    `gorm:"size:255;index" json:"email,omitempty"`
-	IPAddress string    `gorm:"size:45;index" json:"ip_address,omitempty"`
-	Reason    string    `gorm:"size:500" json:"reason"`
-	CreatedBy uuid.UUID `gorm:"type:uuid" json:"created_by"`
-	CreatedAt time.Time `json:"created_at"`
-}
-
 type IPBan struct {
 	ID        uuid.UUID  `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
-	IPAddress string     `gorm:"size:45;index:idx_ip_bans_ip;not null" json:"ip_address"`
+	Email     string     `gorm:"size:255;index:idx_ip_bans_email" json:"email,omitempty"`
+	IPAddress string     `gorm:"size:45;index:idx_ip_bans_ip" json:"ip_address,omitempty"`
 	Scope     string     `gorm:"size:100;default:'comment'" json:"scope"`
 	Reason    string     `gorm:"size:500" json:"reason"`
 	AutoBan   bool       `gorm:"default:false" json:"auto_ban"`
@@ -301,7 +293,6 @@ func AutoMigrate(db *gorm.DB) error {
 		&PostReaction{},
 		&FriendLink{},
 		&NavLink{},
-		&CommenterBlock{},
 		&IPBan{},
 		&Notification{},
 		&GalleryImage{},
