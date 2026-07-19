@@ -288,6 +288,32 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
     }).catch(() => {});
   }, []);
 
+  // Render Turnstile widget with a ref-based approach
+  const turnstileRef = useRef<HTMLDivElement>(null);
+  const turnstileWidgetId = useRef<string | null>(null);
+  useEffect(() => {
+    if (!turnstileEnabled || !turnstileSitekey || !turnstileRef.current) return;
+    const w = window as any;
+    const check = () => {
+      if (w.turnstile) {
+        const id = w.turnstile.render(turnstileRef.current, {
+          sitekey: turnstileSitekey,
+          action: 'turnstile-spin-v2',
+          callback: (token: string) => setTurnstileToken(token),
+        });
+        turnstileWidgetId.current = id;
+      } else {
+        setTimeout(check, 200);
+      }
+    };
+    check();
+    return () => {
+      if (w.turnstile && turnstileWidgetId.current) {
+        try { w.turnstile.remove(turnstileWidgetId.current); } catch {}
+      }
+    };
+  }, [turnstileEnabled, turnstileSitekey]);
+
   async function handleVerifyPassword(e: React.FormEvent) {
     e.preventDefault();
     setPasswordError('');
@@ -334,17 +360,15 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
       setReplyTo(null);
       setTurnstileToken('');
       // Reset Turnstile widget
-      const widget = document.querySelector('.cf-turnstile');
-      if (widget && (window as any).turnstile) {
-        (window as any).turnstile.reset();
+      if (turnstileWidgetId.current && (window as any).turnstile) {
+        (window as any).turnstile.reset(turnstileWidgetId.current);
       }
       loadComments(slug);
     } catch (err: any) {
       setCommentError(err.message);
       // Reset Turnstile on error too
-      const widget = document.querySelector('.cf-turnstile');
-      if (widget && (window as any).turnstile) {
-        (window as any).turnstile.reset();
+      if (turnstileWidgetId.current && (window as any).turnstile) {
+        (window as any).turnstile.reset(turnstileWidgetId.current);
       }
     }
   }
@@ -947,9 +971,7 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
               </div>
             )}
             {turnstileEnabled && (
-              <div className="cf-turnstile" data-sitekey={turnstileSitekey}
-                data-action="turnstile-spin-v2"
-                data-callback={(token: string) => setTurnstileToken(token)} />
+              <div ref={turnstileRef} />
             )}
             <button type="submit"
               className="px-6 py-2.5 rounded-xl text-sm font-medium text-white transition-all hover:opacity-90"
