@@ -245,6 +245,17 @@ type CommenterBlock struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+type IPBan struct {
+	ID        uuid.UUID  `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	IPAddress string     `gorm:"size:45;index:idx_ip_bans_ip;not null" json:"ip_address"`
+	Scope     string     `gorm:"size:100;default:'comment'" json:"scope"`
+	Reason    string     `gorm:"size:500" json:"reason"`
+	AutoBan   bool       `gorm:"default:false" json:"auto_ban"`
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+	CreatedBy *uuid.UUID `gorm:"type:uuid" json:"created_by,omitempty"`
+	CreatedAt time.Time  `json:"created_at"`
+}
+
 type Notification struct {
 	ID        uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
 	UserID    uuid.UUID `gorm:"type:uuid;index;not null" json:"user_id"`
@@ -291,6 +302,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&FriendLink{},
 		&NavLink{},
 		&CommenterBlock{},
+		&IPBan{},
 		&Notification{},
 		&GalleryImage{},
 	)

@@ -1001,3 +1001,35 @@ func (r *SiteConfigRepo) Upsert(key, value, valueType string) error {
 	}
 	return r.db.Model(&config).Update("value", value).Error
 }
+
+type IPBanRepo struct {
+	db *gorm.DB
+}
+
+func NewIPBanRepo(db *gorm.DB) *IPBanRepo {
+	return &IPBanRepo{db: db}
+}
+
+func (r *IPBanRepo) Create(ban *model.IPBan) error {
+	return r.db.Create(ban).Error
+}
+
+func (r *IPBanRepo) Delete(id uuid.UUID) error {
+	return r.db.Delete(&model.IPBan{}, id).Error
+}
+
+func (r *IPBanRepo) List(page, pageSize int) ([]model.IPBan, int64, error) {
+	var items []model.IPBan
+	var total int64
+	r.db.Model(&model.IPBan{}).Count(&total)
+	err := r.db.Order("created_at DESC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&items).Error
+	return items, total, err
+}
+
+func (r *IPBanRepo) FindActiveByIP(ip string) ([]model.IPBan, error) {
+	var items []model.IPBan
+	err := r.db.Where("ip_address = ?", ip).
+		Where("(expires_at IS NULL OR expires_at > NOW())").
+		Find(&items).Error
+	return items, err
+}
