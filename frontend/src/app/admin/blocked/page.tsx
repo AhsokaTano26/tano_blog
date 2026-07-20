@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { api } from '@/lib/api';
-import { Ban, Trash2, Plus, ShieldOff, Globe } from 'lucide-react';
+import { Ban, Trash2, Plus, ShieldOff, Globe, Settings } from 'lucide-react';
 import { Loading } from '@/components/Loading';
 import { useConfirm, Select } from '@/components/ConfirmDialog';
 
@@ -39,6 +39,7 @@ export default function AdminBlocked() {
   const [total, setTotal] = useState(0);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ ip_address: '', reason: '', scopes: [] as string[], expires_at: '' });
+  const [formError, setFormError] = useState('');
 
   // Auto-ban config
   const [autoConfig, setAutoConfig] = useState<Record<string, string>>({});
@@ -58,16 +59,17 @@ export default function AdminBlocked() {
 
   function openCreate() {
     setForm({ ip_address: '', reason: '', scopes: [], expires_at: '' });
+    setFormError('');
     setShowForm(true);
   }
 
   async function handleCreate() {
     if (!form.ip_address) {
-      alert('请填写IP地址');
+      setFormError('请填写IP地址');
       return;
     }
     if (form.scopes.length === 0) {
-      alert('请选择至少一个封禁范围');
+      setFormError('请选择至少一个封禁范围');
       return;
     }
     try {
@@ -132,7 +134,7 @@ export default function AdminBlocked() {
         <h1 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>封禁管理</h1>
         {tab === 'ip' && (
           <button onClick={openCreate}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors cursor-pointer"
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium text-white transition-colors cursor-pointer"
             style={{ background: 'var(--primary)' }}>
             <Plus className="w-4 h-4" />新增封禁
           </button>
@@ -140,21 +142,23 @@ export default function AdminBlocked() {
       </div>
 
       {/* Tab Bar */}
-      <div className="flex gap-4 mb-6 border-b" style={{ borderColor: 'var(--glass-border)' }}>
+      <div className="flex mb-6" style={{ borderBottom: '1px solid var(--glass-border)' }}>
         {[
-          { key: 'ip', label: 'IP 封禁' },
-          { key: 'auto', label: '自动封禁' },
-        ].map(t => (
-          <button key={t.key} onClick={() => setTab(t.key as any)}
-            className="pb-2 px-1 text-sm font-medium transition-colors cursor-pointer"
-            style={{
-              borderBottom: tab === t.key ? '2px solid var(--primary)' : '2px solid transparent',
-              color: tab === t.key ? 'var(--primary)' : 'var(--text-secondary)',
-              opacity: tab === t.key ? 1 : 0.6,
-            }}>
-            {t.label}
-          </button>
-        ))}
+          { key: 'ip', label: 'IP 封禁', icon: Globe },
+          { key: 'auto', label: '自动封禁', icon: Settings },
+        ].map(t => {
+          const Icon = t.icon;
+          const active = tab === t.key;
+          return (
+            <button key={t.key} onClick={() => setTab(t.key as any)}
+              className="flex items-center gap-2 px-5 py-3 text-sm font-medium transition-colors relative cursor-pointer"
+              style={{ color: active ? 'var(--primary)' : 'var(--text-secondary)' }}>
+              <Icon className="w-4 h-4" />
+              {t.label}
+              {active && <div className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full" style={{ background: 'var(--primary)' }} />}
+            </button>
+          );
+        })}
       </div>
 
       {/* IP Ban Tab */}
@@ -166,7 +170,7 @@ export default function AdminBlocked() {
               <p>暂无封禁记录</p>
             </div>
           ) : (
-            <div className="glass-card rounded-2xl overflow-hidden">
+            <div className="glass-card rounded-xl overflow-hidden">
               <table className="w-full">
                 <thead>
                   <tr style={{ borderBottom: '1px solid var(--glass-border)' }}>
@@ -269,7 +273,7 @@ export default function AdminBlocked() {
 
       {/* Auto-ban Config Tab */}
       {tab === 'auto' && (
-        <div className="glass-card rounded-2xl p-5" style={{ border: '1px solid var(--glass-border)' }}>
+        <div className="glass-card rounded-xl p-5" style={{ border: '1px solid var(--glass-border)' }}>
           <h2 className="text-lg font-bold mb-4" style={{ color: 'var(--text-primary)' }}>自动封禁配置</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <div>
@@ -331,8 +335,13 @@ export default function AdminBlocked() {
       {showForm && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.5)' }}
           onClick={(e) => { if (e.target === e.currentTarget) setShowForm(false); }}>
-          <div className="w-full max-w-lg rounded-2xl shadow-2xl p-6" style={{ background: 'var(--card-bg)', border: '1px solid var(--glass-border)' }}>
+          <div className="w-full max-w-lg rounded-xl shadow-2xl p-6" style={{ background: 'var(--card-bg)', border: '1px solid var(--glass-border)' }}>
             <h2 className="text-lg font-bold mb-4" style={{ color: 'var(--text-primary)' }}>新增封禁</h2>
+            {formError && (
+              <div className="mb-4 px-4 py-2.5 rounded-lg text-sm" style={{ background: 'var(--card-bg)', color: 'hsl(0, 60%, 55%)', border: '1px solid hsla(0, 60%, 55%, 0.2)' }}>
+                {formError}
+              </div>
+            )}
             <div className="space-y-4">
               <div>
                 <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>IP 地址</label>
