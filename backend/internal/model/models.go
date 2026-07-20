@@ -238,8 +238,7 @@ type NavLink struct {
 
 type IPBan struct {
 	ID        uuid.UUID  `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
-	Email     string     `gorm:"size:255;index:idx_ip_bans_email" json:"email,omitempty"`
-	IPAddress string     `gorm:"size:45;index:idx_ip_bans_ip" json:"ip_address,omitempty"`
+	IPAddress string     `gorm:"size:45;index:idx_ip_bans_ip;not null" json:"ip_address"`
 	Scope     string     `gorm:"size:100;default:'comment'" json:"scope"`
 	Reason    string     `gorm:"size:500" json:"reason"`
 	AutoBan   bool       `gorm:"default:false" json:"auto_ban"`

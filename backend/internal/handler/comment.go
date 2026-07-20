@@ -152,11 +152,10 @@ func (h *CommentHandler) Create(c *gin.Context) {
 		return
 	}
 
-		// Check ban list (IP and email)
+		// Check ban list
 		ipBanRepo := repository.NewIPBanRepo(h.db)
 		ipBans, _ := ipBanRepo.FindActiveByIP(c.ClientIP())
-		emailBans, _ := ipBanRepo.FindActiveByEmail(input.Email)
-		if len(ipBans) > 0 || len(emailBans) > 0 {
+		if len(ipBans) > 0 {
 			c.JSON(http.StatusForbidden, gin.H{"error": "您已被封禁"})
 			return
 		}

@@ -517,11 +517,10 @@ func migrateCommenterBlocks(db *gorm.DB) {
 		var old []oldBlock
 		db.Table("commenter_blocks").Find(&old)
 		for _, b := range old {
-			if b.Email == "" && b.IPAddress == "" {
+			if b.IPAddress == "" {
 				continue
 			}
 			ban := model.IPBan{
-				Email:     b.Email,
 				IPAddress: b.IPAddress,
 				Scope:     "comment",
 				Reason:    b.Reason,
@@ -533,12 +532,13 @@ func migrateCommenterBlocks(db *gorm.DB) {
 					ban.CreatedBy = &id
 				}
 			}
-			db.Where("(ip_address = ? OR email = ?) AND scope = ?", b.IPAddress, b.Email, "comment").
+			db.Where("ip_address = ? AND scope = ?", b.IPAddress, "comment").
 				FirstOrCreate(&ban)
 		}
 		db.Migrator().DropTable("commenter_blocks")
 	}
 }
+
 func init() {
 	_ = godotenv.Load()
 

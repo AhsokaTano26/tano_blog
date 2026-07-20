@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { api } from '@/lib/api';
-import { Ban, Trash2, Plus, ShieldOff, Globe, Mail } from 'lucide-react';
+import { Ban, Trash2, Plus, ShieldOff, Globe, Settings } from 'lucide-react';
 import { Loading } from '@/components/Loading';
 import { useConfirm, Select } from '@/components/ConfirmDialog';
 
@@ -35,7 +35,7 @@ export default function AdminBlocked() {
   const [pageSize, setPageSize] = useState(20);
   const [total, setTotal] = useState(0);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ email: '', ip_address: '', reason: '', scopes: [] as string[], expires_at: '' });
+  const [form, setForm] = useState({ ip_address: '', reason: '', scopes: [] as string[], expires_at: '' });
 
   async function load() {
     setLoading(true);
@@ -50,13 +50,13 @@ export default function AdminBlocked() {
   useEffect(() => { load(); }, [page, pageSize]);
 
   function openCreate() {
-    setForm({ email: '', ip_address: '', reason: '', scopes: [], expires_at: '' });
+    setForm({ ip_address: '', reason: '', scopes: [], expires_at: '' });
     setShowForm(true);
   }
 
   async function handleCreate() {
-    if (!form.email && !form.ip_address) {
-      alert('请填写邮箱或IP地址');
+    if (!form.ip_address) {
+      alert('请填写IP地址');
       return;
     }
     if (form.scopes.length === 0) {
@@ -65,8 +65,7 @@ export default function AdminBlocked() {
     }
     try {
       await api.admin.ipBans.create({
-        email: form.email || undefined,
-        ip_address: form.ip_address || undefined,
+        ip_address: form.ip_address,
         scope: form.scopes.join(','),
         reason: form.reason || undefined,
         expires_at: form.expires_at || undefined,
@@ -94,6 +93,35 @@ export default function AdminBlocked() {
     }));
   }
 
+  // Auto-ban config
+  const [autoConfig, setAutoConfig] = useState<Record<string, string>>({});
+  const [showConfig, setShowConfig] = useState(false);
+  const [autoScope, setAutoScope] = useState<string[]>([]);
+
+  async function loadConfig() {
+    try {
+      const cfg = await api.admin.ipBans.getConfig();
+      setAutoConfig(cfg);
+      setAutoScope((cfg.ip_ban_auto_scope || 'login').split(',').filter(Boolean));
+    } catch (e) { /* empty */ }
+  }
+
+  async function saveConfig() {
+    try {
+      await api.admin.ipBans.updateConfig({
+        ...autoConfig,
+        ip_ban_auto_scope: autoScope.join(','),
+      });
+      alert('配置已保存');
+    } catch (e) { /* empty */ }
+  }
+
+  useEffect(() => { loadConfig(); }, []);
+
+  function toggleAutoScope(scopeId: string) {
+    setAutoScope(s => s.includes(scopeId) ? s.filter(x => x !== scopeId) : [...s, scopeId]);
+  }
+
   const totalPages = Math.ceil(total / pageSize);
 
   return (
@@ -117,7 +145,7 @@ export default function AdminBlocked() {
           <table className="w-full">
             <thead>
               <tr style={{ borderBottom: '1px solid var(--glass-border)' }}>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-info)' }}>邮箱 / IP</th>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-info)' }}>IP 地址</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider hidden sm:table-cell" style={{ color: 'var(--text-info)' }}>封禁范围</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider hidden md:table-cell" style={{ color: 'var(--text-info)' }}>原因</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider hidden lg:table-cell" style={{ color: 'var(--text-info)' }}>过期时间</th>
@@ -132,13 +160,9 @@ export default function AdminBlocked() {
                   <tr key={item.id} style={{ borderBottom: '1px solid var(--glass-border)', opacity: expired ? 0.5 : 1 }}>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
-                        {item.email ? (
-                          <Mail className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--color-error)' }} />
-                        ) : (
-                          <Globe className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--color-error)' }} />
-                        )}
+                        <Globe className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--color-error)' }} />
                         <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-                          {item.email || item.ip_address || '-'}
+                          {item.ip_address || '-'}
                         </span>
                       </div>
                     </td>
@@ -215,6 +239,74 @@ export default function AdminBlocked() {
         </div>
       </div>
 
+      {/* Auto-ban Config */}
+      <div className="mt-8">
+        <button onClick={() => setShowConfig(!showConfig)}
+          className="flex items-center gap-2 text-sm font-medium transition-colors cursor-pointer"
+          style={{ color: 'var(--text-primary)' }}>
+          <Settings className="w-4 h-4" />
+          自动封禁配置
+          <span className="text-xs ml-1" style={{ color: 'var(--text-info)' }}>{showConfig ? '收起' : '展开'}</span>
+        </button>
+        {showConfig && (
+          <div className="mt-3 glass-card rounded-2xl p-5" style={{ border: '1px solid var(--glass-border)' }}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>启用自动封禁</label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={autoConfig.ip_ban_auto_enabled === 'true'}
+                    onChange={e => setAutoConfig(c => ({ ...c, ip_ban_auto_enabled: e.target.checked ? 'true' : 'false' }))}
+                    className="rounded" />
+                  <span className="text-sm" style={{ color: 'var(--text-primary)' }}>已启用</span>
+                </label>
+              </div>
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>失败阈值（次）</label>
+                <input type="number" value={autoConfig.ip_ban_auto_threshold || '10'}
+                  onChange={e => setAutoConfig(c => ({ ...c, ip_ban_auto_threshold: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                  style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
+              </div>
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>计数窗口（秒）</label>
+                <input type="number" value={autoConfig.ip_ban_auto_window || '300'}
+                  onChange={e => setAutoConfig(c => ({ ...c, ip_ban_auto_window: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                  style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
+              </div>
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>封禁时长（秒）</label>
+                <input type="number" value={autoConfig.ip_ban_auto_duration || '1800'}
+                  onChange={e => setAutoConfig(c => ({ ...c, ip_ban_auto_duration: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                  style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
+              </div>
+              <div className="sm:col-span-2 lg:col-span-2">
+                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>自动封禁范围</label>
+                <div className="flex flex-wrap gap-2 p-3 rounded-lg" style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)' }}>
+                  {MODULES.map(m => (
+                    <label key={m.id} className="flex items-center gap-1.5 text-sm cursor-pointer"
+                      style={{ color: 'var(--text-primary)' }}>
+                      <input type="checkbox" checked={autoScope.includes(m.id)}
+                        onChange={() => toggleAutoScope(m.id)}
+                        className="rounded" />
+                      {m.label}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-end mt-4">
+              <button onClick={saveConfig}
+                className="px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors cursor-pointer"
+                style={{ background: 'var(--primary)' }}>
+                保存配置
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Create Ban Modal */}
       {showForm && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.5)' }}
@@ -223,16 +315,9 @@ export default function AdminBlocked() {
             <h2 className="text-lg font-bold mb-4" style={{ color: 'var(--text-primary)' }}>新增封禁</h2>
             <div className="space-y-4">
               <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>邮箱</label>
-                <input type="text" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
-                  placeholder="输入邮箱（选填，与IP至少填一个）"
-                  className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
-                  style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
-              </div>
-              <div>
                 <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>IP 地址</label>
                 <input type="text" value={form.ip_address} onChange={e => setForm(f => ({ ...f, ip_address: e.target.value }))}
-                  placeholder="输入IP地址（选填，与邮箱至少填一个）"
+                  placeholder="输入IP地址"
                   className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
                   style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
               </div>

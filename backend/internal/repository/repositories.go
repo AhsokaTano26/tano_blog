@@ -983,10 +983,3 @@ func (r *IPBanRepo) FindActiveByIP(ip string) ([]model.IPBan, error) {
 	return items, err
 }
 
-func (r *IPBanRepo) FindActiveByEmail(email string) ([]model.IPBan, error) {
-	var items []model.IPBan
-	err := r.db.Where("email = ?", email).
-		Where("(expires_at IS NULL OR expires_at > NOW())").
-		Find(&items).Error
-	return items, err
-}

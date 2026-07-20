@@ -406,7 +406,7 @@ export const api = {
     ipBans: {
       list: (params?: Record<string, string>) =>
         request<{ items: any[]; total: number; page: number; size: number }>('/api/v1/admin/ip-bans', { params }),
-      create: (data: { ip_address?: string; email?: string; scope: string; reason?: string; expires_at?: string }) =>
+      create: (data: { ip_address: string; scope: string; reason?: string; expires_at?: string }) =>
         request('/api/v1/admin/ip-bans', { method: 'POST', body: JSON.stringify(data) }),
       remove: (id: string) =>
         request(`/api/v1/admin/ip-bans/${id}`, { method: 'DELETE' }),

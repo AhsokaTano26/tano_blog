@@ -436,7 +436,7 @@ export default function AdminComments() {
                       </div>
                       <button onClick={async () => {
                         try {
-                          await api.admin.ipBans.create({ scope: "comment", email: item.email, ip_address: item.ip_address, reason: '管理员封禁' });
+                          await api.admin.ipBans.create({ scope: "comment", ip_address: item.ip_address, reason: '管理员封禁' });
                           load();
                         } catch (e) { /* empty */ }
                       }}
