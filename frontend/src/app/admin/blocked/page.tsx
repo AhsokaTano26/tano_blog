@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { api } from '@/lib/api';
-import { Ban, Trash2, Plus, ShieldOff, Globe, Settings } from 'lucide-react';
+import { Ban, Trash2, Plus, ShieldOff, Globe } from 'lucide-react';
 import { Loading } from '@/components/Loading';
 import { useConfirm, Select } from '@/components/ConfirmDialog';
 
@@ -29,6 +29,9 @@ function scopeDisplay(scope: string) {
 
 export default function AdminBlocked() {
   const { confirm } = useConfirm();
+  const [tab, setTab] = useState<'ip' | 'auto'>('ip');
+
+  // IP ban list
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -36,6 +39,10 @@ export default function AdminBlocked() {
   const [total, setTotal] = useState(0);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ ip_address: '', reason: '', scopes: [] as string[], expires_at: '' });
+
+  // Auto-ban config
+  const [autoConfig, setAutoConfig] = useState<Record<string, string>>({});
+  const [autoScope, setAutoScope] = useState<string[]>([]);
 
   async function load() {
     setLoading(true);
@@ -93,11 +100,6 @@ export default function AdminBlocked() {
     }));
   }
 
-  // Auto-ban config
-  const [autoConfig, setAutoConfig] = useState<Record<string, string>>({});
-  const [showConfig, setShowConfig] = useState(false);
-  const [autoScope, setAutoScope] = useState<string[]>([]);
-
   async function loadConfig() {
     try {
       const cfg = await api.admin.ipBans.getConfig();
@@ -128,184 +130,202 @@ export default function AdminBlocked() {
     <div>
       <div className="flex items-center justify-between mb-5">
         <h1 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>封禁管理</h1>
-        <button onClick={openCreate}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors cursor-pointer"
-          style={{ background: 'var(--primary)' }}>
-          <Plus className="w-4 h-4" />新增封禁
-        </button>
+        {tab === 'ip' && (
+          <button onClick={openCreate}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors cursor-pointer"
+            style={{ background: 'var(--primary)' }}>
+            <Plus className="w-4 h-4" />新增封禁
+          </button>
+        )}
       </div>
 
-      {loading ? <Loading /> : items.length === 0 ? (
-        <div className="text-center py-20" style={{ color: 'var(--text-secondary)' }}>
-          <ShieldOff className="w-12 h-12 mx-auto mb-3 opacity-30" />
-          <p>暂无封禁记录</p>
-        </div>
-      ) : (
-        <div className="glass-card rounded-2xl overflow-hidden">
-          <table className="w-full">
-            <thead>
-              <tr style={{ borderBottom: '1px solid var(--glass-border)' }}>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-info)' }}>IP 地址</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider hidden sm:table-cell" style={{ color: 'var(--text-info)' }}>封禁范围</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider hidden md:table-cell" style={{ color: 'var(--text-info)' }}>原因</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider hidden lg:table-cell" style={{ color: 'var(--text-info)' }}>过期时间</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider hidden lg:table-cell" style={{ color: 'var(--text-info)' }}>类型</th>
-                <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-info)' }}>操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item) => {
-                const expired = item.expires_at && new Date(item.expires_at) < new Date();
-                return (
-                  <tr key={item.id} style={{ borderBottom: '1px solid var(--glass-border)', opacity: expired ? 0.5 : 1 }}>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <Globe className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--color-error)' }} />
-                        <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-                          {item.ip_address || '-'}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-sm hidden sm:table-cell" style={{ color: 'var(--text-secondary)' }}>
-                      <div className="flex flex-wrap gap-1">
-                        {item.scope && scopeDisplay(item.scope).split('、').map((s: string, i: number) => (
-                          <span key={i} className="text-xs px-1.5 py-0.5 rounded"
-                            style={{ background: 'var(--primary-sub)', color: 'var(--primary)' }}>
-                            {s}
-                          </span>
-                        ))}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-sm hidden md:table-cell" style={{ color: 'var(--text-secondary)' }}>
-                      {item.reason || '-'}
-                    </td>
-                    <td className="px-4 py-3 text-xs hidden lg:table-cell" style={{ color: expired ? 'var(--color-error)' : 'var(--text-info)' }}>
-                      {item.expires_at ? new Date(item.expires_at).toLocaleString('zh-CN') : '永不过期'}
-                    </td>
-                    <td className="px-4 py-3 text-xs hidden lg:table-cell">
-                      {item.auto_ban && (
-                        <span className="px-1.5 py-0.5 rounded"
-                          style={{ background: 'var(--color-warning-sub, #fbbf24)', color: 'var(--color-warning, #d97706)' }}>
-                          自动
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      {!expired && (
-                        <button onClick={() => handleDelete(item.id)}
-                          className="btn-glass p-1.5 rounded-lg transition-colors cursor-pointer" title="解封">
-                          <Trash2 className="w-4 h-4" style={{ color: 'var(--color-error)' }} />
-                        </button>
-                      )}
-                    </td>
+      {/* Tab Bar */}
+      <div className="flex gap-4 mb-6 border-b" style={{ borderColor: 'var(--glass-border)' }}>
+        {[
+          { key: 'ip', label: 'IP 封禁' },
+          { key: 'auto', label: '自动封禁' },
+        ].map(t => (
+          <button key={t.key} onClick={() => setTab(t.key as any)}
+            className="pb-2 px-1 text-sm font-medium transition-colors cursor-pointer"
+            style={{
+              borderBottom: tab === t.key ? '2px solid var(--primary)' : '2px solid transparent',
+              color: tab === t.key ? 'var(--primary)' : 'var(--text-secondary)',
+              opacity: tab === t.key ? 1 : 0.6,
+            }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* IP Ban Tab */}
+      {tab === 'ip' && (
+        <>
+          {loading ? <Loading /> : items.length === 0 ? (
+            <div className="text-center py-20" style={{ color: 'var(--text-secondary)' }}>
+              <ShieldOff className="w-12 h-12 mx-auto mb-3 opacity-30" />
+              <p>暂无封禁记录</p>
+            </div>
+          ) : (
+            <div className="glass-card rounded-2xl overflow-hidden">
+              <table className="w-full">
+                <thead>
+                  <tr style={{ borderBottom: '1px solid var(--glass-border)' }}>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-info)' }}>IP 地址</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider hidden sm:table-cell" style={{ color: 'var(--text-info)' }}>封禁范围</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider hidden md:table-cell" style={{ color: 'var(--text-info)' }}>原因</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider hidden lg:table-cell" style={{ color: 'var(--text-info)' }}>过期时间</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider hidden lg:table-cell" style={{ color: 'var(--text-info)' }}>类型</th>
+                    <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-info)' }}>操作</th>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      <div className="flex items-center justify-between text-sm mt-4">
-        <span style={{ color: 'var(--text-secondary)' }}>共 {total} 条</span>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <span className="text-xs" style={{ color: 'var(--text-info)' }}>每页</span>
-            <Select value={String(pageSize)} onChange={v => { setPageSize(Number(v)); setPage(1); }}
-              options={[10, 20, 30, 50, 100].map(v => ({ value: String(v), label: String(v) }))} />
-          </div>
-          <div className="flex gap-1">
-            <button onClick={() => setPage(Math.max(1, page - 1))} disabled={page === 1}
-              className="px-3 py-1.5 rounded-xl btn-glass disabled:opacity-40 transition-colors"
-              style={{ color: 'var(--text-primary)' }}>上一页</button>
-            {Array.from({ length: Math.min(totalPages, 10) }, (_, i) => {
-              const start = Math.max(1, page - 5);
-              const p = start + i;
-              if (p > totalPages) return null;
-              return (
-                <button key={p} onClick={() => setPage(p)}
-                  className="w-8 h-8 rounded-xl text-sm transition-all"
-                  style={{
-                    background: p === page ? 'var(--primary)' : 'transparent',
-                    color: p === page ? '#fff' : 'var(--text-primary)',
-                    boxShadow: p === page ? '0 0 12px var(--primary-glow)' : 'none',
-                  }}>{p}</button>
-              );
-            })}
-            <button onClick={() => setPage(Math.min(totalPages, page + 1))} disabled={page === totalPages}
-              className="px-3 py-1.5 rounded-xl btn-glass disabled:opacity-40 transition-colors"
-              style={{ color: 'var(--text-primary)' }}>下一页</button>
-          </div>
-        </div>
-      </div>
-
-      {/* Auto-ban Config */}
-      <div className="mt-8">
-        <button onClick={() => setShowConfig(!showConfig)}
-          className="flex items-center gap-2 text-sm font-medium transition-colors cursor-pointer"
-          style={{ color: 'var(--text-primary)' }}>
-          <Settings className="w-4 h-4" />
-          自动封禁配置
-          <span className="text-xs ml-1" style={{ color: 'var(--text-info)' }}>{showConfig ? '收起' : '展开'}</span>
-        </button>
-        {showConfig && (
-          <div className="mt-3 glass-card rounded-2xl p-5" style={{ border: '1px solid var(--glass-border)' }}>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>启用自动封禁</label>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" checked={autoConfig.ip_ban_auto_enabled === 'true'}
-                    onChange={e => setAutoConfig(c => ({ ...c, ip_ban_auto_enabled: e.target.checked ? 'true' : 'false' }))}
-                    className="rounded" />
-                  <span className="text-sm" style={{ color: 'var(--text-primary)' }}>已启用</span>
-                </label>
-              </div>
-              <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>失败阈值（次）</label>
-                <input type="number" value={autoConfig.ip_ban_auto_threshold || '10'}
-                  onChange={e => setAutoConfig(c => ({ ...c, ip_ban_auto_threshold: e.target.value }))}
-                  className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                  style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
-              </div>
-              <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>计数窗口（秒）</label>
-                <input type="number" value={autoConfig.ip_ban_auto_window || '300'}
-                  onChange={e => setAutoConfig(c => ({ ...c, ip_ban_auto_window: e.target.value }))}
-                  className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                  style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
-              </div>
-              <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>封禁时长（秒）</label>
-                <input type="number" value={autoConfig.ip_ban_auto_duration || '1800'}
-                  onChange={e => setAutoConfig(c => ({ ...c, ip_ban_auto_duration: e.target.value }))}
-                  className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                  style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
-              </div>
-              <div className="sm:col-span-2 lg:col-span-2">
-                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>自动封禁范围</label>
-                <div className="flex flex-wrap gap-2 p-3 rounded-lg" style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)' }}>
-                  {MODULES.map(m => (
-                    <label key={m.id} className="flex items-center gap-1.5 text-sm cursor-pointer"
-                      style={{ color: 'var(--text-primary)' }}>
-                      <input type="checkbox" checked={autoScope.includes(m.id)}
-                        onChange={() => toggleAutoScope(m.id)}
-                        className="rounded" />
-                      {m.label}
-                    </label>
-                  ))}
+                </thead>
+                <tbody>
+                  {items.map((item) => {
+                    const expired = item.expires_at && new Date(item.expires_at) < new Date();
+                    return (
+                      <tr key={item.id} style={{ borderBottom: '1px solid var(--glass-border)', opacity: expired ? 0.5 : 1 }}>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <Globe className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--color-error)' }} />
+                            <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+                              {item.ip_address || '-'}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-sm hidden sm:table-cell" style={{ color: 'var(--text-secondary)' }}>
+                          <div className="flex flex-wrap gap-1">
+                            {item.scope && scopeDisplay(item.scope).split('、').map((s: string, i: number) => (
+                              <span key={i} className="text-xs px-1.5 py-0.5 rounded"
+                                style={{ background: 'var(--primary-sub)', color: 'var(--primary)' }}>
+                                {s}
+                              </span>
+                            ))}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-sm hidden md:table-cell" style={{ color: 'var(--text-secondary)' }}>
+                          {item.reason || '-'}
+                        </td>
+                        <td className="px-4 py-3 text-xs hidden lg:table-cell" style={{ color: expired ? 'var(--color-error)' : 'var(--text-info)' }}>
+                          {item.expires_at ? new Date(item.expires_at).toLocaleString('zh-CN') : '永不过期'}
+                        </td>
+                        <td className="px-4 py-3 text-xs hidden lg:table-cell">
+                          {item.auto_ban && (
+                            <span className="px-1.5 py-0.5 rounded"
+                              style={{ background: 'var(--color-warning-sub, #fbbf24)', color: 'var(--color-warning, #d97706)' }}>
+                              自动
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          {!expired && (
+                            <button onClick={() => handleDelete(item.id)}
+                              className="btn-glass p-1.5 rounded-lg transition-colors cursor-pointer" title="解封">
+                              <Trash2 className="w-4 h-4" style={{ color: 'var(--color-error)' }} />
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {total > 0 && (
+            <div className="flex items-center justify-between text-sm mt-4">
+              <span style={{ color: 'var(--text-secondary)' }}>共 {total} 条</span>
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs" style={{ color: 'var(--text-info)' }}>每页</span>
+                  <Select value={String(pageSize)} onChange={v => { setPageSize(Number(v)); setPage(1); }}
+                    options={[10, 20, 30, 50, 100].map(v => ({ value: String(v), label: String(v) }))} />
+                </div>
+                <div className="flex gap-1">
+                  <button onClick={() => setPage(Math.max(1, page - 1))} disabled={page === 1}
+                    className="px-3 py-1.5 rounded-xl btn-glass disabled:opacity-40 transition-colors"
+                    style={{ color: 'var(--text-primary)' }}>上一页</button>
+                  {Array.from({ length: Math.min(totalPages, 10) }, (_, i) => {
+                    const start = Math.max(1, page - 5);
+                    const p = start + i;
+                    if (p > totalPages) return null;
+                    return (
+                      <button key={p} onClick={() => setPage(p)}
+                        className="w-8 h-8 rounded-xl text-sm transition-all"
+                        style={{
+                          background: p === page ? 'var(--primary)' : 'transparent',
+                          color: p === page ? '#fff' : 'var(--text-primary)',
+                          boxShadow: p === page ? '0 0 12px var(--primary-glow)' : 'none',
+                        }}>{p}</button>
+                    );
+                  })}
+                  <button onClick={() => setPage(Math.min(totalPages, page + 1))} disabled={page === totalPages}
+                    className="px-3 py-1.5 rounded-xl btn-glass disabled:opacity-40 transition-colors"
+                    style={{ color: 'var(--text-primary)' }}>下一页</button>
                 </div>
               </div>
             </div>
-            <div className="flex justify-end mt-4">
-              <button onClick={saveConfig}
-                className="px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors cursor-pointer"
-                style={{ background: 'var(--primary)' }}>
-                保存配置
-              </button>
+          )}
+        </>
+      )}
+
+      {/* Auto-ban Config Tab */}
+      {tab === 'auto' && (
+        <div className="glass-card rounded-2xl p-5" style={{ border: '1px solid var(--glass-border)' }}>
+          <h2 className="text-lg font-bold mb-4" style={{ color: 'var(--text-primary)' }}>自动封禁配置</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>启用自动封禁</label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={autoConfig.ip_ban_auto_enabled === 'true'}
+                  onChange={e => setAutoConfig(c => ({ ...c, ip_ban_auto_enabled: e.target.checked ? 'true' : 'false' }))}
+                  className="rounded" />
+                <span className="text-sm" style={{ color: 'var(--text-primary)' }}>已启用</span>
+              </label>
+            </div>
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>失败阈值（次）</label>
+              <input type="number" value={autoConfig.ip_ban_auto_threshold || '10'}
+                onChange={e => setAutoConfig(c => ({ ...c, ip_ban_auto_threshold: e.target.value }))}
+                className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>计数窗口（秒）</label>
+              <input type="number" value={autoConfig.ip_ban_auto_window || '300'}
+                onChange={e => setAutoConfig(c => ({ ...c, ip_ban_auto_window: e.target.value }))}
+                className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>封禁时长（秒）</label>
+              <input type="number" value={autoConfig.ip_ban_auto_duration || '1800'}
+                onChange={e => setAutoConfig(c => ({ ...c, ip_ban_auto_duration: e.target.value }))}
+                className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
+            </div>
+            <div className="sm:col-span-2 lg:col-span-2">
+              <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>自动封禁范围</label>
+              <div className="flex flex-wrap gap-2 p-3 rounded-lg" style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)' }}>
+                {MODULES.map(m => (
+                  <label key={m.id} className="flex items-center gap-1.5 text-sm cursor-pointer"
+                    style={{ color: 'var(--text-primary)' }}>
+                    <input type="checkbox" checked={autoScope.includes(m.id)}
+                      onChange={() => toggleAutoScope(m.id)}
+                      className="rounded" />
+                    {m.label}
+                  </label>
+                ))}
+              </div>
             </div>
           </div>
-        )}
-      </div>
+          <div className="flex justify-end mt-4">
+            <button onClick={saveConfig}
+              className="px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors cursor-pointer"
+              style={{ background: 'var(--primary)' }}>
+              保存配置
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Create Ban Modal */}
       {showForm && (
