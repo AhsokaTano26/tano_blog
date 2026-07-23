@@ -53,6 +53,9 @@ export default function MusicPage() {
   const [loading, setLoading] = useState(true);
   const [splashDone, setSplashDone] = useState(false);
   const [exiting, setExiting] = useState(false);
+  const [passwordGate, setPasswordGate] = useState<boolean | null>(null);
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordVerifying, setPasswordVerifying] = useState(false);
   const splashTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   // Player state
@@ -115,11 +118,19 @@ export default function MusicPage() {
   }, [currentIndex]);
 
   // Load config
-  useEffect(() => {
+  function loadConfig(cb?: () => void) {
     api.getPublicConfig().then(res => {
+      // Check password protection (first load only)
+      if (passwordGate === null) {
+        if (!!(res.config?.music_password_protected)) {
+          setPasswordGate(true);
+          setLoading(false);
+          return;
+        }
+        setPasswordGate(false);
+      }
       try {
         const cfg = JSON.parse(res.config?.music_page_config || '{}');
-        // Migrate old format (playlist) to new format (playlists)
         if (!cfg.playlists && Array.isArray(cfg.playlist)) {
           cfg.playlists = cfg.playlist.length > 0
             ? [{ id: 'default', name: '默认播放列表', tracks: cfg.playlist }]
@@ -136,16 +147,37 @@ export default function MusicPage() {
       }
     }).catch(() => {
       setConfig({ title: '音乐馆', subtitle: '', background: '', playlists: [] });
-    }).finally(() => setLoading(false));
+    }).finally(() => {
+      setLoading(false);
+      cb?.();
+    });
+  }
+
+  async function handleVerifyPassword(password: string) {
+    setPasswordError('');
+    setPasswordVerifying(true);
+    try {
+      await api.verifyMusicPassword(password);
+      setPasswordGate(false);
+      setLoading(true);
+      loadConfig();
+    } catch (e: any) {
+      setPasswordError(typeof e === 'string' ? e : e?.message || '密码错误');
+    }
+    setPasswordVerifying(false);
+  }
+
+  useEffect(() => {
+    loadConfig();
   }, []);
 
   // Splash screen timing — wait for config then show splash for 2s
   useEffect(() => {
-    if (!loading) {
+    if (!loading && passwordGate === false) {
       splashTimerRef.current = setTimeout(() => setSplashDone(true), 2000);
       return () => clearTimeout(splashTimerRef.current);
     }
-  }, [loading]);
+  }, [loading, passwordGate]);
 
   // Setup Web Audio API analyser (once, on first user interaction)
   const setupAnalyser = useCallback(() => {
@@ -607,8 +639,65 @@ export default function MusicPage() {
         className="fixed inset-0 w-full h-full pointer-events-none transition-opacity duration-500"
         style={{ zIndex: 199, opacity: showParticles ? 1 : 0 }} />
 
+      {/* ─── Password Gate ─── */}
+      {passwordGate && (
+        <div className="fixed inset-0 z-[300] flex flex-col items-center justify-center"
+          style={{ background: `hsla(${bgHue}, 60%, 5%, 0.95)` }}>
+          <div className="flex flex-col items-center gap-6 max-w-sm w-full px-6">
+            {/* Lock icon */}
+            <div className="relative mb-2">
+              <div className="w-20 h-20 rounded-full flex items-center justify-center animate-pulse"
+                style={{
+                  background: `radial-gradient(circle, hsl(${bgHue}, 70%, 50%, 0.3), transparent)`,
+                }}>
+                <Music className="w-10 h-10" style={{ color: `hsl(${bgHue}, 70%, 60%)` }} />
+              </div>
+            </div>
+
+            <h1 className="text-2xl font-bold tracking-wide text-white">密码验证</h1>
+            <p className="text-sm text-center" style={{ color: 'rgba(255,255,255,0.5)' }}>
+              该音乐馆已设置密码，请输入密码后进入
+            </p>
+
+            <div className="w-full flex flex-col gap-3">
+              <input
+                type="password"
+                placeholder="请输入密码"
+                autoFocus
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && !passwordVerifying) {
+                    handleVerifyPassword((e.target as HTMLInputElement).value);
+                  }
+                }}
+                className="w-full px-4 py-3 rounded-xl text-sm text-center outline-none"
+                style={{
+                  background: 'rgba(255,255,255,0.08)',
+                  border: passwordError ? '1px solid hsl(0, 60%, 55%)' : '1px solid rgba(255,255,255,0.15)',
+                  color: '#fff',
+                }} />
+              {passwordError && (
+                <p className="text-xs text-center" style={{ color: 'hsl(0, 60%, 55%)' }}>{passwordError}</p>
+              )}
+              <button
+                onClick={(e) => {
+                  const input = e.currentTarget.parentElement?.querySelector('input');
+                  if (input) handleVerifyPassword(input.value);
+                }}
+                disabled={passwordVerifying}
+                className="w-full px-4 py-3 rounded-xl text-sm font-medium text-white transition-all disabled:opacity-50"
+                style={{
+                  background: `linear-gradient(135deg, hsl(${bgHue}, 80%, 60%), hsl(${(bgHue + 60) % 360}, 80%, 60%))`,
+                  boxShadow: `0 0 20px hsl(${bgHue}, 80%, 60%, 0.3)`,
+                }}>
+                {passwordVerifying ? '验证中...' : '进入音乐馆'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ─── Splash Screen ─── */}
-      {!splashDone && (
+      {!splashDone && !passwordGate && (
         <div className={`fixed inset-0 z-[200] flex flex-col items-center justify-center transition-all duration-1000 ${splashDone ? 'opacity-0 scale-110' : 'opacity-100'}`}
           style={overlayBg(config?.background)}>
           {/* Expanding light rings */}

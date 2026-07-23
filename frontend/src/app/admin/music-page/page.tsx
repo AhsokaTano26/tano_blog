@@ -41,10 +41,15 @@ export default function AdminMusicPage() {
   const [message, setMessage] = useState('');
   const [activeTab, setActiveTab] = useState<'settings' | 'playlists'>('settings');
   const [selectedPlaylistId, setSelectedPlaylistId] = useState<string | null>(null);
+  const [musicPassword, setMusicPassword] = useState('');
+  const [passwordSet, setPasswordSet] = useState(false);
 
   useEffect(() => {
     api.admin.config.get().then(res => {
       setConfigStr(res.config?.music_page_config || '');
+      if (res.config?.music_password) {
+        setPasswordSet(true);
+      }
     }).finally(() => setLoading(false));
   }, []);
 
@@ -163,9 +168,18 @@ export default function AdminMusicPage() {
     setSaving(true);
     setMessage('');
     try {
-      await api.admin.config.update({ music_page_config: configStr });
+      const updates: Record<string, string> = { music_page_config: configStr };
+      if (musicPassword) {
+        updates.music_password = musicPassword;
+      } else if (musicPassword === '' && !passwordSet) {
+        // User clicked "清除密码" — save empty string to remove password
+        updates.music_password = '';
+      }
+      await api.admin.config.update(updates);
       const res = await api.admin.config.get();
       setConfigStr(res.config?.music_page_config || '');
+      setPasswordSet(!!res.config?.music_password);
+      setMusicPassword('');
       setMessage('已保存');
       setTimeout(() => setMessage(''), 3000);
     } catch {
@@ -261,6 +275,30 @@ export default function AdminMusicPage() {
               </button>
             </div>
             <p className="text-xs mt-1" style={{ color: 'var(--text-info)' }}>设置后将作为页面背景，上方叠加渐变色效果。各歌曲可单独设置背景图覆盖此项</p>
+          </div>
+
+          {/* Page password */}
+          <div>
+            <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>访问密码</label>
+            <div className="flex items-center gap-2">
+              <input type="text" value={musicPassword}
+                onChange={e => setMusicPassword(e.target.value)}
+                placeholder={passwordSet ? '当前已设置密码，输入新密码可修改' : '设置密码后进入音乐馆需输入（选填）'}
+                className={`${inputClass} flex-1`} style={inputStyle} />
+            </div>
+            <div className="flex items-center gap-2 mt-1.5">
+              <span className={`inline-block w-2 h-2 rounded-full ${passwordSet ? 'bg-green-500' : 'bg-gray-500'}`} />
+              <span className="text-xs" style={{ color: 'var(--text-info)' }}>
+                {passwordSet ? '已设置密码' : '未设置密码'}
+                {passwordSet && (
+                  <button onClick={() => { setMusicPassword(''); setPasswordSet(false); }}
+                    className="ml-2 underline hover:no-underline" style={{ color: 'var(--color-error)' }}>
+                    清除密码
+                  </button>
+                )}
+              </span>
+            </div>
+            <p className="text-xs mt-1" style={{ color: 'var(--text-info)' }}>设置后访问音乐馆页面需输入密码。留空保存可清除密码</p>
           </div>
         </div>
       )}
