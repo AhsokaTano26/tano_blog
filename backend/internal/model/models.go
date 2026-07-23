@@ -72,7 +72,7 @@ type Post struct {
 	AuthorID     *uuid.UUID `gorm:"type:uuid;index" json:"author_id"`
 	AuthorName   string     `gorm:"size:100" json:"author_name"`
 	EditorID     *uuid.UUID `gorm:"type:uuid;index" json:"editor_id"`
-	PreviewToken string     `gorm:"size:64;index" json:"-"`
+	PreviewToken string     `gorm:"size:64;uniqueIndex" json:"-"`
 	PasswordHash string     `gorm:"size:255" json:"-"`
 	PasswordHint string     `gorm:"size:200" json:"password_hint,omitempty"`
 	PublishedAt  *time.Time `json:"published_at"`
@@ -151,10 +151,12 @@ type Media struct {
 }
 
 type SiteConfig struct {
-	ID    uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
-	Key   string    `gorm:"uniqueIndex;size:100;not null" json:"key"`
-	Value string    `gorm:"type:text" json:"value"`
-	Type  string    `gorm:"size:20;default:string" json:"type"`
+	ID        uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	Key       string    `gorm:"uniqueIndex;size:100;not null" json:"key"`
+	Value     string    `gorm:"type:text" json:"value"`
+	Type      string    `gorm:"size:20;default:string" json:"type"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type AccessLog struct {

@@ -58,6 +58,10 @@ func (h *SiteConfigHandler) GetPublic(c *gin.Context) {
 		result[cfg.Key] = cfg.Value
 	}
 
+		// Check if music password is set
+	musicPwd, _ := h.repo.Get("music_password")
+	result["music_password_protected"] = musicPwd != ""
+
 	c.JSON(http.StatusOK, gin.H{"config": result})
 }
 
@@ -94,6 +98,7 @@ func (h *SiteConfigHandler) Update(c *gin.Context) {
 		"email_smtp_username": true, "email_smtp_password": true,
 		"profile_avatar": true, "profile_name": true, "profile_bio": true, "profile_contacts": true,
 		"site_favicon": true, "about_content": true, "music_playlist": true, "music_page_config": true,
+		"music_password": true,
 		"ai_enabled": true, "ai_api_url": true, "ai_api_key": true, "ai_model": true,
 		"turnstile_enabled": true, "turnstile_sitekey": true, "turnstile_secret": true,
 		"ip_ban_auto_enabled": true, "ip_ban_auto_threshold": true, "ip_ban_auto_window": true,
@@ -525,9 +530,6 @@ func parseInt(s string, defaultVal int) int {
 			return defaultVal
 		}
 		val = val*10 + int(r-'0')
-	}
-	if val == 0 {
-		return defaultVal
 	}
 	return val
 }

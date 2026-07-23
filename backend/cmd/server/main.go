@@ -124,6 +124,7 @@ func main() {
 	}
 	r.Use(middleware.CORS(allowedOrigins))
 	r.Use(middleware.SecurityHeaders())
+	r.SetTrustedProxies(nil)
 	r.Use(middleware.IPBan(ipBanRepo))
 
 	// Serve uploaded files
@@ -183,7 +184,7 @@ func main() {
 		// Password reset (public, with rate limiting)
 		api.POST("/auth/forgot-password", middleware.RateLimit(3, 60*time.Second), authHandler.ForgotPassword)
 		api.POST("/auth/reset-password", middleware.RateLimit(5, 60*time.Second), authHandler.ResetPassword)
-		api.GET("/posts/:slug", middleware.OptionalAuth(&cfg.JWT), postHandler.GetBySlug)
+		api.GET("/posts/:slug", middleware.OptionalAuth(&cfg.JWT, db), postHandler.GetBySlug)
 		api.GET("/archive", postHandler.Archive)
 
 		// Friend links (public)
@@ -194,6 +195,26 @@ func main() {
 		api.GET("/nav-links", navLinkHandler.ListPublic)
 		// Gallery (public)
 		api.GET("/gallery", galleryHandler.List)
+
+		api.POST("/music/verify-password", middleware.RateLimit(10, 60*time.Second), func(c *gin.Context) {
+			var input struct {
+				Password string `json:"password"`
+			}
+			if err := c.ShouldBindJSON(&input); err != nil || input.Password == "" {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "请输入密码"})
+				return
+			}
+			var cfg model.SiteConfig
+			if err := db.Where("key = ?", "music_password").First(&cfg).Error; err != nil || cfg.Value == "" {
+				c.JSON(http.StatusNotFound, gin.H{"error": "未设置密码"})
+				return
+			}
+			if cfg.Value != input.Password {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "密码错误"})
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{"success": true})
+		})
 
 		api.GET("/categories", categoryHandler.List)
 		api.GET("/categories/:slug", categoryHandler.GetBySlug)

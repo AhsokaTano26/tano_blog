@@ -3,6 +3,7 @@ package handler
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -23,19 +24,19 @@ import (
 )
 
 var restoreSafeColumns = map[string][]string{
-	"users":             {"id", "username", "email", "display_name", "avatar_url", "bio", "role", "created_at", "updated_at"},
-	"categories":        {"id", "name", "slug", "description", "sort_order", "created_at"},
+	"users":             {"id", "username", "email", "password_hash", "display_name", "avatar_url", "bio", "totp_secret", "totp_enabled", "reset_token", "token_version", "role", "must_change_password", "created_at", "updated_at"},
+	"categories":        {"id", "name", "slug", "description", "sort_order", "created_at", "updated_at"},
 	"tags":              {"id", "name", "slug", "created_at"},
 	"media_tags":        {"id", "name", "created_at"},
 	"site_configs":      {"id", "key", "value", "type", "created_at", "updated_at"},
 	"posts":             {"id", "title", "slug", "content", "excerpt", "cover_image", "status", "is_top", "allow_comment", "author_name", "author_id", "editor_id", "category_id", "view_count", "published_at", "preview_token", "created_at", "updated_at"},
 	"post_tags":         {"post_id", "tag_id"},
-	"comments":          {"id", "post_id", "parent_id", "nickname", "email", "website", "content", "status", "ip_address", "user_agent", "country", "city", "created_at"},
+	"comments":          {"id", "post_id", "parent_id", "nickname", "email", "website", "content", "status", "ip_address", "user_agent", "country", "city", "fingerprint", "edited_count", "edited_at", "updated_at", "created_at"},
 	"media":             {"id", "filename", "original_name", "mime_type", "size", "url", "thumbnail_url", "alt_text", "title", "artist", "album", "description", "uploaded_by", "created_at"},
 	"media_tag_links":   {"media_id", "media_tag_id"},
 	"passkeys":          {"id", "user_id", "nickname", "created_at"},
 	"post_revisions":    {"id", "post_id", "title", "content", "excerpt", "editor_id", "created_at"},
-	"access_logs":       {"id", "path", "method", "ip_address", "user_agent", "status_code", "response_time", "referer", "query_params", "device_type", "browser", "os", "country", "city", "created_at"},
+	"access_logs":       {"id", "path", "method", "ip_address", "user_agent", "status_code", "response_time", "referer", "query_params", "device_type", "browser", "os", "country", "city", "user_id", "session_id", "created_at"},
 	"series":            {"id", "name", "slug", "description", "cover_image", "sort_order", "created_at", "updated_at"},
 	"post_series":       {"series_id", "post_id", "sort_order"},
 	"comment_reactions": {"id", "comment_id", "emoji", "ip_address", "created_at"},
@@ -45,6 +46,7 @@ var restoreSafeColumns = map[string][]string{
 		"gallery_images":    {"id", "url", "title", "description", "width", "height", "sort_order", "created_at", "updated_at"},
 	"nav_links":         {"id", "title", "url", "sort_order", "created_at", "updated_at"},
 	"commenter_blocks":  {"id", "email", "ip_address", "reason", "created_by", "created_at"},
+		"ip_bans":           {"id", "ip_address", "scope", "reason", "auto_ban", "expires_at", "created_by", "created_at"},
 	"notifications":     {"id", "user_id", "type", "title", "content", "link", "is_read", "created_at"},
 }
 
@@ -76,12 +78,12 @@ var backupTables = []string{
 	"posts", "post_tags", "post_series", "comments", "comment_reactions", "comment_revisions",
 	"post_reactions", "media", "media_tag_links",
 	"passkeys", "post_revisions", "access_logs",
-	"friend_links", "gallery_images", "nav_links", "commenter_blocks", "notifications",
+	"friend_links", "gallery_images", "nav_links", "commenter_blocks", "ip_bans", "notifications",
 }
 
 // truncateOrder drops children first to avoid FK violations
 var truncateOrder = []string{
-	"gallery_images", "notifications", "commenter_blocks", "nav_links", "friend_links",
+	"gallery_images", "notifications", "commenter_blocks", "ip_bans", "nav_links", "friend_links",
 	"access_logs", "post_revisions", "passkeys", "media_tag_links", "media",
 	"post_reactions", "comment_revisions", "comment_reactions", "comments",
 	"post_series", "post_tags", "posts", "site_configs", "series", "media_tags", "tags", "categories", "users",
@@ -166,6 +168,13 @@ func (h *BackupHandler) restoreFromZip(zr *zip.Reader) error {
 	}
 	if input.Version == "" {
 		return fmt.Errorf("无效的备份文件")
+	}
+
+	// Validate all expected tables exist in backup data before truncating
+	for _, table := range backupTables {
+		if _, ok := input.Data[table]; !ok {
+			return fmt.Errorf("备份文件缺少数据表: %s", table)
+		}
 	}
 
 	tx := h.db.Begin()
@@ -471,20 +480,36 @@ func (h *BackupHandler) RestoreURL(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "仅支持 http/https 协议"})
 		return
 	}
-	// Block private/non-routable IPs
-	host := parsedURL.Hostname()
-	if addrs, err := net.LookupHost(host); err == nil {
-		for _, addr := range addrs {
-			ip := net.ParseIP(addr)
+
+
+	// Download with timeout and SSRF protection via custom transport
+	transport := &http.Transport{
+		DialContext: (&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+	}
+	transport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		host, _, err := net.SplitHostPort(addr)
+		if err != nil {
+			return nil, err
+		}
+		addrs, err := net.DefaultResolver.LookupHost(ctx, host)
+		if err != nil {
+			return nil, err
+		}
+		for _, a := range addrs {
+			ip := net.ParseIP(a)
 			if ip != nil && (ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsUnspecified()) {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "不允许下载内网地址"})
-				return
+				return nil, fmt.Errorf("拒绝连接内网地址: %s", a)
 			}
 		}
+		return (&net.Dialer{Timeout: 30 * time.Second}).DialContext(ctx, network, addr)
 	}
-
-	// Download with timeout
-	client := &http.Client{Timeout: 10 * time.Minute}
+	client := &http.Client{
+		Timeout:   10 * time.Minute,
+		Transport: transport,
+	}
 	resp, err := client.Get(input.URL)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "下载失败"})
@@ -492,13 +517,8 @@ func (h *BackupHandler) RestoreURL(c *gin.Context) {
 	}
 	defer resp.Body.Close()
 
-	if resp.ContentLength > 500*1024*1024 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "备份文件过大（最大 500MB）"})
-		return
-	}
-
 	buf := new(bytes.Buffer)
-	io.Copy(buf, resp.Body)
+	io.Copy(buf, io.LimitReader(resp.Body, 500*1024*1024))
 
 	zr, err := zip.NewReader(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
 	if err != nil {

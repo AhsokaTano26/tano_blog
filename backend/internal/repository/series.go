@@ -110,10 +110,15 @@ func (r *SeriesRepo) ListPosts(seriesID uuid.UUID) ([]model.Post, error) {
 }
 
 func (r *SeriesRepo) SetPosts(seriesID uuid.UUID, postIDs []uuid.UUID) error {
-	tx := r.db.Begin()
-	tx.Where("series_id = ?", seriesID).Delete(&model.PostSeries{})
-	for i, pid := range postIDs {
-		tx.Create(&model.PostSeries{SeriesID: seriesID, PostID: pid, SortOrder: i})
-	}
-	return tx.Commit().Error
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("series_id = ?", seriesID).Delete(&model.PostSeries{}).Error; err != nil {
+			return err
+		}
+		for i, pid := range postIDs {
+			if err := tx.Create(&model.PostSeries{SeriesID: seriesID, PostID: pid, SortOrder: i}).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }

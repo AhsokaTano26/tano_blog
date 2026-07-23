@@ -21,10 +21,14 @@ async function request<T>(path: string, options: FetchOptions = {}): Promise<T> 
 
   const isMutating = fetchOptions.method && !['GET', 'HEAD', 'OPTIONS'].includes(fetchOptions.method.toUpperCase());
 
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
+
   let res: Response;
   try {
     res = await fetch(url, {
       ...fetchOptions,
+      signal: controller.signal,
       credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
@@ -33,12 +37,14 @@ async function request<T>(path: string, options: FetchOptions = {}): Promise<T> 
       },
     });
   } catch {
+    clearTimeout(timeout);
     throw new Error('网络连接失败');
   }
 
   if (!res.ok) {
     // Session expired — redirect to login and suppress the error
     if (res.status === 401 && typeof window !== 'undefined' && !window.location.pathname.startsWith('/admin/login')) {
+      clearTimeout(timeout);
       window.location.href = '/admin/login';
       // Don't throw — navigation is already in progress
       return new Promise(() => {}) as never;
@@ -52,6 +58,7 @@ async function request<T>(path: string, options: FetchOptions = {}): Promise<T> 
     throw new Error(errMsg);
   }
 
+  clearTimeout(timeout);
   return res.json();
 }
 
@@ -140,6 +147,10 @@ export const api = {
     request<{ items: any[] }>('/api/v1/gallery'),
   verifyPostPassword: (slug: string, password: string) =>
     request<{ verified: boolean }>(`/api/v1/posts/${slug}/verify-password`, { method: 'POST', body: JSON.stringify({ password }) }),
+
+  // Music
+  verifyMusicPassword: (password: string) =>
+    request<{ success: boolean }>('/api/v1/music/verify-password', { method: 'POST', body: JSON.stringify({ password }) }),
 
   // Notifications
   getNotifications: (params?: Record<string, string>) =>
@@ -353,8 +364,20 @@ export const api = {
         request<{ items: any[] }>('/api/v1/admin/backups'),
       create: () =>
         request<{ message: string; filename: string }>('/api/v1/admin/backups', { method: 'POST' }),
-      download: (filename: string) => {
-        window.open(`${API_BASE}/api/v1/admin/backups/${filename}/download`, '_blank');
+      download: async (filename: string) => {
+        const res = await fetch(`${API_BASE}/api/v1/admin/backups/${filename}/download`, {
+          credentials: 'include',
+        });
+        if (!res.ok) return;
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
       },
       delete: (filename: string) =>
         request(`/api/v1/admin/backups/${filename}`, { method: 'DELETE' }),

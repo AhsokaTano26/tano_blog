@@ -51,12 +51,13 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	}
 
 	if !utils.CheckPassword(req.Password, user.PasswordHash) {
+		// Auto-ban: check login failure threshold
+		checkAutoBan(h.db, c.ClientIP())
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户名或密码错误"})
 		return
 	}
 
-		// Auto-ban: check login failure threshold
-		checkAutoBan(h.db, c.ClientIP())
+	flc.reset(c.ClientIP())
 
 	// If TOTP is enabled, require TOTP verification code
 	if user.TOTPEnabled {
@@ -115,7 +116,7 @@ func (h *AuthHandler) LoginWithTOTP(c *gin.Context) {
 
 	var user model.User
 	if err := h.db.First(&user, uid).Error; err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户不存在"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户名或密码错误"})
 		return
 	}
 
@@ -125,7 +126,7 @@ func (h *AuthHandler) LoginWithTOTP(c *gin.Context) {
 	}
 
 	if !utils.VerifyTOTP(user.TOTPSecret, req.Code) {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "验证码错误"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户名或密码错误"})
 		return
 	}
 
@@ -652,20 +653,20 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 		"reset_link", resetLink)
 
 	// Create site notification for password reset request
-	var adminUser model.User
-	h.db.Where("role = ?", "admin").First(&adminUser)
-	if adminUser.ID != uuid.Nil {
+	var adminUsers []model.User
+	h.db.Where("role = ?", "admin").Find(&adminUsers)
+	for _, adminUser := range adminUsers {
 		notifContent := fmt.Sprintf("用户 %s 申请了密码重置（邮箱: %s）\n重置链接: %s", user.Username, user.Email, resetLink)
-		go func() {
+		go func(content string) {
 			notifRepo := repository.NewNotificationRepo(h.db)
 			notifRepo.Create(&model.Notification{
 				UserID:  adminUser.ID,
 				Type:    "password_reset",
 				Title:   "密码重置申请",
-				Content: notifContent,
+				Content: content,
 				Link:    "/admin/notifications",
 			})
-		}()
+		}(notifContent)
 	}
 
 	if emailSent {
@@ -673,10 +674,8 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 			"message": "如果该邮箱已注册，重置链接将发送到您的邮箱",
 		})
 	} else {
-		// Email not configured or send failed — return reset link directly
 		c.JSON(http.StatusOK, gin.H{
-			"message":    "邮件服务未配置，重置链接已返回（请勿分享此链接）",
-			"reset_link": resetLink,
+			"message": "邮件服务未配置，重置链接已记录到服务器日志",
 		})
 	}
 }
@@ -752,9 +751,9 @@ func (h *AuthHandler) sendLoginNotify(c *gin.Context, user model.User) {
 	}
 
 	// Site notification
-	var adminUser model.User
-	h.db.Where("role = ?", "admin").First(&adminUser)
-	if adminUser.ID != uuid.Nil {
+	var adminUsers []model.User
+	h.db.Where("role = ?", "admin").Find(&adminUsers)
+	for _, adminUser := range adminUsers {
 		go func() {
 			notifRepo := repository.NewNotificationRepo(h.db)
 			notifRepo.Create(&model.Notification{

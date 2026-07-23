@@ -18,6 +18,19 @@ import (
 	"tano_blog/backend/internal/model"
 )
 
+func init() {
+	go func() {
+		ticker := time.NewTicker(10 * time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			sessionDataStore.Range(func(key, val interface{}) bool {
+				sessionDataStore.Delete(key)
+				return true
+			})
+		}
+	}()
+}
+
 var (
 	webAuthn          *webauthn.WebAuthn
 	webAuthnOnce      sync.Once

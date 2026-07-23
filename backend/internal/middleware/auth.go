@@ -44,11 +44,13 @@ func AuthRequired(cfg *config.JWTConfig, db *gorm.DB) gin.HandlerFunc {
 		uid, err := uuid.Parse(claims.UserID)
 		if err == nil {
 			var user model.User
-			if db.First(&user, uid).Error == nil {
-				if user.TokenVersion != claims.TokenVersion {
-					c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "登录已失效，请重新登录"})
-					return
-				}
+			if db.First(&user, uid).Error != nil {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "用户不存在"})
+				return
+			}
+			if user.TokenVersion != claims.TokenVersion {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "登录已失效，请重新登录"})
+				return
 			}
 		}
 
@@ -60,7 +62,7 @@ func AuthRequired(cfg *config.JWTConfig, db *gorm.DB) gin.HandlerFunc {
 }
 
 // OptionalAuth sets user info if token is present, but doesn't reject
-func OptionalAuth(cfg *config.JWTConfig) gin.HandlerFunc {
+func OptionalAuth(cfg *config.JWTConfig, db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tokenStr := GetToken(c)
 		if tokenStr == "" {
@@ -75,9 +77,15 @@ func OptionalAuth(cfg *config.JWTConfig) gin.HandlerFunc {
 			return []byte(cfg.Secret), nil
 		})
 		if err == nil && token.Valid {
-			c.Set("user_id", claims.UserID)
-			c.Set("username", claims.Username)
-			c.Set("role", claims.Role)
+			uid, err := uuid.Parse(claims.UserID)
+			if err == nil {
+				var user model.User
+				if db.First(&user, uid).Error == nil && user.TokenVersion == claims.TokenVersion {
+					c.Set("user_id", claims.UserID)
+					c.Set("username", claims.Username)
+					c.Set("role", claims.Role)
+				}
+			}
 		}
 		c.Next()
 	}

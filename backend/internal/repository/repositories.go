@@ -1,14 +1,13 @@
 package repository
 
-import (
-	"fmt"
+import ("fmt"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
-	"tano_blog/backend/internal/model"
-)
+	"errors"
+	"tano_blog/backend/internal/model")
 
 type NameCount struct {
 	Name  string `json:"name"`
@@ -217,8 +216,13 @@ func (r *AccessLogRepo) StatsTimeRange(start, end string) (*TimeRangeStats, erro
 	defer rows.Close()
 	for rows.Next() {
 		var dc DailyCount
-		rows.Scan(&dc.Date, &dc.Count)
+		if err := rows.Scan(&dc.Date, &dc.Count); err != nil {
+			continue
+		}
 		stats.DailyCounts = append(stats.DailyCounts, dc)
+	}
+	if err := rows.Err(); err != nil {
+		return &stats, nil
 	}
 	return &stats, nil
 }
@@ -469,8 +473,12 @@ func (r *PostRepo) SetTags(postID uuid.UUID, tagIDs []uuid.UUID) error {
 }
 
 func (r *PostRepo) SetSeries(postID uuid.UUID, seriesID uuid.UUID) error {
-	r.db.Where("post_id = ?", postID).Delete(&model.PostSeries{})
-	return r.db.Create(&model.PostSeries{SeriesID: seriesID, PostID: postID}).Error
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("post_id = ?", postID).Delete(&model.PostSeries{}).Error; err != nil {
+			return err
+		}
+		return tx.Create(&model.PostSeries{SeriesID: seriesID, PostID: postID}).Error
+	})
 }
 
 func (r *PostRepo) ClearSeries(postID uuid.UUID) error {
@@ -516,6 +524,9 @@ func (r *PostRepo) ToggleReaction(postID uuid.UUID, emoji, ipAddress string) (bo
 		r.db.Delete(&existing)
 		return false, nil
 	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return false, err
+	}
 	reaction := model.PostReaction{
 		PostID:    postID,
 		Emoji:     emoji,
@@ -534,11 +545,13 @@ func (r *PostRepo) GetReactions(postIDs []uuid.UUID) (map[string]map[string]int,
 		Count  int
 	}
 	var rows []ReactionCount
-	r.db.Model(&model.PostReaction{}).
+	if err := r.db.Model(&model.PostReaction{}).
 		Select("post_id, emoji, COUNT(*) as count").
 		Where("post_id IN ?", postIDs).
 		Group("post_id, emoji").
-		Find(&rows)
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
 
 	result := make(map[string]map[string]int)
 	for _, row := range rows {
@@ -557,10 +570,12 @@ func (r *PostRepo) GetUserReactions(postIDs []uuid.UUID, ipAddress string) (map[
 		Emoji  string
 	}
 	var rows []UserReaction
-	r.db.Model(&model.PostReaction{}).
+	if err := r.db.Model(&model.PostReaction{}).
 		Select("post_id, emoji").
 		Where("post_id IN ? AND ip_address = ?", postIDs, ipAddress).
-		Find(&rows)
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
 
 	result := make(map[string][]string)
 	for _, row := range rows {
@@ -878,9 +893,13 @@ func (r *MediaRepo) BatchUpdateTags(ids []uuid.UUID, tagIDs []uuid.UUID) error {
 		return nil
 	}
 	var items []model.Media
-	r.db.Where("id IN ?", ids).Find(&items)
+	if err := r.db.Where("id IN ?", ids).Find(&items).Error; err != nil {
+		return err
+	}
 	for _, item := range items {
-		r.db.Model(&item).Association("Tags").Replace(tagIDs)
+		if err := r.db.Model(&item).Association("Tags").Replace(tagIDs); err != nil {
+			return err
+		}
 	}
 	return nil
 }

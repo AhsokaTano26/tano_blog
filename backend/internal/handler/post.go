@@ -512,11 +512,7 @@ func (h *PostHandler) Create(c *gin.Context) {
 			post.CreatedAt = t
 		}
 	}
-		if input.CreatedAt != "" {
-			if t, err := time.Parse("2006-01-02T15:04", input.CreatedAt); err == nil {
-				post.CreatedAt = t
-			}
-		}
+	
 	if err := h.repo.Create(post); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建文章失败"})
 		return
@@ -640,7 +636,9 @@ func (h *PostHandler) Update(c *gin.Context) {
 			updates["password_hint"] = ""
 		} else if hash, err := utils.HashPassword(*input.Password); err == nil {
 			updates["password_hash"] = hash
-			updates["password_hint"] = *input.PasswordHint
+			if input.PasswordHint != nil {
+				updates["password_hint"] = *input.PasswordHint
+			}
 		}
 	} else if input.PasswordHint != nil {
 		updates["password_hint"] = *input.PasswordHint

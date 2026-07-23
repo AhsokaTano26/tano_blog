@@ -61,11 +61,11 @@ func (h *FeedHandler) RSS(c *gin.Context) {
 	sb.WriteString(`<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:atom="http://www.w3.org/2005/Atom">`)
 	sb.WriteString("<channel>")
 	sb.WriteString("<title>" + escapeXML(title) + "</title>")
-	sb.WriteString("<link>" + siteURL + "</link>")
+	sb.WriteString("<link>" + escapeXML(siteURL) + "</link>")
 	sb.WriteString("<description>" + escapeXML(desc) + "</description>")
 	sb.WriteString("<language>zh-CN</language>")
 	sb.WriteString("<lastBuildDate>" + now + "</lastBuildDate>")
-	sb.WriteString(fmt.Sprintf(`<atom:link href="%s/rss.xml" rel="self" type="application/rss+xml"/>`, siteURL))
+	sb.WriteString(fmt.Sprintf(`<atom:link href="%s/rss.xml" rel="self" type="application/rss+xml"/>`, escapeXML(siteURL)))
 
 	for _, post := range posts {
 		postURL := siteURL + "/posts/" + post.Slug
@@ -81,8 +81,8 @@ func (h *FeedHandler) RSS(c *gin.Context) {
 
 		sb.WriteString("<item>")
 		sb.WriteString("<title><![CDATA[" + post.Title + "]]></title>")
-		sb.WriteString("<link>" + postURL + "</link>")
-		sb.WriteString("<guid isPermaLink=\"true\">" + postURL + "</guid>")
+		sb.WriteString("<link>" + escapeXML(postURL) + "</link>")
+		sb.WriteString("<guid isPermaLink=\"true\">" + escapeXML(postURL) + "</guid>")
 		if pubDate != "" {
 			sb.WriteString("<pubDate>" + pubDate + "</pubDate>")
 		}
@@ -154,7 +154,7 @@ func (h *FeedHandler) Sitemap(c *gin.Context) {
 
 	for _, p := range staticPages {
 		sb.WriteString("<url>")
-		sb.WriteString("<loc>" + siteURL + p.path + "</loc>")
+		sb.WriteString("<loc>" + escapeXML(siteURL) + p.path + "</loc>")
 		sb.WriteString("<priority>" + p.priority + "</priority>")
 		sb.WriteString("<changefreq>" + p.changefreq + "</changefreq>")
 		sb.WriteString("</url>")
@@ -163,7 +163,7 @@ func (h *FeedHandler) Sitemap(c *gin.Context) {
 	for _, post := range posts {
 		lastMod := post.UpdatedAt.Format("2006-01-02")
 		sb.WriteString("<url>")
-		sb.WriteString("<loc>" + siteURL + "/posts/" + post.Slug + "</loc>")
+		sb.WriteString("<loc>" + escapeXML(siteURL) + "/posts/" + escapeXML(post.Slug) + "</loc>")
 		sb.WriteString("<lastmod>" + lastMod + "</lastmod>")
 		sb.WriteString("<priority>0.9</priority>")
 		sb.WriteString("<changefreq>weekly</changefreq>")
@@ -173,7 +173,7 @@ func (h *FeedHandler) Sitemap(c *gin.Context) {
 	for _, cat := range categories {
 		lastMod := cat.UpdatedAt.Format("2006-01-02")
 		sb.WriteString("<url>")
-		sb.WriteString("<loc>" + siteURL + "/categories/" + cat.Slug + "</loc>")
+		sb.WriteString("<loc>" + escapeXML(siteURL) + "/categories/" + escapeXML(cat.Slug) + "</loc>")
 		sb.WriteString("<lastmod>" + lastMod + "</lastmod>")
 		sb.WriteString("<priority>0.6</priority>")
 		sb.WriteString("</url>")
@@ -182,7 +182,7 @@ func (h *FeedHandler) Sitemap(c *gin.Context) {
 	for _, tag := range tags {
 		lastMod := tag.CreatedAt.Format("2006-01-02")
 		sb.WriteString("<url>")
-		sb.WriteString("<loc>" + siteURL + "/tags/" + tag.Slug + "</loc>")
+		sb.WriteString("<loc>" + escapeXML(siteURL) + "/tags/" + escapeXML(tag.Slug) + "</loc>")
 		sb.WriteString("<lastmod>" + lastMod + "</lastmod>")
 		sb.WriteString("<priority>0.5</priority>")
 		sb.WriteString("</url>")
