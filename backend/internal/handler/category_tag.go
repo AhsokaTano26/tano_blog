@@ -30,13 +30,23 @@ func (h *CategoryHandler) List(c *gin.Context) {
 		pageSize = 100
 	}
 
+	type CategoryWithCount struct {
+		model.Category
+		PostCount int `json:"post_count"`
+	}
 	var total int64
 	h.db.Model(&model.Category{}).Count(&total)
 
-	var cats []model.Category
-	h.db.Order("sort_order ASC, name ASC").Offset((page-1)*pageSize).Limit(pageSize).Find(&cats)
+	var cats []CategoryWithCount
+	h.db.Model(&model.Category{}).
+		Select("categories.*, COUNT(posts.id) as post_count").
+		Joins("LEFT JOIN posts ON posts.category_id = categories.id").
+		Group("categories.id").
+		Order("sort_order ASC, name ASC").
+		Offset((page-1)*pageSize).Limit(pageSize).
+		Scan(&cats)
 	if cats == nil {
-		cats = []model.Category{}
+		cats = []CategoryWithCount{}
 	}
 	c.JSON(http.StatusOK, gin.H{"items": cats, "total": total, "page": page, "size": pageSize})
 }

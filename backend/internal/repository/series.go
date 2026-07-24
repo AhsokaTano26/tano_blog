@@ -45,6 +45,19 @@ func (r *SeriesRepo) ListWithCount() ([]map[string]interface{}, error) {
 	return results, err
 }
 
+func (r *SeriesRepo) ListPaginatedWithCount(page, pageSize int) ([]map[string]interface{}, error) {
+	var results []map[string]interface{}
+	err := r.db.Model(&model.Series{}).
+		Select("series.*, COUNT(post_series.post_id) FILTER (WHERE posts.status = 'published') as post_count").
+		Joins("LEFT JOIN post_series ON post_series.series_id = series.id").
+		Joins("LEFT JOIN posts ON posts.id = post_series.post_id").
+		Group("series.id").
+		Order("series.sort_order ASC, series.created_at DESC").
+		Offset((page - 1) * pageSize).Limit(pageSize).
+		Find(&results).Error
+	return results, err
+}
+
 func (r *SeriesRepo) GetByID(id uuid.UUID) (*model.Series, error) {
 	var s model.Series
 	err := r.db.First(&s, id).Error

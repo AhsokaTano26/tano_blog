@@ -59,13 +59,14 @@ func (h *SeriesHandler) AdminList(c *gin.Context) {
 		return
 	}
 
-	series, err := h.repo.ListPaginated(page, pageSize)
+	var series []map[string]interface{}
+	series, err = h.repo.ListPaginatedWithCount(page, pageSize)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取系列列表失败"})
 		return
 	}
 	if series == nil {
-		series = []model.Series{}
+		series = []map[string]interface{}{}
 	}
 	c.JSON(http.StatusOK, gin.H{"items": series, "total": total, "page": page, "size": pageSize})
 }

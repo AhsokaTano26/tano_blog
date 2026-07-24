@@ -183,7 +183,6 @@ export default function Home() {
                             color: activeCategory === cat.slug ? '#fff' : 'var(--primary)',
                           }}>
                           {cat.name}
-                          <span className="ml-1 opacity-70">{cat.post_count || 0}</span>
                         </button>
                       ))}
                     </div>
@@ -224,7 +223,6 @@ export default function Home() {
                           style={{ color: 'var(--text-secondary)' }}>
                           <Bookmark className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'var(--primary)' }} />
                           <span className="flex-1 line-clamp-1">{s.name}</span>
-                          <span className="text-xs" style={{ color: 'var(--text-info)' }}>{s.post_count || 0}</span>
                         </Link>
                       ))}
                     </div>
