@@ -11,6 +11,11 @@ on:
       - 'VERSION'
       - '.github/**'
 
+# 同一分支上的发布任务顺序执行，避免两个工作流同时创建相同版本或标签。
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -115,14 +120,28 @@ jobs:
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
+
+          # 测试期间 main 可能被新的提交推进；先以远程分支为基准，
+          # 避免版本提交因非快进而直接失败。
+          git fetch origin main
+          git rebase origin/main
           echo "${{ steps.version.outputs.VERSION }}" > VERSION
           git add VERSION
-          # Only commit if VERSION actually changed
+          # 仅在 VERSION 确实变化时创建提交。
           if git diff --cached --quiet HEAD -- VERSION; then
             echo "VERSION unchanged, skipping commit"
           else
             git commit -m "chore: bump version to ${{ steps.version.outputs.VERSION }} [skip ci]"
-            git push origin HEAD:main
+            for attempt in 1 2 3; do
+              if git push origin HEAD:main; then
+                exit 0
+              fi
+              echo "main 在推送期间更新，正在进行第 ${attempt} 次 rebase 重试"
+              git fetch origin main
+              git rebase origin/main
+            done
+            echo "无法在三次尝试内推送 VERSION 提交"
+            exit 1
           fi
 
       - name: Create Git tag
