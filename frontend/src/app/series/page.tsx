@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { api } from '@/lib/api';
 import { Bookmark, ChevronRight, ArrowLeft } from 'lucide-react';
 import { Loading } from '@/components/Loading';
+import { ImageWithFallback } from '@/components/ImageWithFallback';
 
 export default function SeriesPage() {
   const [items, setItems] = useState<any[]>([]);
@@ -57,10 +58,9 @@ export default function SeriesPage() {
                 border: '1px solid var(--glass-border)',
               }}>
               {s.cover_image && (
-                <img src={s.cover_image} alt={s.name}
+                <ImageWithFallback src={s.cover_image} alt={s.name}
                   className="w-full object-contain bg-black/5"
-                  style={{ maxHeight: '200px' }}
-                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                  style={{ maxHeight: '200px' }} />
               )}
               <div className="flex items-center gap-4 px-5 py-4">
                 <div className="flex items-center justify-center w-10 h-10 rounded-lg shrink-0"

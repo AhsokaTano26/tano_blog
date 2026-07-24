@@ -2,17 +2,18 @@
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeHighlight from 'rehype-highlight';
 import rehypeSlug from 'rehype-slug';
-import rehypeKatex from 'rehype-katex';
 import rehypeRaw from 'rehype-raw';
+import rehypeSanitize from 'rehype-sanitize';
 
 import 'katex/dist/katex.min.css';
 import { api } from '@/lib/api';
-import { Calendar, Eye, Copy, Check, BookOpen, Shield, User, Edit3, Bookmark } from 'lucide-react';
+import { Calendar, Eye, Copy, Check, BookOpen, Shield, User, Edit3, Bookmark, ArrowLeft } from 'lucide-react';
 import { ContentHeadInjection } from '@/components/HtmlInjection';
 import { ReadingProgress } from '@/components/ReadingProgress';
 import { ImageLightbox } from '@/components/ImageLightbox';
@@ -21,6 +22,12 @@ import { MermaidDiagram } from '@/components/MermaidDiagram';
 import { ArticleAudioPlayer } from '@/components/ArticleAudioPlayer';
 import { EmojiPickerButton } from '@/components/EmojiPicker';
 import { ScrollReveal } from '@/components/ScrollReveal';
+import { markdownSanitizeSchema } from '@/lib/markdown-sanitize';
+import { remarkMhchem } from '@/lib/remark-mhchem';
+import { remarkAlerts } from '@/lib/remark-alerts';
+import { rehypeKatexWithMhchem } from '@/lib/rehype-katex-mhchem';
+import { ImageWithFallback } from '@/components/ImageWithFallback';
+import { MarkdownAlert } from '@/components/MarkdownAlert';
 
 interface TocItem {
   id: string;
@@ -183,13 +190,13 @@ function CodeBlock({ children, className }: { children?: React.ReactNode; classN
   const lang = className?.replace('language-', '') || '';
 
   return (
-    <div className="relative group my-4 rounded-lg overflow-hidden" style={{ background: 'var(--code-bg, #1e1e2e)' }}>
-      <div className="flex items-center justify-between px-4 py-1.5 text-xs" style={{ background: 'var(--code-header, #2d2d3d)', color: 'var(--text-secondary)' }}>
+    <div className="article-code-block relative group my-4 rounded-lg overflow-hidden">
+      <div className="article-code-header flex items-center justify-between px-4 py-1.5 text-xs">
         <span>{lang || 'code'}</span>
         <button
           onClick={handleCopy}
           className="flex items-center gap-1 px-2 py-0.5 rounded transition-opacity hover:opacity-80"
-          style={{ color: 'var(--text-secondary)' }}
+          style={{ color: '#ffffff' }}
         >
           {copied ? '已复制' : '复制'}
         </button>
@@ -201,6 +208,7 @@ function CodeBlock({ children, className }: { children?: React.ReactNode; classN
 
 export default function PostPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = React.use(params);
+  const router = useRouter();
   const [post, setPost] = useState<any>(null);
   const [comments, setComments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -565,6 +573,14 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
     },
     pre: CodeBlock,
     audio: ({ src }: any) => <ArticleAudioPlayer src={src || ''} />,
+    div: MarkdownAlert,
+    img: ({ src, alt }: any) => (
+      <ImageWithFallback
+        src={src}
+        alt={typeof alt === 'string' ? alt : ''}
+        className="max-w-full rounded-lg"
+      />
+    ),
   }), []);
 
   if (loading) {
@@ -629,10 +645,21 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
       {/* Main content */}
       <div className="w-full max-w-3xl min-w-0">
         <article>
+          <button
+            type="button"
+            onClick={() => window.history.length > 1 ? router.back() : router.push('/')}
+            className="inline-flex items-center gap-1.5 mb-5 px-3 py-1.5 rounded-lg text-sm btn-glass transition-all hover:opacity-80"
+            style={{ color: 'var(--text-secondary)' }}
+            aria-label="返回上一页"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            返回
+          </button>
+
           {/* Cover image */}
           <ScrollReveal margin="-40px">
           {post.cover_image && (
-            <img src={post.cover_image} alt={post.title} loading="lazy"
+            <ImageWithFallback src={post.cover_image} alt={post.title} loading="lazy"
               className="w-full h-56 md:h-72 object-cover rounded-xl mb-6" />
           )}
           </ScrollReveal>
@@ -730,8 +757,14 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
           <ScrollReveal margin="-60px">
           <div ref={contentRef} className="prose dark:prose-invert prose-sm sm:prose-base max-w-none mb-10">
             <ReactMarkdown
-              remarkPlugins={[remarkGfm, remarkMath]}
-              rehypePlugins={[rehypeHighlight, rehypeSlug, rehypeKatex, rehypeRaw]}
+              remarkPlugins={[remarkGfm, remarkMath, remarkMhchem, remarkAlerts]}
+              rehypePlugins={[
+                rehypeRaw,
+                [rehypeSanitize, markdownSanitizeSchema],
+                rehypeHighlight,
+                rehypeSlug,
+                rehypeKatexWithMhchem,
+              ]}
               components={markdownComponents}
             >
               {post.content}
@@ -848,7 +881,7 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
                   className="glass-card rounded-2xl overflow-hidden transition-all hover:translate-y-[-2px]"
                 >
                   {rp.cover_image && (
-                    <img src={rp.cover_image} alt={rp.title} className="w-full h-32 object-cover" />
+                    <ImageWithFallback src={rp.cover_image} alt={rp.title} className="w-full h-32 object-cover" />
                   )}
                   <div className="p-3">
                     <h3 className="text-sm font-bold line-clamp-2" style={{ color: 'var(--text-primary)' }}>
@@ -981,6 +1014,19 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
           </form>
         </section>
         </ScrollReveal>
+
+        <div className="flex justify-center pt-8 pb-2">
+          <button
+            type="button"
+            onClick={() => window.history.length > 1 ? router.back() : router.push('/')}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm btn-glass transition-all hover:opacity-80"
+            style={{ color: 'var(--text-secondary)' }}
+            aria-label="返回上一页"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            返回
+          </button>
+        </div>
       </div>
 
       {/* TOC Sidebar */}

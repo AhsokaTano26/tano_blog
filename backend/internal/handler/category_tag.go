@@ -43,7 +43,7 @@ func (h *CategoryHandler) List(c *gin.Context) {
 		Joins("LEFT JOIN posts ON posts.category_id = categories.id").
 		Group("categories.id").
 		Order("sort_order ASC, created_at ASC").
-		Offset((page-1)*pageSize).Limit(pageSize).
+		Offset((page - 1) * pageSize).Limit(pageSize).
 		Scan(&cats)
 	if cats == nil {
 		cats = []CategoryWithCount{}
@@ -61,8 +61,12 @@ func (h *CategoryHandler) GetBySlug(c *gin.Context) {
 
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
-	if page < 1 { page = 1 }
-	if pageSize < 1 || pageSize > 50 { pageSize = 10 }
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 50 {
+		pageSize = 10
+	}
 
 	var total int64
 	query := h.db.Model(&model.Post{}).Where("category_id = ? AND status = ?", cat.ID, "published")
@@ -70,7 +74,7 @@ func (h *CategoryHandler) GetBySlug(c *gin.Context) {
 
 	var posts []model.Post
 	query.Select("id, title, slug, excerpt, cover_image, published_at, created_at, view_count").
-		Order("created_at DESC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&posts)
+		Order("created_at DESC, title ASC, id ASC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&posts)
 
 	c.JSON(http.StatusOK, gin.H{
 		"category": cat,
@@ -221,8 +225,12 @@ func (h *TagHandler) GetBySlug(c *gin.Context) {
 
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
-	if page < 1 { page = 1 }
-	if pageSize < 1 || pageSize > 50 { pageSize = 10 }
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 50 {
+		pageSize = 10
+	}
 
 	var total int64
 	query := h.db.Model(&model.Post{}).
@@ -232,7 +240,7 @@ func (h *TagHandler) GetBySlug(c *gin.Context) {
 
 	var posts []model.Post
 	query.Select("posts.id, posts.title, posts.slug, posts.excerpt, posts.cover_image, posts.published_at, posts.created_at, posts.view_count").
-		Order("posts.created_at DESC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&posts)
+		Order("posts.created_at DESC, posts.title ASC, posts.id ASC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&posts)
 
 	c.JSON(http.StatusOK, gin.H{
 		"tag":   tag,

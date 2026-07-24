@@ -9,6 +9,7 @@ import { KeyboardShortcuts } from '@/components/KeyboardShortcuts';
 import { Footer } from '@/components/Footer';
 import { MusicPlayer } from '@/components/MusicPlayer';
 import { BackToTop } from '@/components/BackToTop';
+import { ScrollPositionRestoration } from '@/components/ScrollPositionRestoration';
 
 export function ClientLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -19,6 +20,7 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
   return (
     <>
       <GlobalHeadInjection />
+      <ScrollPositionRestoration />
       <KeyboardShortcuts />
       {!isAdmin && !isMusic && <Header />}
       {!isAdmin && !isHome && !isMusic && <Banner />}

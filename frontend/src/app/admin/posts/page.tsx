@@ -8,7 +8,8 @@ import {
   ArrowLeft, Save,
   Bold, Italic, Underline, Strikethrough, Link, Code, Quote, List, ListOrdered,
   Image as ImageIcon, Heading1, Heading2, Heading3, LayoutGrid,
-  Minus, SquareCode, Superscript, GitBranch, Table, Video, Music, Palette, Settings
+  Minus, SquareCode, Superscript, GitBranch, Table, Video, Music, Palette, Settings,
+  Info, Lightbulb, CircleAlert, TriangleAlert, OctagonAlert
 } from 'lucide-react';
 import { Loading } from '@/components/Loading';
 import { MermaidDiagram } from '@/components/MermaidDiagram';
@@ -22,9 +23,15 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeHighlight from 'rehype-highlight';
-import rehypeKatex from 'rehype-katex';
 import rehypeRaw from 'rehype-raw';
 import rehypeSlug from 'rehype-slug';
+import rehypeSanitize from 'rehype-sanitize';
+import { markdownSanitizeSchema } from '@/lib/markdown-sanitize';
+import { remarkMhchem } from '@/lib/remark-mhchem';
+import { remarkAlerts } from '@/lib/remark-alerts';
+import { rehypeKatexWithMhchem } from '@/lib/rehype-katex-mhchem';
+import { ImageWithFallback } from '@/components/ImageWithFallback';
+import { MarkdownAlert } from '@/components/MarkdownAlert';
 
 // ===== Image helper types and functions =====
 
@@ -37,6 +44,16 @@ interface ImageAttrs {
   caption: string;
   linkUrl: string;
 }
+
+const markdownReference = [
+  { title: '标题与强调', example: '# 一级标题\n## 二级标题\n**粗体**  *斜体*  ~~删除线~~' },
+  { title: '链接与图片', example: '[链接文字](https://example.com)\n![图片替代文字](https://example.com/image.jpg)' },
+  { title: '列表与引用', example: '- 无序列表\n1. 有序列表\n> 普通引用' },
+  { title: '代码与表格', example: '```ts\nconst message = "Hello";\n```\n\n| 名称 | 值 |\n| --- | --- |\n| 示例 | 内容 |' },
+  { title: '数学与化学公式', example: '行内：$E = mc^2$\n\n块级：$$\\frac{a}{b}$$\n\n化学：$\\ce{2H2 + O2 -> 2H2O}$' },
+  { title: 'Mermaid 图表', example: '```mermaid\ngraph TD\n  A[开始] --> B[结束]\n```' },
+  { title: '提示块', example: '> [!NOTE]\n> 这是 Note 提示。\n\n[!WARNING] 这是 Warning 提示。' },
+] as const;
 
 const DEFAULT_IMAGE_ATTRS: ImageAttrs = {
   url: '',
@@ -474,7 +491,7 @@ export default function AdminPosts() {
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
                         {post.cover_image ? (
-                          <img src={post.cover_image} alt={post.title} className="w-10 h-10 rounded-lg object-cover flex-shrink-0" />
+                          <ImageWithFallback src={post.cover_image} alt={post.title} className="w-10 h-10 rounded-lg object-cover flex-shrink-0" />
                         ) : (
                           <div className="w-10 h-10 rounded-lg flex items-center justify-center glass-card flex-shrink-0">
                             <FileText className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
@@ -931,6 +948,14 @@ function PostDetailDialog({ post, categories, tags, seriesList, onSave, onClose 
 }
 
 /* ── Full-page post editor ── */
+function toDateTimeLocal(value?: string): string {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const pad = (part: number) => String(part).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
   const { confirm } = useConfirm();
   const [title, setTitle] = useState(post?.title || '');
@@ -954,12 +979,14 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
   const [scheduledAt, setScheduledAt] = useState(post?.published_at && post?.status === 'draft' ? post.published_at.slice(0, 16) : '');
   const [password, setPassword] = useState('');
   const [passwordHint, setPasswordHint] = useState(post?.password_hint || '');
-  const [createdAt, setCreatedAt] = useState(post?.created_at ? post.created_at.slice(0, 16) : '');
+  const initialCreatedAt = toDateTimeLocal(post?.created_at);
+  const [createdAt, setCreatedAt] = useState(initialCreatedAt);
   const [passwordSet, setPasswordSet] = useState(post?.password_set || false);
   const [users, setUsers] = useState<any[]>([]);
   const [rightTab, setRightTab] = useState<'outline' | 'history' | 'details'>('outline');
   const [revisions, setRevisions] = useState<any[]>([]);
   const [showRightPanel, setShowRightPanel] = useState(true);
+  const [showMarkdownReference, setShowMarkdownReference] = useState(false);
   const [showDetailDialog, setShowDetailDialog] = useState(false);
   const [viewMode, setViewMode] = useState<'edit' | 'preview' | 'split'>('split');
   const [showRestoreBanner, setShowRestoreBanner] = useState(false);
@@ -1122,9 +1149,12 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
         status: publishStatus || status,
         is_top: isTop,
         allow_comment: allowComment,
-        created_at: createdAt || undefined,
       };
       data.author_name = authorName;
+      if (post?.id && createdAt && createdAt !== initialCreatedAt) {
+        const timestamp = new Date(createdAt);
+        if (!Number.isNaN(timestamp.getTime())) data.created_at = timestamp.toISOString();
+      }
       if (password) {
         data.password = password;
         data.password_hint = passwordHint;
@@ -1328,6 +1358,12 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
     { icon: SquareCode, action: () => insertMarkdown('```\n', '\n```'), title: '代码块' },
     { icon: Quote, action: () => insertMarkdown('> '), title: '引用' },
     { type: 'divider' as const },
+    { icon: Info, action: () => insertMarkdown('> [!NOTE]\n> '), title: '提示块：Note' },
+    { icon: Lightbulb, action: () => insertMarkdown('> [!TIP]\n> '), title: '提示块：Tip' },
+    { icon: CircleAlert, action: () => insertMarkdown('> [!IMPORTANT]\n> '), title: '提示块：Important' },
+    { icon: TriangleAlert, action: () => insertMarkdown('> [!WARNING]\n> '), title: '提示块：Warning' },
+    { icon: OctagonAlert, action: () => insertMarkdown('> [!CAUTION]\n> '), title: '提示块：Caution' },
+    { type: 'divider' as const },
     { icon: Superscript, action: () => insertMarkdown('$', '$'), title: '行内公式' },
     { icon: Superscript, action: () => insertMarkdown('$$\n', '\n$$'), title: '公式块' },
     { icon: GitBranch, action: () => insertMarkdown('```mermaid\n', '\n```'), title: 'Mermaid 图' },
@@ -1432,6 +1468,12 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
             title="文章详情与设置">
             <Settings className="w-3.5 h-3.5 inline mr-1" />详情
           </button>
+          <button onClick={() => setShowMarkdownReference(value => !value)}
+            className="flex items-center gap-1 px-3 py-2 rounded-xl text-sm transition-colors btn-glass"
+            style={{ color: showMarkdownReference ? 'var(--primary)' : 'var(--text-secondary)' }}
+            title="Markdown 语法参考">
+            <FileText className="w-3.5 h-3.5" />语法参考
+          </button>
           <button onClick={() => setShowRightPanel(!showRightPanel)}
             className="p-2 rounded-xl transition-colors btn-glass"
             style={{ color: showRightPanel ? 'var(--primary)' : 'var(--text-info)' }}
@@ -1476,6 +1518,30 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
               style={{ color: 'var(--text-secondary)' }}>丢弃</button>
           </div>
         </div>
+      )}
+
+      {showMarkdownReference && (
+        <section className="mx-4 mt-3 flex-shrink-0 rounded-2xl glass-card overflow-hidden" aria-label="Markdown 语法参考">
+          <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: '1px solid var(--glass-border)' }}>
+            <div>
+              <h2 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Markdown 语法参考</h2>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--text-info)' }}>示例可直接复制到正文中使用</p>
+            </div>
+            <button onClick={() => setShowMarkdownReference(false)} className="p-1.5 rounded-lg btn-glass" style={{ color: 'var(--text-secondary)' }} aria-label="收起语法参考">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 p-4 max-h-[42vh] overflow-y-auto">
+            {markdownReference.map((section) => (
+              <div key={section.title} className="rounded-xl p-3" style={{ background: 'var(--btn-card-bg)' }}>
+                <h3 className="text-xs font-semibold mb-2" style={{ color: 'var(--primary)' }}>{section.title}</h3>
+                <pre className="m-0 whitespace-pre-wrap break-words text-xs leading-relaxed font-mono" style={{ color: 'var(--text-primary)' }}>
+                  <code>{section.example}</code>
+                </pre>
+              </div>
+            ))}
+          </div>
+        </section>
       )}
 
       {/* Main content area */}
@@ -1566,8 +1632,14 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
               <div className="prose prose-sm max-w-none" style={{ color: 'var(--text-primary)' }}>
                 {content ? (
                   <ReactMarkdown
-                    remarkPlugins={[remarkGfm, remarkMath]}
-                    rehypePlugins={[rehypeHighlight, rehypeKatex, rehypeRaw, rehypeSlug]}
+                    remarkPlugins={[remarkGfm, remarkMath, remarkMhchem, remarkAlerts]}
+                    rehypePlugins={[
+                      rehypeRaw,
+                      [rehypeSanitize, markdownSanitizeSchema],
+                      rehypeHighlight,
+                      rehypeKatexWithMhchem,
+                      rehypeSlug,
+                    ]}
                     components={{
                       code: ({ className, children, ...props }: any) => {
                         const match = /language-(\w+)/.exec(className || '');
@@ -1580,7 +1652,7 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
                         <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary)' }}>{children}</a>
                       ),
                       img: ({ src, alt }) => (
-                        <img src={src} alt={typeof alt === 'string' ? alt : ''} style={{ maxWidth: '100%', borderRadius: '8px', cursor: 'pointer' }}
+                        <ImageWithFallback src={src} alt={typeof alt === 'string' ? alt : ''} style={{ maxWidth: '100%', borderRadius: '8px', cursor: 'pointer' }}
                           onClick={(e) => {
                             e.preventDefault();
                             e.stopPropagation();
@@ -1594,6 +1666,7 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
                           title="点击编辑" />
                       ),
                       audio: ({ src }) => <ArticleAudioPlayer src={src || ''} />,
+                      div: MarkdownAlert,
                     }}
                   >
                     {content}
@@ -1657,19 +1730,16 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
                     <p className="text-xs font-medium mb-1" style={{ color: 'var(--text-info)' }}>词数量</p>
                     <p className="text-sm" style={{ color: 'var(--text-primary)' }}>{content.trim() ? content.trim().split(/\s+/).length.toLocaleString() : 0}</p>
                   </div>
-                  {post?.id && (
+                  {post?.created_at && (
                     <div>
                       <p className="text-xs font-medium mb-1" style={{ color: 'var(--text-info)' }}>创建时间</p>
-                      <div className="flex gap-2">
-                        <input type="date" value={createdAt ? createdAt.slice(0, 10) : ''}
-                          onChange={e => setCreatedAt(e.target.value ? (e.target.value + 'T' + (createdAt.slice(11) || '00:00')) : '')}
-                          className="flex-1 px-2.5 py-1.5 rounded-xl text-sm outline-none"
-                          style={{ background: 'var(--glass-bg)', color: 'var(--text-primary)', border: '1px solid var(--glass-border)', colorScheme: 'dark' }} />
-                        <input type="time" value={createdAt ? createdAt.slice(11) : '00:00'}
-                          onChange={e => setCreatedAt(createdAt ? createdAt.slice(0, 10) + 'T' + e.target.value : '')}
-                          className="flex-1 px-2.5 py-1.5 rounded-xl text-sm outline-none"
-                          style={{ background: 'var(--glass-bg)', color: 'var(--text-primary)', border: '1px solid var(--glass-border)', colorScheme: 'dark' }} />
-                      </div>
+                      <input
+                        type="datetime-local"
+                        value={createdAt}
+                        onChange={e => setCreatedAt(e.target.value)}
+                        className="w-full px-2.5 py-1.5 rounded-xl text-sm outline-none"
+                        style={{ background: 'var(--glass-bg)', color: 'var(--text-primary)', border: '1px solid var(--glass-border)', colorScheme: 'dark' }}
+                      />
                     </div>
                   )}
                   {post?.published_at && (

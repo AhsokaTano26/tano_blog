@@ -6,6 +6,7 @@ import { api } from '@/lib/api';
 import { Bookmark, Calendar, Eye, BookOpen, ChevronRight } from 'lucide-react';
 import { Loading } from '@/components/Loading';
 import { ScrollReveal } from '@/components/ScrollReveal';
+import { ImageWithFallback } from '@/components/ImageWithFallback';
 
 export default function SeriesPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = React.use(params);
@@ -34,7 +35,7 @@ export default function SeriesPage({ params }: { params: Promise<{ slug: string 
       <ScrollReveal>
       {series.cover_image ? (
         <div className="relative rounded-2xl overflow-hidden mb-8" style={{ background: 'var(--card-bg)' }}>
-          <img src={series.cover_image} alt={series.name}
+          <ImageWithFallback src={series.cover_image} alt={series.name}
             className="w-full max-h-[60vh] object-contain"
             style={{ display: 'block' }} />
           <div className="absolute bottom-0 left-0 right-0 p-7 backdrop-blur-sm"

@@ -7,6 +7,7 @@ import (
 	"net/mail"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -113,7 +114,7 @@ func (h *CommentHandler) ListByPost(c *gin.Context) {
 			Status:     c.Status,
 			Country:    c.Country,
 			City:       c.City,
-			CreatedAt:  c.CreatedAt.Format("2006-01-02T15:04:05Z"),
+			CreatedAt:  c.CreatedAt.UTC().Format(time.RFC3339),
 			Reactions:  reactions[c.ID.String()],
 			UserEmojis: userReactions[c.ID.String()],
 		}

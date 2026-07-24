@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { api } from '@/lib/api';
+import { ImageWithFallback } from '@/components/ImageWithFallback';
 
 interface MediaFieldProps {
   value: string;
@@ -38,7 +39,7 @@ export function MediaField({ value, onChange, accept, placeholder, previewSize =
   return (
     <div className="flex items-center gap-2">
       {value && (
-        <img
+        <ImageWithFallback
           src={value}
           alt="预览"
           className="object-cover flex-shrink-0"
@@ -48,7 +49,6 @@ export function MediaField({ value, onChange, accept, placeholder, previewSize =
             borderRadius: rounded === 'circle' ? '50%' : '8px',
             background: 'var(--btn-card-bg)',
           }}
-          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
         />
       )}
       <input
@@ -215,11 +215,10 @@ export function MediaPickerModal({ onSelect, onClose, onUpload, triggerRect, fil
             title={item.original_name || item.filename || ''}
           >
             {item.thumbnail_url || item.mime_type?.startsWith('image/') ? (
-              <img
+              <ImageWithFallback
                 src={item.thumbnail_url || item.url}
                 alt={item.original_name || ''}
                 className="w-full h-16 object-cover"
-                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
               />
             ) : (
               <div className="w-full h-16 flex items-center justify-center text-xs font-medium" style={{ color: 'var(--text-secondary)', background: 'var(--surface-bg)' }}>

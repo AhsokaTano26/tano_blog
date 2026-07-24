@@ -7,6 +7,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
 import rehypeSlug from 'rehype-slug';
+import { ImageWithFallback } from '@/components/ImageWithFallback';
 import {
   Mail, Globe, Send,
   Heart, Sparkles, Quote, Pen, BookHeart,
@@ -279,7 +280,7 @@ export default function AboutPage() {
               <div className="w-28 h-28 rounded-full overflow-hidden ring-2 ring-white/10 relative z-10
                 transition-transform duration-500 hover:scale-110"
                 style={{ boxShadow: '0 0 40px var(--primary-glow)' }}>
-                <img src={avatar} alt={name}
+                <ImageWithFallback src={avatar} alt={name}
                   className="w-full h-full object-cover transition-transform duration-700 hover:scale-110" />
               </div>
             </div>
@@ -367,7 +368,7 @@ export default function AboutPage() {
                   </a>
                 ),
                 img: ({ src, alt }) => (
-                  <img src={src} alt={alt || ''}
+                  <ImageWithFallback src={src} alt={alt || ''}
                     className="rounded-xl max-w-full shadow-lg"
                     style={{ maxHeight: '400px' }}
                     loading="lazy"

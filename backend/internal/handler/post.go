@@ -17,6 +17,14 @@ type PostHandler struct {
 	jwtSecret string
 }
 
+func parsePostTimestamp(value string) (time.Time, error) {
+	if t, err := time.Parse(time.RFC3339, value); err == nil {
+		return t.UTC(), nil
+	}
+	// Backward compatibility for older admin clients using datetime-local.
+	return time.ParseInLocation("2006-01-02T15:04", value, time.Local)
+}
+
 func NewPostHandler(repo *repository.PostRepo, jwtSecret string) *PostHandler {
 	return &PostHandler{repo: repo, jwtSecret: jwtSecret}
 }
@@ -80,9 +88,9 @@ func (h *PostHandler) ListPublic(c *gin.Context) {
 			CommentCount: p.CommentCount,
 			AuthorName:   p.AuthorName,
 		}
-		item.CreatedAt = p.CreatedAt.Format("2006-01-02T15:04:05Z")
+		item.CreatedAt = p.CreatedAt.UTC().Format(time.RFC3339)
 		if p.PublishedAt != nil {
-			s := p.PublishedAt.Format("2006-01-02T15:04:05Z")
+			s := p.PublishedAt.UTC().Format(time.RFC3339)
 			item.PublishedAt = &s
 		}
 		if p.Category != nil {
@@ -672,9 +680,8 @@ func (h *PostHandler) Update(c *gin.Context) {
 	if editorID != uuid.Nil {
 		updates["editor_id"] = editorID
 	}
-
 	if input.CreatedAt != nil {
-		if t, err := time.Parse("2006-01-02T15:04", *input.CreatedAt); err == nil {
+		if t, err := parsePostTimestamp(*input.CreatedAt); err == nil {
 			updates["created_at"] = t
 		}
 	}

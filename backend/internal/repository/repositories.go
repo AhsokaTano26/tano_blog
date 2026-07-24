@@ -1,14 +1,16 @@
 package repository
 
-import ("fmt"
+import (
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
 
+	"errors"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
-	"errors"
-	"tano_blog/backend/internal/model")
+	"tano_blog/backend/internal/model"
+)
 
 type NameCount struct {
 	Name  string `json:"name"`
@@ -103,11 +105,11 @@ func (r *AccessLogRepo) Stats() (map[string]interface{}, error) {
 	}
 
 	return map[string]interface{}{
-		"total_requests":   totalRequests,
-		"unique_ips":       uniqueIPs,
-		"total_errors":     totalErrors,
-		"avg_response_ms":  avgResponseTime,
-		"daily_counts":     dailyCounts,
+		"total_requests":  totalRequests,
+		"unique_ips":      uniqueIPs,
+		"total_errors":    totalErrors,
+		"avg_response_ms": avgResponseTime,
+		"daily_counts":    dailyCounts,
 	}, nil
 }
 
@@ -257,7 +259,9 @@ func (r *PostRepo) ListPublic(page, pageSize int, category, tag, search string) 
 	}
 
 	query.Count(&total)
-	err := query.Order("is_top DESC, created_at DESC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&posts).Error
+	// Keep every article list in creation-time order. Titles provide a stable,
+	// human-readable order when multiple posts share the same timestamp.
+	err := query.Order("created_at DESC, title ASC, id ASC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&posts).Error
 	if err != nil {
 		return posts, total, err
 	}
@@ -305,13 +309,13 @@ func (r *PostRepo) IncrementView(id uuid.UUID) error {
 
 func (r *PostRepo) Archive() ([]map[string]interface{}, error) {
 	type ArchivePost struct {
-		ID          uuid.UUID `json:"id"`
-		Title       string    `json:"title"`
-		Slug        string    `json:"slug"`
+		ID          uuid.UUID  `json:"id"`
+		Title       string     `json:"title"`
+		Slug        string     `json:"slug"`
 		PublishedAt *time.Time `json:"published_at"`
-		Excerpt     string    `json:"excerpt"`
-		Year        int       `json:"-"`
-		Month       int       `json:"-"`
+		Excerpt     string     `json:"excerpt"`
+		Year        int        `json:"-"`
+		Month       int        `json:"-"`
 	}
 
 	var posts []ArchivePost
@@ -424,7 +428,7 @@ func (r *PostRepo) AdminList(page, pageSize int, status string) ([]model.Post, i
 	}
 
 	query.Count(&total)
-	err := query.Order("created_at DESC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&posts).Error
+	err := query.Order("created_at DESC, title ASC, id ASC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&posts).Error
 	return posts, total, err
 }
 
@@ -961,7 +965,6 @@ func (r *SiteConfigRepo) GetByKeys(keys []string) ([]model.SiteConfig, error) {
 	return configs, err
 }
 
-
 func (r *SiteConfigRepo) Get(key string) (string, error) {
 	var config model.SiteConfig
 	err := r.db.Where("key = ?", key).First(&config).Error
@@ -1011,4 +1014,3 @@ func (r *IPBanRepo) FindActiveByIP(ip string) ([]model.IPBan, error) {
 		Find(&items).Error
 	return items, err
 }
-

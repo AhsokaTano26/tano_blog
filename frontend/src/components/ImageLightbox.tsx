@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ImageWithFallback } from '@/components/ImageWithFallback';
 
 interface LightboxImage {
   url: string;
@@ -67,10 +68,11 @@ export function ImageLightbox({ images, startIndex = 0, onClose }: ImageLightbox
       )}
 
       <div className="flex flex-col items-center gap-4 max-w-[90vw] max-h-[90vh]" onClick={e => e.stopPropagation()}>
-        <img
+        <ImageWithFallback
           src={current.url}
           alt={current.title || '查看大图'}
           className="max-w-[90vw] max-h-[75vh] object-contain rounded-lg"
+          fallbackLabel="大图加载失败"
         />
         {(current.title || current.description) && (
           <div className="text-center max-w-[80vw]">

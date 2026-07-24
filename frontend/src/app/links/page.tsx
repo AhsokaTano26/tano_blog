@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { api } from '@/lib/api';
+import { ImageWithFallback } from '@/components/ImageWithFallback';
 import { ExternalLink, Link as LinkIcon, Send, CheckCircle } from 'lucide-react';
 import { Loading } from '@/components/Loading';
 import { ScrollReveal } from '@/components/ScrollReveal';
@@ -125,7 +126,7 @@ export default function LinksPage() {
                 <div className="w-14 h-14 rounded-full overflow-hidden flex-shrink-0"
                   style={{ background: 'var(--primary-sub)' }}>
                   {link.avatar ? (
-                    <img src={link.avatar} alt={link.name} className="w-full h-full object-cover" />
+                    <ImageWithFallback src={link.avatar} alt={link.name} className="w-full h-full object-cover" />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center text-lg font-bold"
                       style={{ color: 'var(--primary)' }}>

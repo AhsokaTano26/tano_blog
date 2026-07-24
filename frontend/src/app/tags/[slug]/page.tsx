@@ -14,6 +14,10 @@ export default function TagsPage({ params }: { params: Promise<{ slug: string }>
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    setPage(Math.max(1, Number(new URLSearchParams(window.location.search).get('page')) || 1));
+  }, []);
+
+  useEffect(() => {
     setLoading(true);
     api.getTag(slug, { page: String(page), page_size: '10' })
       .then(res => {
@@ -25,6 +29,15 @@ export default function TagsPage({ params }: { params: Promise<{ slug: string }>
   }, [slug, page]);
 
   const totalPages = Math.ceil(total / 10);
+
+  function changePage(nextPage: number) {
+    const normalized = Math.max(1, nextPage);
+    setPage(normalized);
+    const url = new URL(window.location.href);
+    if (normalized === 1) url.searchParams.delete('page');
+    else url.searchParams.set('page', String(normalized));
+    window.history.replaceState(window.history.state, '', url);
+  }
 
   if (loading) return <Loading />;
   if (!tag) return <div className="text-center py-20" style={{ color: 'var(--text-secondary)' }}>标签不存在</div>;
@@ -47,7 +60,7 @@ export default function TagsPage({ params }: { params: Promise<{ slug: string }>
       </div>
       {totalPages > 1 && (
         <div className="flex items-center justify-center gap-1 mt-8">
-          <button onClick={() => setPage(Math.max(1, page - 1))} disabled={page === 1}
+          <button onClick={() => changePage(page - 1)} disabled={page === 1}
             className="px-3 py-1.5 rounded-xl btn-glass disabled:opacity-40 text-sm"
             style={{ color: 'var(--text-primary)' }}>上一页</button>
           {Array.from({ length: Math.min(totalPages, 10) }, (_, i) => {
@@ -55,7 +68,7 @@ export default function TagsPage({ params }: { params: Promise<{ slug: string }>
             const p = start + i;
             if (p > totalPages) return null;
             return (
-              <button key={p} onClick={() => setPage(p)}
+              <button key={p} onClick={() => changePage(p)}
                 className="w-8 h-8 rounded-xl text-sm transition-all"
                 style={{
                   background: p === page ? 'var(--primary)' : 'transparent',
@@ -63,7 +76,7 @@ export default function TagsPage({ params }: { params: Promise<{ slug: string }>
                 }}>{p}</button>
             );
           })}
-          <button onClick={() => setPage(Math.min(totalPages, page + 1))} disabled={page === totalPages}
+          <button onClick={() => changePage(Math.min(totalPages, page + 1))} disabled={page === totalPages}
             className="px-3 py-1.5 rounded-xl btn-glass disabled:opacity-40 text-sm"
             style={{ color: 'var(--text-primary)' }}>下一页</button>
         </div>

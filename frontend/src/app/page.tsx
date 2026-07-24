@@ -9,6 +9,7 @@ import { Loading } from '@/components/Loading';
 import { TagCloud } from '@/components/TagCloud';
 import { CalendarSidebar } from '@/components/CalendarSidebar';
 import { ScrollReveal } from '@/components/ScrollReveal';
+import { ImageWithFallback } from '@/components/ImageWithFallback';
 
 export default function Home() {
   const [posts, setPosts] = useState<any[]>([]);
@@ -24,6 +25,19 @@ export default function Home() {
   const [activeTag, setActiveTag] = useState('');
   const pageSize = 10;
   const bgRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setPage(Math.max(1, Number(new URLSearchParams(window.location.search).get('page')) || 1));
+  }, []);
+
+  function changePage(nextPage: number) {
+    const normalized = Math.max(1, nextPage);
+    setPage(normalized);
+    const url = new URL(window.location.href);
+    if (normalized === 1) url.searchParams.delete('page');
+    else url.searchParams.set('page', String(normalized));
+    window.history.replaceState(window.history.state, '', url);
+  }
 
   useEffect(() => { loadData(); }, [page, activeCategory, activeTag]);
 
@@ -77,13 +91,13 @@ export default function Home() {
   function handleCategoryFilter(slug: string) {
     setActiveCategory(slug === activeCategory ? '' : slug);
     setActiveTag('');
-    setPage(1);
+    changePage(1);
   }
 
   function handleTagFilter(slug: string) {
     setActiveTag(slug === activeTag ? '' : slug);
     setActiveCategory('');
-    setPage(1);
+    changePage(1);
   }
 
   const totalPages = Math.ceil(total / pageSize);
@@ -286,7 +300,7 @@ export default function Home() {
                       )}
                       <span className="text-xs" style={{ color: 'var(--text-info)' }}>（{total} 篇文章）</span>
                     </div>
-                    <button onClick={() => { setActiveCategory(''); setActiveTag(''); setPage(1); }}
+                    <button onClick={() => { setActiveCategory(''); setActiveTag(''); changePage(1); }}
                       className="text-xs px-3 py-1.5 rounded-lg btn-glass"
                       style={{ color: 'var(--text-secondary)' }}>
                       清除筛选
@@ -404,7 +418,7 @@ export default function Home() {
                               <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
                                 <ChevronRight className="w-12 h-12 text-white opacity-0 transition-all group-hover:scale-100 group-hover:opacity-100" />
                               </div>
-                              <img src={post.cover_image} alt={post.title} loading="lazy"
+                              <ImageWithFallback src={post.cover_image} alt={post.title} loading="lazy"
                                 className="h-full w-full object-cover" />
                             </div>
                           ) : (
@@ -420,7 +434,7 @@ export default function Home() {
                     {/* Pagination */}
                     {totalPages > 1 && (
                       <div className="mx-auto flex flex-row justify-center gap-3 py-4">
-                        <button onClick={() => setPage(Math.max(1, page - 1))} disabled={page === 1}
+                        <button onClick={() => changePage(page - 1)} disabled={page === 1}
                           className="btn-glass h-11 w-11 overflow-hidden rounded-lg flex items-center justify-center disabled:opacity-40"
                           style={{ color: 'var(--text-primary)' }}>
                           <ChevronRight className="w-5 h-5 rotate-180" />
@@ -429,7 +443,7 @@ export default function Home() {
                           p === '...' ? (
                             <span key={`dots-${i}`} className="h-11 w-11 flex items-center justify-center text-sm" style={{ color: 'var(--text-info)' }}>...</span>
                           ) : (
-                            <button key={p} onClick={() => setPage(p)}
+                            <button key={p} onClick={() => changePage(p)}
                               className="h-11 w-11 overflow-hidden rounded-lg text-sm font-bold transition-all"
                               style={{
                                 background: p === page ? 'var(--primary)' : 'var(--card-bg)',
@@ -439,7 +453,7 @@ export default function Home() {
                             </button>
                           )
                         )}
-                        <button onClick={() => setPage(Math.min(totalPages, page + 1))} disabled={page === totalPages}
+                        <button onClick={() => changePage(Math.min(totalPages, page + 1))} disabled={page === totalPages}
                           className="btn-glass h-11 w-11 overflow-hidden rounded-lg flex items-center justify-center disabled:opacity-40"
                           style={{ color: 'var(--text-primary)' }}>
                           <ChevronRight className="w-5 h-5" />

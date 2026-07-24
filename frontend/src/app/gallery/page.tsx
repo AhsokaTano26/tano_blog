@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { api } from '@/lib/api';
+import { ImageWithFallback } from '@/components/ImageWithFallback';
 import { ImageLightbox } from '@/components/ImageLightbox';
 import { Loading } from '@/components/Loading';
 
@@ -55,7 +56,7 @@ export default function GalleryPage() {
                   onClick={() => setLightboxIndex(index)}
                 >
                   <div className="gallery-masonry-inner">
-                    <img
+                    <ImageWithFallback
                       src={img.url}
                       alt={img.title || '图片'}
                       loading="lazy"
