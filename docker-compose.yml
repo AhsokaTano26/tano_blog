@@ -24,10 +24,11 @@ services:
     container_name: tano_blog_app
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "3001:3000"
     environment:
       DB_DSN: postgres://tano:${DB_PASSWORD:-tano_blog_pass}@postgres:5432/tano_blog?sslmode=disable
       JWT_SECRET: ${JWT_SECRET}
+      SYNC_KEY_ENCRYPTION_KEY: ${SYNC_KEY_ENCRYPTION_KEY}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
       SERVER_PORT: "8080"
       UPLOAD_DIR: /data/uploads
@@ -41,6 +42,8 @@ services:
     volumes:
       - ./data/uploads:/data/uploads
       - ./data/backups:/data/backups
+      # 备机请将主服务器的 SSH 指纹写入 data/ssh/known_hosts。
+      - ./data/ssh:/root/.ssh:ro
     depends_on:
       postgres:
         condition: service_healthy

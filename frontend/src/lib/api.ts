@@ -381,6 +381,10 @@ export const api = {
       delete: (filename: string) =>
         request(`/api/v1/admin/backups/${filename}`, { method: 'DELETE' }),
     },
+    sync: {
+      status: () => request<{ enabled: boolean; role: string; schedule_mode: string; last_status: string; last_message: string; last_finished_at: string; last_snapshot: string; running: boolean; has_private_key: boolean }>('/api/v1/admin/sync/status'),
+      run: () => request<{ message: string }>('/api/v1/admin/sync/run', { method: 'POST' }),
+    },
     restore: {
       upload: async (file: File) => {
         const form = new FormData();

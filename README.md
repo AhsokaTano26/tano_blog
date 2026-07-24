@@ -128,6 +128,7 @@ cp .env.example .env
 DB_DSN=postgres://tano:tano_blog_pass@localhost:5431/tano_blog?sslmode=disable
 JWT_SECRET=<随机字符串>
 ADMIN_PASSWORD=<管理员密码>
+SYNC_KEY_ENCRYPTION_KEY=<openssl rand -base64 32 的输出>
 ```
 
 ### 3. 启动后端
@@ -164,6 +165,13 @@ npm run dev
 | `UPLOAD_MAX_AUDIO_MB` | No | `200` | 音频上传大小限制 (MB) |
 | `UPLOAD_MAX_VIDEO_MB` | No | `2048` | 视频上传大小限制 (MB) |
 | `BACKUP_DIR` | No | `./backups` | 备份文件目录 |
+| `SYNC_KEY_ENCRYPTION_KEY` | 使用后台粘贴同步私钥时必填 | — | Base64 编码的 32 字节 AES 密钥；主备必须完全一致 |
+
+### 主备跨机同步（rsync）
+
+在两台服务器上部署同一版本后，可在“后台 → 备份与恢复 → 跨机同步”配置单向同步：主服务器选择 `primary`，备服务器选择 `standby`。主服务器按计划生成数据库一致性快照，备服务器使用 `rsync --partial --append-verify` 通过 SSH 拉取快照与上传文件，网络中断后会继续传输。
+
+备服务器需安装 `rsync` 与 `ssh`，并配置仅用于同步的 SSH 密钥。可直接在同步后台粘贴私钥：它会以 AES-GCM 加密后保存，页面不会回显；两台服务器必须设置相同的 `SYNC_KEY_ENCRYPTION_KEY`（可用 `openssl rand -base64 32` 生成）。也可将私钥以只读 Secret 挂载到容器，例如 `/run/secrets/tano_sync_ed25519` 并填写文件路径。主服务器应为该账号限制为 rsync 使用，且在备机 `known_hosts` 中固定主机指纹。启用备机同步后，业务写接口会进入只读模式，避免双主写入。
 | `CORS_ORIGINS` | No | `http://localhost:3000` | 允许的前端域名，逗号分隔 |
 | `GIN_MODE` | No | `release` | Gin 模式（debug/release/test） |
 | `LOG_LEVEL` | No | `info` | 日志级别 |
@@ -201,6 +209,64 @@ docker compose up --build -d
 ```bash
 docker logs tano_blog_app 2>&1 | grep "password"
 ```
+
+## Docker 主备跨机同步部署指南
+
+完整的逐步操作、SSH 权限配置、故障排查和恢复流程见 [Docker 主备跨机同步部署指南](docs/docker-primary-standby-sync.md)。
+
+Docker 部署不受影响：应用镜像已内置 `rsync` 和 OpenSSH 客户端。同步只从主机拉取“数据库快照 + 上传文件”，**不要**用文件同步工具直接复制 `data/postgres`，否则可能得到不一致的数据库文件。
+
+### 1. 两台服务器准备
+
+在主、备服务器分别部署相同版本的项目，并在两边各自执行：
+
+```bash
+cp .env.example .env
+mkdir -p data/ssh
+chmod 700 data/ssh
+```
+
+生成一次同步加密主密钥，并将同一行值填入两台机器的 `.env`。它用于加密后台粘贴的 SSH 私钥；不同值会使备机无法解密同步后的配置。
+
+```bash
+openssl rand -base64 32
+```
+
+```env
+SYNC_KEY_ENCRYPTION_KEY=<上一步输出，主备完全相同>
+```
+
+各服务器的 `data/postgres`、`data/uploads`、`data/backups` 必须保留为本机持久化目录。当前 Compose 配置还会把 `data/ssh` 只读挂载到容器内的 `/root/.ssh`，供 SSH 严格校验远程主机指纹。
+
+### 2. 配置主机 SSH 账户
+
+在主服务器创建一个专用的低权限账户（示例为 `sync`），并确保它至少能读取主机的 `/data/backups/sync` 与 `/data/uploads`。将备服务器所用 SSH 私钥对应的**公钥**加入主服务器该账户的 `~sync/.ssh/authorized_keys`。
+
+在备服务器固定主服务器的 SSH 主机指纹。请在确认指纹来源可信后执行；不要关闭系统使用的严格主机校验。
+
+```bash
+ssh-keyscan -H primary.example.com > data/ssh/known_hosts
+chmod 600 data/ssh/known_hosts
+```
+
+将 `primary.example.com` 替换为主服务器域名或 IP。两个站点使用不同域名没有影响：备机填写的是主服务器 SSH 地址，访问者仍分别使用各自的网站域名。
+
+### 3. 启动和后台配置
+
+两台服务器分别启动或更新容器：
+
+```bash
+docker compose up -d --build
+```
+
+随后在后台“备份与恢复 → 跨机同步”按以下顺序配置：
+
+1. 主服务器：启用同步，角色选择“主服务器（生成快照）”，选择生成计划并保存。
+2. 备服务器：启用同步，角色选择“备服务器（拉取并应用）”。填写 `sync@primary.example.com`、主机快照目录 `/data/backups/sync`、主机上传目录 `/data/uploads`。
+3. 在备服务器粘贴 SSH 私钥并保存。系统加密保存且不会回显；也可选择挂载私钥文件后填写容器内路径。
+4. 在备服务器点击“立即执行”，确认状态为成功后，再启用所需的间隔或每周任务。
+
+备机启用同步后会拒绝常规业务写请求，因此文章、媒体和站点设置只能在主服务器修改。rsync 使用断点续传、校验和延迟切换：网络短暂中断时，下一次同步会继续未完成的文件。
 
 ## 后台管理
 

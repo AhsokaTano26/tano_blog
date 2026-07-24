@@ -98,9 +98,11 @@ func main() {
 	tagHandler := handler.NewTagHandler(db)
 	commentHandler := handler.NewCommentHandler(commentRepo, db, emailService, cfg.JWT.Secret)
 	mediaHandler := handler.NewMediaHandler(mediaRepo, galleryRepo, &cfg.Upload)
-	siteConfigHandler := handler.NewSiteConfigHandler(db, emailService, cfg.JWT.Secret)
+	siteConfigHandler := handler.NewSiteConfigHandler(db, emailService, cfg.JWT.Secret, cfg.SyncKeyEncryptionKey)
 	accessLogHandler := handler.NewAccessLogHandler(db)
 	backupHandler := handler.NewBackupHandler(db, cfg.Upload.Dir, cfg.BackupDir)
+	replicationService := service.NewReplicationService(repository.NewSiteConfigRepo(db), cfg.BackupDir, cfg.Upload.Dir, backupHandler.CreateSyncSnapshot, backupHandler.RestoreSyncSnapshot, cfg.SyncKeyEncryptionKey)
+	syncHandler := handler.NewSyncHandler(replicationService)
 	seriesHandler := handler.NewSeriesHandler(seriesRepo)
 	feedHandler := handler.NewFeedHandler(db)
 	friendLinkHandler := handler.NewFriendLinkHandler(db)
@@ -143,6 +145,7 @@ func main() {
 	r.Static("/uploads", cfg.Upload.Dir)
 
 	api := r.Group("/api/v1")
+	api.Use(middleware.StandbyReadOnly(repository.NewSiteConfigRepo(db)))
 
 	// Restore endpoints (exempt from maxBodySize to allow large uploads up to 500MB)
 	restoreGroup := api.Group("/admin/restore")
@@ -365,6 +368,8 @@ func main() {
 				admin.POST("/backups", backupHandler.CreateBackup)
 				admin.GET("/backups/:filename/download", backupHandler.DownloadBackup)
 				admin.DELETE("/backups/:filename", backupHandler.DeleteBackup)
+				admin.GET("/sync/status", syncHandler.Status)
+				admin.POST("/sync/run", syncHandler.Run)
 
 				admin.GET("/links", friendLinkHandler.AdminList)
 				admin.POST("/links", friendLinkHandler.AdminCreate)
@@ -432,6 +437,15 @@ func main() {
 			if result.RowsAffected > 0 {
 				utils.LogInfo("Published scheduled posts", "count", result.RowsAffected)
 			}
+		}
+	}()
+
+	// Run the configured primary snapshot / standby pull schedule once a minute.
+	go func() {
+		ticker := time.NewTicker(1 * time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			replicationService.RunScheduled(context.Background())
 		}
 	}()
 
@@ -538,6 +552,10 @@ func seedSiteConfigs(db *gorm.DB) {
 		"ai_api_url":       "https://api.openai.com/v1",
 		"ai_api_key":       "",
 		"ai_model":         "gpt-3.5-turbo",
+		"sync_enabled":     "false", "sync_role": "standby", "sync_schedule_mode": "interval",
+		"sync_interval_minutes": "60", "sync_weekdays": "1", "sync_time_of_day": "02:00",
+		"sync_timezone": "Asia/Shanghai", "sync_ssh_target": "", "sync_ssh_key_path": "",
+		"sync_remote_backup_dir": "/data/backups/sync", "sync_remote_upload_dir": "/data/uploads", "sync_bandwidth_kbps": "0",
 	}
 
 	for key, value := range defaults {

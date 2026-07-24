@@ -23,18 +23,20 @@ import (
 )
 
 type SiteConfigHandler struct {
-	repo         *repository.SiteConfigRepo
-	db           *gorm.DB
-	emailService *service.EmailService
-	jwtSecret    string
+	repo                 *repository.SiteConfigRepo
+	db                   *gorm.DB
+	emailService         *service.EmailService
+	jwtSecret            string
+	syncKeyEncryptionKey string
 }
 
-func NewSiteConfigHandler(db *gorm.DB, emailService *service.EmailService, jwtSecret string) *SiteConfigHandler {
+func NewSiteConfigHandler(db *gorm.DB, emailService *service.EmailService, jwtSecret, syncKeyEncryptionKey string) *SiteConfigHandler {
 	return &SiteConfigHandler{
-		repo:         repository.NewSiteConfigRepo(db),
-		db:           db,
-		emailService: emailService,
-		jwtSecret:    jwtSecret,
+		repo:                 repository.NewSiteConfigRepo(db),
+		db:                   db,
+		emailService:         emailService,
+		jwtSecret:            jwtSecret,
+		syncKeyEncryptionKey: syncKeyEncryptionKey,
 	}
 }
 
@@ -64,6 +66,9 @@ func (h *SiteConfigHandler) GetPublic(c *gin.Context) {
 
 	result := make(map[string]interface{})
 	for _, cfg := range configs {
+		if cfg.Key == "sync_ssh_private_key_enc" {
+			continue
+		}
 		result[cfg.Key] = cfg.Value
 	}
 
@@ -81,6 +86,9 @@ func (h *SiteConfigHandler) Get(c *gin.Context) {
 
 	result := make(map[string]interface{})
 	for _, cfg := range configs {
+		if cfg.Key == "sync_ssh_private_key_enc" {
+			continue
+		}
 		result[cfg.Key] = cfg.Value
 	}
 
@@ -92,6 +100,28 @@ func (h *SiteConfigHandler) Update(c *gin.Context) {
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
 		return
+	}
+	if privateKey, ok := input["sync_ssh_private_key"]; ok && strings.TrimSpace(privateKey) != "" {
+		if !strings.Contains(privateKey, "-----BEGIN") || !strings.Contains(privateKey, "PRIVATE KEY-----") {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "SSH 私钥格式无效"})
+			return
+		}
+		ciphertext, err := utils.EncryptSyncSecret(h.syncKeyEncryptionKey, privateKey)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		if err := h.repo.Upsert("sync_ssh_private_key_enc", ciphertext, "secret"); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "保存 SSH 私钥失败"})
+			return
+		}
+		utils.LogInfo("sync SSH private key updated", "admin_id", c.GetString("user_id"))
+	}
+	if input["sync_ssh_private_key_clear"] == "true" {
+		if err := h.repo.Delete("sync_ssh_private_key_enc"); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "清除 SSH 私钥失败"})
+			return
+		}
 	}
 
 	allowedKeys := map[string]bool{
@@ -110,6 +140,11 @@ func (h *SiteConfigHandler) Update(c *gin.Context) {
 		"turnstile_enabled": true, "turnstile_sitekey": true, "turnstile_secret": true,
 		"ip_ban_auto_enabled": true, "ip_ban_auto_threshold": true, "ip_ban_auto_window": true,
 		"ip_ban_auto_scope": true, "ip_ban_auto_duration": true,
+		"sync_enabled": true, "sync_role": true, "sync_schedule_mode": true,
+		"sync_interval_minutes": true, "sync_weekdays": true, "sync_time_of_day": true,
+		"sync_timezone": true, "sync_ssh_target": true, "sync_ssh_key_path": true,
+		"sync_remote_backup_dir": true, "sync_remote_upload_dir": true,
+		"sync_bandwidth_kbps": true,
 	}
 
 	for key, value := range input {

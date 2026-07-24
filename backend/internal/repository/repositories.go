@@ -983,6 +983,10 @@ func (r *SiteConfigRepo) Upsert(key, value, valueType string) error {
 	return r.db.Model(&config).Update("value", value).Error
 }
 
+func (r *SiteConfigRepo) Delete(key string) error {
+	return r.db.Where("key = ?", key).Delete(&model.SiteConfig{}).Error
+}
+
 type IPBanRepo struct {
 	db *gorm.DB
 }

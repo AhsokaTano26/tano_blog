@@ -42,8 +42,9 @@ RUN cp -r .next/standalone/. /build/standalone/ && \
 # ============================================
 FROM alpine:3.20
 
-# Install runtime dependencies: Node.js for Next.js standalone, ca-certificates for HTTPS
-RUN apk add --no-cache nodejs ca-certificates bash tzdata
+# Install runtime dependencies. rsync and the OpenSSH client are required by
+# the optional standby pull replication feature.
+RUN apk add --no-cache nodejs ca-certificates bash tzdata rsync openssh-client
 
 WORKDIR /app
 

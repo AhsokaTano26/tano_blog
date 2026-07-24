@@ -3,6 +3,7 @@ package handler
 import (
 	"archive/zip"
 	"context"
+	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -97,19 +98,28 @@ const (
 
 // generateBackup writes a backup directly to disk so uploaded media is never
 // accumulated in process memory.
-func (h *BackupHandler) generateBackup(path string) error {
+func (h *BackupHandler) generateBackup(path string, includeUploads bool) error {
 	data := backupData{
 		Version:   "1.1",
 		CreatedAt: time.Now().UTC().Format(time.RFC3339),
 		Data:      make(map[string][]map[string]interface{}),
 	}
 
+	tx := h.db.Begin(&sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
+	if tx.Error != nil {
+		return fmt.Errorf("开始一致性备份事务失败: %v", tx.Error)
+	}
+	defer tx.Rollback()
+
 	for _, table := range backupTables {
 		rows := make([]map[string]interface{}, 0)
-		if err := h.db.Table(table).Find(&rows).Error; err != nil {
+		if err := tx.Table(table).Find(&rows).Error; err != nil {
 			return fmt.Errorf("导出 %s 失败: %v", table, err)
 		}
 		data.Data[table] = rows
+	}
+	if err := tx.Commit().Error; err != nil {
+		return fmt.Errorf("完成一致性备份事务失败: %v", err)
 	}
 
 	out, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
@@ -137,6 +147,17 @@ func (h *BackupHandler) generateBackup(path string) error {
 	}
 	if _, err := f.Write(jsonBytes); err != nil {
 		return fmt.Errorf("写入 data.json 失败: %v", err)
+	}
+
+	if !includeUploads {
+		if err := zw.Close(); err != nil {
+			return fmt.Errorf("完成 ZIP 失败: %v", err)
+		}
+		if err := out.Close(); err != nil {
+			return fmt.Errorf("保存 ZIP 失败: %v", err)
+		}
+		complete = true
+		return nil
 	}
 
 	// Add uploads/ files
@@ -382,7 +403,7 @@ func (h *BackupHandler) extractUploads(zr *zip.Reader) []string {
 func (h *BackupHandler) CreateBackup(c *gin.Context) {
 	filename := fmt.Sprintf("backup-%s.zip", time.Now().UTC().Format("2006-01-02T150405.000000000"))
 	path := filepath.Join(h.backupDir, filename)
-	err := h.generateBackup(path)
+	err := h.generateBackup(path, true)
 	if err != nil {
 		utils.LogError("操作失败", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "操作失败"})
@@ -390,6 +411,58 @@ func (h *BackupHandler) CreateBackup(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, gin.H{"message": "备份创建成功", "filename": filename})
+}
+
+// CreateSyncSnapshot 创建仅含数据库的跨机同步快照。
+// 媒体文件由 rsync 单独同步，以便按文件续传并减少重复传输。
+func (h *BackupHandler) CreateSyncSnapshot() (string, error) {
+	syncDir := filepath.Join(h.backupDir, "sync")
+	if err := os.MkdirAll(syncDir, 0700); err != nil {
+		return "", fmt.Errorf("创建同步目录失败: %w", err)
+	}
+	filename := fmt.Sprintf("sync-%s.zip", time.Now().UTC().Format("2006-01-02T150405.000000000"))
+	if err := h.generateBackup(filepath.Join(syncDir, filename), false); err != nil {
+		return "", err
+	}
+	return filename, nil
+}
+
+// RestoreSyncSnapshot 应用已校验的数据库同步快照，并保留备机本地的同步配置。
+func (h *BackupHandler) RestoreSyncSnapshot(path string) error {
+	// 同步角色、任务计划、SSH 目标和加密私钥只属于本机。若随主机快照覆盖，
+	// 备机会在第一次同步后丢失自己的角色和连接配置。
+	type localSyncConfig struct {
+		Key   string
+		Value string
+		Type  string
+	}
+	var localConfigs []localSyncConfig
+	if err := h.db.Raw("SELECT key, value, type FROM site_configs WHERE key LIKE ?", "sync_%").Scan(&localConfigs).Error; err != nil {
+		return fmt.Errorf("读取本机同步配置失败: %w", err)
+	}
+
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return err
+	}
+	zr, err := zip.NewReader(f, info.Size())
+	if err != nil {
+		return err
+	}
+	if err := h.restoreFromZip(zr); err != nil {
+		return err
+	}
+	for _, cfg := range localConfigs {
+		if err := h.db.Exec("INSERT INTO site_configs (key, value, type) VALUES (?, ?, ?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, type = EXCLUDED.type", cfg.Key, cfg.Value, cfg.Type).Error; err != nil {
+			return fmt.Errorf("恢复本机同步配置失败: %w", err)
+		}
+	}
+	return nil
 }
 
 // ListBackups returns all backup files in the backups directory

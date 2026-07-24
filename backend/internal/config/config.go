@@ -10,12 +10,13 @@ import (
 )
 
 type Config struct {
-	Server        ServerConfig
-	Database      DatabaseConfig
-	JWT           JWTConfig
-	Upload        UploadConfig
-	BackupDir     string
-	AdminPassword string
+	Server               ServerConfig
+	Database             DatabaseConfig
+	JWT                  JWTConfig
+	Upload               UploadConfig
+	BackupDir            string
+	AdminPassword        string
+	SyncKeyEncryptionKey string
 }
 
 type ServerConfig struct {
@@ -73,13 +74,14 @@ func Load() *Config {
 			RememberMeExpiration: 7 * 24 * time.Hour,
 		},
 		Upload: UploadConfig{
-			Dir:         getEnv("UPLOAD_DIR", "./uploads"),
-			MaxImageMB:  getEnvInt64("UPLOAD_MAX_IMAGE_MB", 50),
-			MaxAudioMB:  getEnvInt64("UPLOAD_MAX_AUDIO_MB", 200),
-			MaxVideoMB:  getEnvInt64("UPLOAD_MAX_VIDEO_MB", 2048),
+			Dir:        getEnv("UPLOAD_DIR", "./uploads"),
+			MaxImageMB: getEnvInt64("UPLOAD_MAX_IMAGE_MB", 50),
+			MaxAudioMB: getEnvInt64("UPLOAD_MAX_AUDIO_MB", 200),
+			MaxVideoMB: getEnvInt64("UPLOAD_MAX_VIDEO_MB", 2048),
 		},
-		BackupDir:     getEnv("BACKUP_DIR", "./backups"),
-		AdminPassword: os.Getenv("ADMIN_PASSWORD"),
+		BackupDir:            getEnv("BACKUP_DIR", "./backups"),
+		AdminPassword:        os.Getenv("ADMIN_PASSWORD"),
+		SyncKeyEncryptionKey: os.Getenv("SYNC_KEY_ENCRYPTION_KEY"),
 	}
 }
 
