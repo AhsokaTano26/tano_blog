@@ -424,7 +424,28 @@ func (h *BackupHandler) CreateSyncSnapshot() (string, error) {
 	if err := h.generateBackup(filepath.Join(syncDir, filename), false); err != nil {
 		return "", err
 	}
+	if err := removeOldSyncSnapshots(syncDir, filename); err != nil {
+		return "", fmt.Errorf("清理旧同步快照失败: %w", err)
+	}
 	return filename, nil
+}
+
+// removeOldSyncSnapshots 在新快照完整落盘后删除旧同步快照。
+// 仅匹配 sync-*.zip，避免影响普通备份或备机下载目录。
+func removeOldSyncSnapshots(syncDir, currentFilename string) error {
+	entries, err := os.ReadDir(syncDir)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || entry.Name() == currentFilename || !strings.HasPrefix(entry.Name(), "sync-") || !strings.HasSuffix(entry.Name(), ".zip") {
+			continue
+		}
+		if err := os.Remove(filepath.Join(syncDir, entry.Name())); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // RestoreSyncSnapshot 应用已校验的数据库同步快照，并保留备机本地的同步配置。
