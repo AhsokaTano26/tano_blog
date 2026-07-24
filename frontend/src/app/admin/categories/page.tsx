@@ -13,6 +13,7 @@ export default function AdminCategories() {
   const [editing, setEditing] = useState<any>(null);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [sortOrder, setSortOrder] = useState(0);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [total, setTotal] = useState(0);
@@ -31,11 +32,11 @@ export default function AdminCategories() {
 
   async function handleSave() {
     try {
-      const data: any = { name };
+      const data: any = { name, sort_order: sortOrder };
       if (description) data.description = description;
       if (editing) await api.admin.categories.update(editing.id, data);
       else await api.admin.categories.create(data);
-      setEditing(null); setName(''); setDescription('');
+      setEditing(null); setName(''); setDescription(''); setSortOrder(0);
       load();
     } catch (e) { /* empty */ }
   }
@@ -52,6 +53,7 @@ export default function AdminCategories() {
     setEditing(item);
     setName(item.name);
     setDescription(item.description || '');
+    setSortOrder(item.sort_order || 0);
   }
 
   return (
@@ -63,10 +65,12 @@ export default function AdminCategories() {
       {/* Add form */}
       <div className="glass-card rounded-xl p-5 mb-4">
         <h2 className="text-sm font-semibold mb-3" style={{ color: 'var(--text-primary)' }}>{editing ? '编辑分类' : '添加分类'}</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
           <input type="text" placeholder="名称" value={name} onChange={e => setName(e.target.value)}
             className="px-3 py-2.5 rounded-lg text-sm outline-none" style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
           <input type="text" placeholder="描述（可选）" value={description} onChange={e => setDescription(e.target.value)}
+            className="px-3 py-2.5 rounded-lg text-sm outline-none" style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
+          <input type="number" placeholder="排序（数字越小越靠前）" value={sortOrder} onChange={e => setSortOrder(Number(e.target.value))}
             className="px-3 py-2.5 rounded-lg text-sm outline-none" style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
         </div>
         <div className="flex gap-2">
@@ -92,6 +96,7 @@ export default function AdminCategories() {
           <table className="w-full">
             <thead>
               <tr style={{ borderBottom: '1px solid var(--glass-border)' }}>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>排序</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>名称</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>Slug</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>描述</th>
@@ -101,6 +106,7 @@ export default function AdminCategories() {
             <tbody>
               {items.map((item) => (
                 <tr key={item.id} className="transition-colors" style={{ borderBottom: '1px solid var(--glass-border)' }}>
+                  <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-info)' }}>{item.sort_order ?? 0}</td>
                   <td className="px-4 py-3 text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{item.name}</td>
                   <td className="px-4 py-3 text-sm font-mono" style={{ color: 'var(--text-secondary)' }}>{item.slug}</td>
                   <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-info)' }}>{item.description || '-'}</td>
