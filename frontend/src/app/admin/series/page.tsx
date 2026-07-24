@@ -95,6 +95,8 @@ export default function AdminSeries() {
           <table className="w-full">
             <thead>
               <tr style={{ borderBottom: '1px solid var(--glass-border)' }}>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-info)' }}>排序</th>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-info)' }}>封面</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-info)' }}>名称</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-info)' }}>Slug</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-info)' }}>描述</th>
@@ -105,6 +107,16 @@ export default function AdminSeries() {
             <tbody>
               {items.map((item: any) => (
                 <tr key={item.id} style={{ borderBottom: '1px solid var(--glass-border)' }}>
+                  <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-info)' }}>{item.sort_order ?? 0}</td>
+                  <td className="px-4 py-3">
+                    {item.cover_image ? (
+                      <img src={item.cover_image} alt=""
+                        className="w-9 h-9 rounded-lg object-cover"
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                    ) : (
+                      <div className="w-9 h-9 rounded-lg" style={{ background: 'var(--btn-card-bg)' }} />
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{item.name}</td>
                   <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>{item.slug}</td>
                   <td className="px-4 py-3 text-sm line-clamp-1" style={{ color: 'var(--text-info)' }}>{item.description || '-'}</td>
@@ -135,10 +147,13 @@ export default function AdminSeries() {
       {/* Create/Edit Modal */}
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          style={{ background: 'rgba(0,0,0,0.5)' }}
+          style={{ background: 'rgba(0,0,0,0.6)' }}
           onClick={(e) => { if (e.target === e.currentTarget) setShowForm(false); }}>
           <div className="w-full max-w-md rounded-2xl p-6 shadow-2xl"
-            style={{ background: 'var(--card-bg)', border: '1px solid var(--glass-border)' }}>
+            style={{
+              background: 'var(--color-bg)',
+              border: '1px solid var(--glass-border)',
+            }}>
             <h2 className="text-lg font-bold mb-4" style={{ color: 'var(--text-primary)' }}>
               {editItem ? '编辑系列' : '新建系列'}
             </h2>
@@ -244,16 +259,16 @@ function SetPostsModal({ series, onClose }: { series: any; onClose: () => void }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: 'rgba(0,0,0,0.5)' }}
+      style={{ background: 'rgba(0,0,0,0.6)' }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="w-full max-w-lg max-h-[70vh] overflow-y-auto rounded-2xl p-6 shadow-2xl"
-        style={{ background: 'var(--card-bg)', border: '1px solid var(--glass-border)' }}>
+        style={{ background: 'var(--color-bg)', border: '1px solid var(--glass-border)' }}>
         <h2 className="text-lg font-bold mb-4" style={{ color: 'var(--text-primary)' }}>
           设置「{series.name}」的文章
         </h2>
         <div className="space-y-2">
           {allPosts.map((post: any) => (
-            <label key={post.id}
+            <div key={post.id} onClick={() => togglePost(post.id)}
               className="flex items-center gap-3 px-3 py-2 rounded-xl cursor-pointer transition-colors hover:opacity-80"
               style={{ background: selectedIds.includes(post.id) ? 'var(--primary-sub)' : 'var(--btn-card-bg)' }}>
               <Checkbox checked={selectedIds.includes(post.id)} onChange={() => togglePost(post.id)} />
@@ -261,7 +276,7 @@ function SetPostsModal({ series, onClose }: { series: any; onClose: () => void }
               <span className="text-xs ml-auto" style={{ color: 'var(--text-info)' }}>
                 {post.status === 'published' ? '已发布' : '草稿'}
               </span>
-            </label>
+            </div>
           ))}
           {allPosts.length === 0 && (
             <p className="text-sm" style={{ color: 'var(--text-info)' }}>暂无文章</p>

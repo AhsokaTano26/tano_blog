@@ -1,6 +1,7 @@
 package repository
 
 import ("fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -586,11 +587,15 @@ func (r *PostRepo) GetUserReactions(postIDs []uuid.UUID, ipAddress string) (map[
 }
 
 func (r *PostRepo) CalendarPosts(year, month string) ([]model.Post, error) {
+	y, _ := strconv.Atoi(year)
+	m, _ := strconv.Atoi(month)
+	loc := time.FixedZone("CST", 8*3600)
+	start := time.Date(y, time.Month(m), 1, 0, 0, 0, 0, loc).UTC()
+	end := time.Date(y, time.Month(m), 1, 0, 0, 0, 0, loc).AddDate(0, 1, 0).UTC()
 	var posts []model.Post
 	err := r.db.Where(
-		"EXTRACT(YEAR FROM published_at) = ? AND EXTRACT(MONTH FROM published_at) = ?", year, month,
-	).Or(
-		"EXTRACT(YEAR FROM created_at) = ? AND EXTRACT(MONTH FROM created_at) = ? AND status = 'draft' AND published_at IS NULL", year, month,
+		"(published_at >= ? AND published_at < ?) OR (EXTRACT(YEAR FROM created_at) = ? AND EXTRACT(MONTH FROM created_at) = ? AND status = 'draft' AND published_at IS NULL)",
+		start, end, year, month,
 	).Select("id, title, slug, status, published_at, created_at").
 		Order("created_at ASC").
 		Find(&posts).Error
@@ -598,9 +603,14 @@ func (r *PostRepo) CalendarPosts(year, month string) ([]model.Post, error) {
 }
 
 func (r *PostRepo) CalendarPostsPublic(year, month string) ([]model.Post, error) {
+	y, _ := strconv.Atoi(year)
+	m, _ := strconv.Atoi(month)
+	loc := time.FixedZone("CST", 8*3600)
+	start := time.Date(y, time.Month(m), 1, 0, 0, 0, 0, loc).UTC()
+	end := time.Date(y, time.Month(m), 1, 0, 0, 0, 0, loc).AddDate(0, 1, 0).UTC()
 	var posts []model.Post
 	err := r.db.Where(
-		"EXTRACT(YEAR FROM published_at) = ? AND EXTRACT(MONTH FROM published_at) = ? AND status = 'published'", year, month,
+		"published_at >= ? AND published_at < ? AND status = 'published'", start, end,
 	).Select("id, title, slug, published_at, created_at").
 		Order("created_at ASC").
 		Find(&posts).Error
@@ -617,7 +627,7 @@ func NewCategoryRepo(db *gorm.DB) *CategoryRepo {
 
 func (r *CategoryRepo) List() ([]model.Category, error) {
 	var cats []model.Category
-	err := r.db.Order("sort_order ASC, name ASC").Find(&cats).Error
+	err := r.db.Order("sort_order ASC, created_at ASC").Find(&cats).Error
 	return cats, err
 }
 
@@ -649,7 +659,7 @@ func NewTagRepo(db *gorm.DB) *TagRepo {
 
 func (r *TagRepo) List() ([]model.Tag, error) {
 	var tags []model.Tag
-	err := r.db.Order("name ASC").Find(&tags).Error
+	err := r.db.Order("created_at ASC").Find(&tags).Error
 	return tags, err
 }
 

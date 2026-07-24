@@ -279,7 +279,7 @@ func (h *PostHandler) CalendarPostsPublic(c *gin.Context) {
 	for _, p := range posts {
 		date := ""
 		if p.PublishedAt != nil {
-			date = p.PublishedAt.Format("2006-01-02")
+			date = p.PublishedAt.In(time.FixedZone("CST", 8*3600)).Format("2006-01-02")
 		}
 		result = append(result, CalendarPost{
 			ID:    p.ID.String(),
@@ -927,7 +927,7 @@ func (h *PostHandler) CalendarPosts(c *gin.Context) {
 	for _, p := range posts {
 		date := p.CreatedAt.Format("2006-01-02")
 		if p.PublishedAt != nil {
-			date = p.PublishedAt.Format("2006-01-02")
+			date = p.PublishedAt.In(time.FixedZone("CST", 8*3600)).Format("2006-01-02")
 		}
 		result = append(result, CalendarPost{
 			ID:     p.ID.String(),

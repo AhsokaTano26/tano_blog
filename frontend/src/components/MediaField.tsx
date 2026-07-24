@@ -18,7 +18,6 @@ export function MediaField({ value, onChange, accept, placeholder, previewSize =
   const [showPicker, setShowPicker] = useState(false);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const mediaBtnRef = useRef<HTMLButtonElement>(null);
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -61,7 +60,6 @@ export function MediaField({ value, onChange, accept, placeholder, previewSize =
         style={{ color: 'var(--text-primary)' }}
       />
       <button
-        ref={mediaBtnRef}
         onClick={() => setShowPicker(true)}
         className="px-3 py-2 rounded-xl text-sm btn-glass whitespace-nowrap flex-shrink-0"
         style={{ color: 'var(--text-secondary)' }}
@@ -85,7 +83,6 @@ export function MediaField({ value, onChange, accept, placeholder, previewSize =
       />
       {showPicker && (
         <MediaPickerModal
-          triggerRect={mediaBtnRef.current?.getBoundingClientRect()}
           onSelect={(url) => { onChange(url); setShowPicker(false); }}
           onClose={() => setShowPicker(false)}
           filterType={filterType}

@@ -53,6 +53,7 @@ type Tag struct {
 	ID        uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
 	Name      string    `gorm:"uniqueIndex;size:100;not null" json:"name"`
 	Slug      string    `gorm:"uniqueIndex;size:100;not null" json:"slug"`
+	SortOrder int       `gorm:"default:0" json:"sort_order"`
 	CreatedAt time.Time `json:"created_at"`
 	Posts     []Post    `gorm:"many2many:post_tags;" json:"-"`
 }

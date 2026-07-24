@@ -11,6 +11,7 @@ export default function AdminTags() {
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [name, setName] = useState('');
+  const [sortOrder, setSortOrder] = useState(0);
   const [editing, setEditing] = useState<any>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
@@ -30,9 +31,9 @@ export default function AdminTags() {
 
   async function handleSave() {
     try {
-      if (editing) await api.admin.tags.update(editing.id, { name });
-      else await api.admin.tags.create({ name });
-      setEditing(null); setName('');
+      if (editing) await api.admin.tags.update(editing.id, { name, sort_order: sortOrder });
+      else await api.admin.tags.create({ name, sort_order: sortOrder });
+      setEditing(null); setName(''); setSortOrder(0);
       load();
     } catch (e) { /* empty */ }
   }
@@ -54,9 +55,11 @@ export default function AdminTags() {
       {/* Add form */}
       <div className="glass-card rounded-xl p-5 mb-4">
         <h2 className="text-sm font-semibold mb-3" style={{ color: 'var(--text-primary)' }}>{editing ? '编辑标签' : '添加标签'}</h2>
-        <div className="flex gap-3 mb-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
           <input type="text" placeholder="名称" value={name} onChange={e => setName(e.target.value)}
-            className="flex-1 px-3 py-2.5 rounded-lg text-sm outline-none" style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
+            className="px-3 py-2.5 rounded-lg text-sm outline-none" style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
+          <input type="number" placeholder="排序（数字越小越靠前）" value={sortOrder} onChange={e => setSortOrder(Number(e.target.value))}
+            className="px-3 py-2.5 rounded-lg text-sm outline-none" style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
         </div>
         <div className="flex gap-2">
           <button onClick={handleSave} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors cursor-pointer" style={{ background: 'var(--primary)' }}>
@@ -81,6 +84,7 @@ export default function AdminTags() {
           <table className="w-full">
             <thead>
               <tr style={{ borderBottom: '1px solid var(--glass-border)' }}>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>排序</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>名称</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>Slug</th>
                 <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>文章数</th>
@@ -90,12 +94,13 @@ export default function AdminTags() {
             <tbody>
               {items.map((item) => (
                 <tr key={item.id} className="transition-colors" style={{ borderBottom: '1px solid var(--glass-border)', background: 'var(--card-bg)' }}>
+                  <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-info)' }}>{item.sort_order ?? 0}</td>
                   <td className="px-4 py-3 text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{item.name}</td>
                   <td className="px-4 py-3 text-sm font-mono" style={{ color: 'var(--text-secondary)' }}>{item.slug}</td>
                   <td className="px-4 py-3 text-sm text-center" style={{ color: 'var(--text-primary)' }}>{item.post_count ?? 0}</td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1">
-                      <button onClick={() => { setEditing(item); setName(item.name); }}
+                      <button onClick={() => { setEditing(item); setName(item.name); setSortOrder(item.sort_order ?? 0); }}
                         className="btn-glass p-1.5 rounded transition-colors" title="编辑">
                         <Pencil className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
                       </button>

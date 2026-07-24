@@ -175,7 +175,7 @@ export default function Home() {
                   <div className="card-base p-4 rounded-2xl">
                     <div className="text-sm font-bold mb-3" style={{ color: 'var(--text-primary)' }}>分类</div>
                     <div className="flex flex-wrap gap-2">
-                      {categories.map((cat: any) => (
+                      {categories.slice(0, 8).map((cat: any) => (
                         <button key={cat.id} onClick={() => handleCategoryFilter(cat.slug)}
                           className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
                           style={{
@@ -186,6 +186,14 @@ export default function Home() {
                         </button>
                       ))}
                     </div>
+                    {categories.length > 8 && (
+                      <div className="mt-2 text-right">
+                        <Link href="/categories" className="text-xs transition-all hover:opacity-80"
+                          style={{ color: 'var(--primary)' }}>
+                          查看全部 →
+                        </Link>
+                      </div>
+                    )}
                   </div>
                 )}
                 </ScrollReveal>
@@ -196,7 +204,7 @@ export default function Home() {
                   <div className="card-base p-4 rounded-2xl">
                     <div className="text-sm font-bold mb-3" style={{ color: 'var(--text-primary)' }}>标签</div>
                     <div className="flex flex-wrap gap-2">
-                      {tags.map((tag: any) => (
+                      {tags.slice(0, 12).map((tag: any) => (
                         <button key={tag.id} onClick={() => handleTagFilter(tag.slug)}
                           className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
                           style={{
@@ -207,6 +215,14 @@ export default function Home() {
                         </button>
                       ))}
                     </div>
+                    {tags.length > 12 && (
+                      <div className="mt-2 text-right">
+                        <Link href="/tags" className="text-xs transition-all hover:opacity-80"
+                          style={{ color: 'var(--primary)' }}>
+                          查看全部 →
+                        </Link>
+                      </div>
+                    )}
                   </div>
                 )}
                 </ScrollReveal>
@@ -217,7 +233,7 @@ export default function Home() {
                   <div className="card-base p-4 rounded-2xl">
                     <div className="text-sm font-bold mb-3" style={{ color: 'var(--text-primary)' }}>系列</div>
                     <div className="flex flex-col gap-1">
-                      {series.map((s: any) => (
+                      {series.slice(0, 5).map((s: any) => (
                         <Link key={s.id} href={`/series/${s.slug}`}
                           className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all hover:opacity-80"
                           style={{ color: 'var(--text-secondary)' }}>
@@ -226,6 +242,14 @@ export default function Home() {
                         </Link>
                       ))}
                     </div>
+                    {series.length > 5 && (
+                      <div className="mt-1 text-right">
+                        <Link href="/series" className="text-xs transition-all hover:opacity-80"
+                          style={{ color: 'var(--primary)' }}>
+                          查看全部 →
+                        </Link>
+                      </div>
+                    )}
                   </div>
                 )}
                 </ScrollReveal>

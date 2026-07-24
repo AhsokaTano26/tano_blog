@@ -16,7 +16,7 @@ func NewSeriesRepo(db *gorm.DB) *SeriesRepo {
 
 func (r *SeriesRepo) List() ([]model.Series, error) {
 	var series []model.Series
-	err := r.db.Order("sort_order ASC, created_at DESC").Find(&series).Error
+	err := r.db.Order("sort_order ASC, created_at ASC").Find(&series).Error
 	return series, err
 }
 
@@ -28,7 +28,7 @@ func (r *SeriesRepo) Count() (int64, error) {
 
 func (r *SeriesRepo) ListPaginated(page, pageSize int) ([]model.Series, error) {
 	var series []model.Series
-	err := r.db.Order("sort_order ASC, created_at DESC").
+	err := r.db.Order("sort_order ASC, created_at ASC").
 		Offset((page - 1) * pageSize).Limit(pageSize).Find(&series).Error
 	return series, err
 }
@@ -40,7 +40,7 @@ func (r *SeriesRepo) ListWithCount() ([]map[string]interface{}, error) {
 		Joins("LEFT JOIN post_series ON post_series.series_id = series.id").
 		Joins("LEFT JOIN posts ON posts.id = post_series.post_id").
 		Group("series.id").
-		Order("series.sort_order ASC, series.created_at DESC").
+		Order("series.sort_order ASC, series.created_at ASC").
 		Find(&results).Error
 	return results, err
 }
@@ -52,7 +52,7 @@ func (r *SeriesRepo) ListPaginatedWithCount(page, pageSize int) ([]map[string]in
 		Joins("LEFT JOIN post_series ON post_series.series_id = series.id").
 		Joins("LEFT JOIN posts ON posts.id = post_series.post_id").
 		Group("series.id").
-		Order("series.sort_order ASC, series.created_at DESC").
+		Order("series.sort_order ASC, series.created_at ASC").
 		Offset((page - 1) * pageSize).Limit(pageSize).
 		Find(&results).Error
 	return results, err

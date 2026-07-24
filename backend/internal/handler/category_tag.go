@@ -42,7 +42,7 @@ func (h *CategoryHandler) List(c *gin.Context) {
 		Select("categories.*, COUNT(posts.id) as post_count").
 		Joins("LEFT JOIN posts ON posts.category_id = categories.id").
 		Group("categories.id").
-		Order("sort_order ASC, name ASC").
+		Order("sort_order ASC, created_at ASC").
 		Offset((page-1)*pageSize).Limit(pageSize).
 		Scan(&cats)
 	if cats == nil {
@@ -202,7 +202,7 @@ func (h *TagHandler) List(c *gin.Context) {
 		Select("tags.*, COUNT(post_tags.post_id) as post_count").
 		Joins("LEFT JOIN post_tags ON post_tags.tag_id = tags.id").
 		Group("tags.id").
-		Order("name ASC").
+		Order("created_at ASC").
 		Offset((page - 1) * pageSize).Limit(pageSize).
 		Scan(&tags)
 	if tags == nil {
