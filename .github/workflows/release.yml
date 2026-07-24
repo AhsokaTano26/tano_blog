@@ -148,8 +148,27 @@ jobs:
         if: steps.check.outputs.exists == 'false'
         run: |
           VERSION="v${{ steps.version.outputs.VERSION }}"
+          # 避免网络超时或 GitHub 5xx 后远程标签已创建、但本地未收到成功响应。
+          git fetch --tags origin
+          if git rev-parse -q --verify "refs/tags/$VERSION" >/dev/null; then
+            echo "标签 $VERSION 已存在，跳过创建"
+            exit 0
+          fi
           git tag -a "$VERSION" -m "Release $VERSION"
-          git push origin tag "$VERSION"
+          for attempt in 1 2 3; do
+            if git push origin "refs/tags/$VERSION"; then
+              exit 0
+            fi
+            # 推送响应失败时，远程可能已经成功创建标签；先检查再重试。
+            if git ls-remote --exit-code --tags origin "refs/tags/$VERSION" >/dev/null 2>&1; then
+              echo "远程标签 $VERSION 已创建"
+              exit 0
+            fi
+            echo "标签推送失败，5 秒后进行第 ${attempt} 次重试"
+            sleep 5
+          done
+          echo "标签 $VERSION 推送失败，请稍后重新运行发布工作流"
+          exit 1
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
