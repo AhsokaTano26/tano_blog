@@ -27,6 +27,8 @@ backend/tmp
 backend/uploads
 backend/backups
 backend/*.db
+backend/main
+backend/server
 
 # Frontend
 frontend/node_modules

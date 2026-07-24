@@ -4,7 +4,7 @@ services:
     container_name: tano_blog_db
     restart: unless-stopped
     ports:
-      - "5431:5432"
+      - "127.0.0.1:5431:5432"
     volumes:
       - ./data/postgres:/var/lib/postgresql/data
     environment:
@@ -18,11 +18,13 @@ services:
       retries: 5
 
   app:
-    image: tano26/tano_blog:latest
+    build:
+      context: .
+    image: ${APP_IMAGE:-tano_blog:local}
     container_name: tano_blog_app
     restart: unless-stopped
     ports:
-      - "3001:3000"
+      - "3000:3000"
     environment:
       DB_DSN: postgres://tano:${DB_PASSWORD:-tano_blog_pass}@postgres:5432/tano_blog?sslmode=disable
       JWT_SECRET: ${JWT_SECRET}
@@ -32,6 +34,7 @@ services:
       BACKUP_DIR: /data/backups
       CORS_ORIGINS: ""
       SITE_URL: ${SITE_URL:-http://localhost:3000}
+      TRUSTED_PROXIES: 127.0.0.1,::1
       GIN_MODE: release
       API_UPSTREAM_URL: http://localhost:8080
       TZ: ${TZ:-Asia/Shanghai}
@@ -41,4 +44,3 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-

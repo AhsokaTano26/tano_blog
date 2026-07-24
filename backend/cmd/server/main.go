@@ -14,10 +14,10 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/joho/godotenv"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
-	"github.com/google/uuid"
 	"gorm.io/gorm/logger"
 
 	"tano_blog/backend/internal/config"
@@ -93,12 +93,12 @@ func main() {
 
 	// Initialize handlers
 	authHandler := handler.NewAuthHandler(db, &cfg.JWT, emailService)
-	postHandler := handler.NewPostHandler(postRepo)
+	postHandler := handler.NewPostHandler(postRepo, cfg.JWT.Secret)
 	categoryHandler := handler.NewCategoryHandler(db)
 	tagHandler := handler.NewTagHandler(db)
-	commentHandler := handler.NewCommentHandler(commentRepo, db, emailService)
+	commentHandler := handler.NewCommentHandler(commentRepo, db, emailService, cfg.JWT.Secret)
 	mediaHandler := handler.NewMediaHandler(mediaRepo, galleryRepo, &cfg.Upload)
-	siteConfigHandler := handler.NewSiteConfigHandler(db, emailService)
+	siteConfigHandler := handler.NewSiteConfigHandler(db, emailService, cfg.JWT.Secret)
 	accessLogHandler := handler.NewAccessLogHandler(db)
 	backupHandler := handler.NewBackupHandler(db, cfg.Upload.Dir, cfg.BackupDir)
 	seriesHandler := handler.NewSeriesHandler(seriesRepo)
@@ -106,14 +106,15 @@ func main() {
 	friendLinkHandler := handler.NewFriendLinkHandler(db)
 	navLinkHandler := handler.NewNavLinkHandler(db)
 	galleryHandler := handler.NewGalleryHandler(galleryRepo)
-		ipBanRepo := repository.NewIPBanRepo(db)
-		ipBanHandler := handler.NewIPBanHandler(ipBanRepo, repository.NewSiteConfigRepo(db))
+	ipBanRepo := repository.NewIPBanRepo(db)
+	ipBanHandler := handler.NewIPBanHandler(ipBanRepo, repository.NewSiteConfigRepo(db))
 	notifHandler := handler.NewNotificationHandler(db)
 	aiHandler := handler.NewAIHandler(aiService, db)
 
 	// Setup router
 	r := gin.New()
-	r.MaxMultipartMemory = 2 << 30 // 2 GB
+	// Keep only small multipart parts in memory; larger uploads spill to temp files.
+	r.MaxMultipartMemory = 32 << 20
 	r.Use(gin.Recovery())
 	r.Use(middleware.AccessLogger(db))
 
@@ -124,7 +125,18 @@ func main() {
 	}
 	r.Use(middleware.CORS(allowedOrigins))
 	r.Use(middleware.SecurityHeaders())
-	r.SetTrustedProxies(nil)
+	trustedProxies := []string{"127.0.0.1", "::1"}
+	if raw := strings.TrimSpace(os.Getenv("TRUSTED_PROXIES")); raw != "" {
+		trustedProxies = nil
+		for _, proxy := range strings.Split(raw, ",") {
+			if proxy = strings.TrimSpace(proxy); proxy != "" {
+				trustedProxies = append(trustedProxies, proxy)
+			}
+		}
+	}
+	if err := r.SetTrustedProxies(trustedProxies); err != nil {
+		log.Fatalf("Invalid TRUSTED_PROXIES: %v", err)
+	}
 	r.Use(middleware.IPBan(ipBanRepo))
 
 	// Serve uploaded files
@@ -136,6 +148,7 @@ func main() {
 	restoreGroup := api.Group("/admin/restore")
 	restoreGroup.Use(middleware.AuthRequired(&cfg.JWT, db))
 	restoreGroup.Use(middleware.CSRF())
+	restoreGroup.Use(middleware.PasswordChangeRequired())
 	restoreGroup.Use(middleware.RoleRequired("admin"))
 	{
 		restoreGroup.POST("/upload", backupHandler.RestoreUpload)
@@ -148,6 +161,7 @@ func main() {
 	mediaGroup := api.Group("/admin")
 	mediaGroup.Use(middleware.AuthRequired(&cfg.JWT, db))
 	mediaGroup.Use(middleware.CSRF())
+	mediaGroup.Use(middleware.PasswordChangeRequired())
 	mediaGroup.Use(middleware.RoleRequired("admin"))
 	{
 		mediaGroup.POST("/upload", mediaHandler.Upload)
@@ -171,7 +185,7 @@ func main() {
 		api.GET("/posts", postHandler.ListPublic)
 		api.GET("/posts/top", postHandler.TopPosts)
 		api.GET("/posts/top-viewed", postHandler.TopViewed)
-		api.POST("/posts/:slug/reactions", middleware.RateLimit(30, 60*time.Second), postHandler.ToggleReaction)
+		api.POST("/posts/:slug/reactions", middleware.OptionalAuth(&cfg.JWT, db), middleware.RateLimit(30, 60*time.Second), postHandler.ToggleReaction)
 		api.GET("/posts/:slug/adjacent", postHandler.AdjacentPosts)
 		api.GET("/posts/:slug/related", postHandler.RelatedPosts)
 		api.POST("/posts/:slug/verify-password", middleware.RateLimit(5, 60*time.Second), postHandler.VerifyPassword)
@@ -204,15 +218,23 @@ func main() {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "请输入密码"})
 				return
 			}
-			var cfg model.SiteConfig
-			if err := db.Where("key = ?", "music_password").First(&cfg).Error; err != nil || cfg.Value == "" {
+			var musicConfig model.SiteConfig
+			if err := db.Where("key = ?", "music_password").First(&musicConfig).Error; err != nil || musicConfig.Value == "" {
 				c.JSON(http.StatusNotFound, gin.H{"error": "未设置密码"})
 				return
 			}
-			if cfg.Value != input.Password {
+			if musicConfig.Value != input.Password {
 				c.JSON(http.StatusUnauthorized, gin.H{"error": "密码错误"})
 				return
 			}
+			token, err := utils.GenerateResourceToken(utils.ResourceMusic, "library", cfg.JWT.Secret, 12*time.Hour)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "生成访问凭证失败"})
+				return
+			}
+			secure := c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https"
+			c.SetSameSite(http.SameSiteStrictMode)
+			c.SetCookie("music_access", token, 12*3600, "/", "", secure, true)
 			c.JSON(http.StatusOK, gin.H{"success": true})
 		})
 
@@ -225,14 +247,15 @@ func main() {
 		api.GET("/series", seriesHandler.List)
 		api.GET("/series/:slug", seriesHandler.GetBySlug)
 
-		api.GET("/posts/:slug/comments", commentHandler.ListByPost)
-		api.POST("/posts/:slug/comments", middleware.RateLimit(5, 60*time.Second), commentHandler.Create)
-		api.POST("/posts/:slug/comments/:id/reactions", middleware.RateLimit(30, 60*time.Second), commentHandler.ToggleReaction)
+		api.GET("/posts/:slug/comments", middleware.OptionalAuth(&cfg.JWT, db), commentHandler.ListByPost)
+		api.POST("/posts/:slug/comments", middleware.OptionalAuth(&cfg.JWT, db), middleware.RateLimit(5, 60*time.Second), commentHandler.Create)
+		api.POST("/posts/:slug/comments/:id/reactions", middleware.OptionalAuth(&cfg.JWT, db), middleware.RateLimit(30, 60*time.Second), commentHandler.ToggleReaction)
 
 		// Authenticated endpoints (CSRF protected)
 		authRequired := api.Group("")
 		authRequired.Use(middleware.AuthRequired(&cfg.JWT, db))
 		authRequired.Use(middleware.CSRF())
+		authRequired.Use(middleware.PasswordChangeRequired())
 		{
 			// Auth management
 			authRequired.POST("/auth/logout", authHandler.Logout)
@@ -292,12 +315,11 @@ func main() {
 				admin.PUT("/comments/:id", commentHandler.AdminUpdate)
 				admin.GET("/comments/:id/revisions", commentHandler.ListRevisions)
 
-
-					admin.GET("/ip-bans", ipBanHandler.ListBans)
-					admin.POST("/ip-bans", ipBanHandler.CreateBan)
-					admin.DELETE("/ip-bans/:id", ipBanHandler.DeleteBan)
-					admin.GET("/ip-bans/config", ipBanHandler.GetBanConfig)
-					admin.PUT("/ip-bans/config", ipBanHandler.UpdateBanConfig)
+				admin.GET("/ip-bans", ipBanHandler.ListBans)
+				admin.POST("/ip-bans", ipBanHandler.CreateBan)
+				admin.DELETE("/ip-bans/:id", ipBanHandler.DeleteBan)
+				admin.GET("/ip-bans/config", ipBanHandler.GetBanConfig)
+				admin.PUT("/ip-bans/config", ipBanHandler.UpdateBanConfig)
 
 				admin.GET("/media", mediaHandler.List)
 				admin.DELETE("/media/:id", mediaHandler.Delete)
@@ -475,13 +497,13 @@ func seedAdmin(db *gorm.DB, password string) {
 	}
 
 	admin := model.User{
-		Username:            "admin",
-		Email:               "admin@tano.asia",
-		PasswordHash:        hash,
-		DisplayName:         "管理员",
-		Role:                "admin",
-		Bio:                 "A BanG Dreamer!",
-		MustChangePassword:  randomPassword,
+		Username:           "admin",
+		Email:              "admin@tano.asia",
+		PasswordHash:       hash,
+		DisplayName:        "管理员",
+		Role:               "admin",
+		Bio:                "A BanG Dreamer!",
+		MustChangePassword: randomPassword,
 	}
 
 	if err := db.Create(&admin).Error; err != nil {
@@ -492,10 +514,14 @@ func seedAdmin(db *gorm.DB, password string) {
 }
 
 func seedSiteConfigs(db *gorm.DB) {
+	defaultSiteURL := os.Getenv("SITE_URL")
+	if defaultSiteURL == "" {
+		defaultSiteURL = "https://tano.asia"
+	}
 	defaults := map[string]string{
 		"site_title":       "朝花夕拾录",
 		"site_description": "A BanG Dreamer!",
-		"site_url":         "https://tano.asia",
+		"site_url":         defaultSiteURL,
 		"footer_text":      "© 2026 Tano",
 		"comment_enabled":  "true",
 		"default_theme":    "dark",
@@ -508,10 +534,10 @@ func seedSiteConfigs(db *gorm.DB) {
 		"profile_bio":      "A BanG Dreamer!",
 		"profile_contacts": `[{"type":"email","value":"public@tano.asia"},{"type":"github","value":"AhsokaTano26"}]`,
 		"site_favicon":     "/favicon.ico",
-		"ai_enabled":      "false",
-		"ai_api_url":      "https://api.openai.com/v1",
-		"ai_api_key":      "",
-		"ai_model":        "gpt-3.5-turbo",
+		"ai_enabled":       "false",
+		"ai_api_url":       "https://api.openai.com/v1",
+		"ai_api_key":       "",
+		"ai_model":         "gpt-3.5-turbo",
 	}
 
 	for key, value := range defaults {
@@ -522,7 +548,6 @@ func seedSiteConfigs(db *gorm.DB) {
 		}
 	}
 }
-
 
 // migrateCommenterBlocks migrates legacy CommenterBlock records to IPBan.
 func migrateCommenterBlocks(db *gorm.DB) {

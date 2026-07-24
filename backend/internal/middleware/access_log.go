@@ -2,7 +2,9 @@ package middleware
 
 import (
 	"fmt"
+	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -16,7 +18,7 @@ func AccessLogger(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
 		path := c.Request.URL.Path
-		query := c.Request.URL.RawQuery
+		query := redactSensitiveQuery(c.Request.URL.RawQuery)
 
 		c.Next()
 
@@ -51,7 +53,7 @@ func AccessLogger(db *gorm.DB) gin.HandlerFunc {
 			QueryParams:  query,
 			StatusCode:   c.Writer.Status(),
 			ResponseTime: int(elapsed.Milliseconds()),
-			Referer:      c.GetHeader("Referer"),
+			Referer:      redactSensitiveURL(c.GetHeader("Referer")),
 			Country:      country,
 			City:         city,
 			DeviceType:   device,
@@ -65,4 +67,33 @@ func AccessLogger(db *gorm.DB) gin.HandlerFunc {
 			fmt.Fprintf(os.Stderr, "access log write error: %v\n", err)
 		}
 	}
+}
+
+func redactSensitiveQuery(raw string) string {
+	if raw == "" {
+		return ""
+	}
+	values, err := url.ParseQuery(raw)
+	if err != nil {
+		return ""
+	}
+	for key := range values {
+		switch strings.ToLower(key) {
+		case "token", "access_token", "reset_token", "preview_token", "code", "password":
+			values.Set(key, "[REDACTED]")
+		}
+	}
+	return values.Encode()
+}
+
+func redactSensitiveURL(raw string) string {
+	if raw == "" {
+		return ""
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	parsed.RawQuery = redactSensitiveQuery(parsed.RawQuery)
+	return parsed.String()
 }

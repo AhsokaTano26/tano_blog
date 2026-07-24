@@ -12,27 +12,41 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 	"tano_blog/backend/internal/model"
-	"tano_blog/backend/internal/utils"
 	"tano_blog/backend/internal/repository"
 	"tano_blog/backend/internal/service"
+	"tano_blog/backend/internal/utils"
 )
 
 type CommentHandler struct {
 	repo         *repository.CommentRepo
 	db           *gorm.DB
 	emailService *service.EmailService
+	jwtSecret    string
 }
 
-func NewCommentHandler(repo *repository.CommentRepo, db *gorm.DB, emailService *service.EmailService) *CommentHandler {
-	return &CommentHandler{repo: repo, db: db, emailService: emailService}
+func NewCommentHandler(repo *repository.CommentRepo, db *gorm.DB, emailService *service.EmailService, jwtSecret string) *CommentHandler {
+	return &CommentHandler{repo: repo, db: db, emailService: emailService, jwtSecret: jwtSecret}
 }
 
 func (h *CommentHandler) lookupPostBySlug(slug string) (*model.Post, error) {
 	var post model.Post
-	if err := h.db.Where("slug = ?", slug).Select("id", "allow_comment").First(&post).Error; err != nil {
+	if err := h.db.Where("slug = ? AND status = ?", slug, "published").
+		Select("id", "allow_comment", "password_hash").First(&post).Error; err != nil {
 		return nil, err
 	}
 	return &post, nil
+}
+
+func (h *CommentHandler) requirePostAccess(c *gin.Context, post *model.Post) bool {
+	if post.PasswordHash == "" || c.GetString("role") == "admin" {
+		return true
+	}
+	cookie, _ := c.Cookie("post_access_" + post.ID.String())
+	if utils.VerifyResourceToken(cookie, utils.ResourcePost, post.ID.String(), h.jwtSecret) {
+		return true
+	}
+	c.JSON(http.StatusForbidden, gin.H{"error": "请先验证文章密码"})
+	return false
 }
 
 func (h *CommentHandler) ListByPost(c *gin.Context) {
@@ -40,6 +54,9 @@ func (h *CommentHandler) ListByPost(c *gin.Context) {
 	post, err := h.lookupPostBySlug(slug)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "文章不存在"})
+		return
+	}
+	if !h.requirePostAccess(c, post) {
 		return
 	}
 
@@ -126,6 +143,9 @@ func (h *CommentHandler) Create(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "文章不存在"})
 		return
 	}
+	if !h.requirePostAccess(c, post) {
+		return
+	}
 
 	if !post.AllowComment {
 		c.JSON(http.StatusForbidden, gin.H{"error": "此文章已关闭评论"})
@@ -133,12 +153,12 @@ func (h *CommentHandler) Create(c *gin.Context) {
 	}
 
 	var input struct {
-		ParentID          string `json:"parent_id"`
-		Nickname          string `json:"nickname" binding:"required"`
-		Email             string `json:"email"`
-		Website           string `json:"website"`
-		Content           string `json:"content" binding:"required"`
-		HpField           string `json:"hp_field"`
+		ParentID            string `json:"parent_id"`
+		Nickname            string `json:"nickname" binding:"required"`
+		Email               string `json:"email"`
+		Website             string `json:"website"`
+		Content             string `json:"content" binding:"required"`
+		HpField             string `json:"hp_field"`
 		CfTurnstileResponse string `json:"cf_turnstile_response"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -151,16 +171,6 @@ func (h *CommentHandler) Create(c *gin.Context) {
 		c.JSON(http.StatusCreated, gin.H{"comment": "ok"})
 		return
 	}
-
-		// Check ban list
-		ipBanRepo := repository.NewIPBanRepo(h.db)
-		ipBans, _ := ipBanRepo.FindActiveByIP(c.ClientIP())
-		if len(ipBans) > 0 {
-			c.JSON(http.StatusForbidden, gin.H{"error": "您已被封禁"})
-			return
-		}
-
-		// Turnstile verification
 
 	// Turnstile verification
 	if !verifyTurnstile(h.db, "comment", input.CfTurnstileResponse, c.ClientIP()) {
@@ -402,6 +412,15 @@ func (h *CommentHandler) Delete(c *gin.Context) {
 }
 
 func (h *CommentHandler) ToggleReaction(c *gin.Context) {
+	post, err := h.lookupPostBySlug(c.Param("slug"))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "文章不存在"})
+		return
+	}
+	if !h.requirePostAccess(c, post) {
+		return
+	}
+
 	commentID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
@@ -411,6 +430,10 @@ func (h *CommentHandler) ToggleReaction(c *gin.Context) {
 	// Verify comment exists
 	var comment model.Comment
 	if err := h.db.First(&comment, commentID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "评论不存在"})
+		return
+	}
+	if comment.PostID != post.ID {
 		c.JSON(http.StatusNotFound, gin.H{"error": "评论不存在"})
 		return
 	}

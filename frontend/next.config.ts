@@ -10,6 +10,9 @@ const nextConfig: NextConfig = {
     proxyClientMaxBodySize: '2048MB',
   },
   images: {
+    // The project renders media with native <img>; disable the optimizer so
+    // untrusted inputs are never decoded by Next.js/sharp.
+    unoptimized: true,
     remotePatterns: [
       {
         protocol: 'http',

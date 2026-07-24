@@ -35,10 +35,7 @@ RUN npm run build
 # Prepare standalone output
 RUN cp -r .next/standalone/. /build/standalone/ && \
     cp -r .next/static /build/standalone/.next/static && \
-    cp -r public /build/standalone/public && \
-    rm -rf /build/standalone/node_modules
-# Install only production deps for the standalone server
-RUN cd /build/standalone && npm install --omit=dev
+    cp -r public /build/standalone/public
 
 # ============================================
 # Stage 3: Production image
@@ -71,6 +68,7 @@ ENV SERVER_PORT=8080 \
     GIN_MODE=release
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:${SERVER_PORT}/health || exit 1
+  CMD wget --no-verbose --tries=1 --spider http://localhost:${SERVER_PORT}/health && \
+      wget --no-verbose --tries=1 --spider http://localhost:3000/ || exit 1
 
 ENTRYPOINT ["docker-entrypoint.sh"]

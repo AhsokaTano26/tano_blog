@@ -120,8 +120,8 @@ export default function AdminProfile() {
       setMessage('新密码不能与旧密码相同');
       return;
     }
-    if (newPassword.length < 6) {
-      setMessage('新密码不能少于6个字符');
+    if (newPassword.length < 8) {
+      setMessage('新密码不能少于8个字符');
       return;
     }
     setSaving(true);

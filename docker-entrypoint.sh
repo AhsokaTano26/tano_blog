@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 set -e
 
 # ==========================================
@@ -46,5 +46,10 @@ echo "════════════════════════�
 # Forward signals to child processes
 trap "echo 'Shutting down...'; kill $GO_PID $NEXT_PID 2>/dev/null; exit 0" SIGINT SIGTERM
 
-# Exit when any process dies
-wait
+# Exit the container when either service dies, and stop the sibling cleanly.
+set +e
+wait -n "$GO_PID" "$NEXT_PID"
+STATUS=$?
+kill "$GO_PID" "$NEXT_PID" 2>/dev/null
+wait "$GO_PID" "$NEXT_PID" 2>/dev/null
+exit "$STATUS"

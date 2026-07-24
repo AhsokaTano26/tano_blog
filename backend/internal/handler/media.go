@@ -88,6 +88,12 @@ func (h *MediaHandler) Upload(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "保存文件失败"})
 		return
 	}
+	keepFile := false
+	defer func() {
+		if !keepFile {
+			_ = os.Remove(filePath)
+		}
+	}()
 
 	// Detect MIME type from file content
 	f, err := file.Open()
@@ -139,9 +145,13 @@ func (h *MediaHandler) Upload(c *gin.Context) {
 	}
 
 	if err := h.repo.Create(media); err != nil {
+		if thumbnailURL != "" {
+			_ = os.Remove(filepath.Join(uploadDir, filepath.Base(thumbnailURL)))
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "保存记录失败"})
 		return
 	}
+	keepFile = true
 
 	// Associate tags if provided
 	if tagIDsStr := c.PostForm("tag_ids"); tagIDsStr != "" {

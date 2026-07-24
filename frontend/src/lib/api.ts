@@ -40,11 +40,11 @@ async function request<T>(path: string, options: FetchOptions = {}): Promise<T> 
     clearTimeout(timeout);
     throw new Error('网络连接失败');
   }
+  clearTimeout(timeout);
 
   if (!res.ok) {
     // Session expired — redirect to login and suppress the error
     if (res.status === 401 && typeof window !== 'undefined' && !window.location.pathname.startsWith('/admin/login')) {
-      clearTimeout(timeout);
       window.location.href = '/admin/login';
       // Don't throw — navigation is already in progress
       return new Promise(() => {}) as never;
@@ -58,7 +58,6 @@ async function request<T>(path: string, options: FetchOptions = {}): Promise<T> 
     throw new Error(errMsg);
   }
 
-  clearTimeout(timeout);
   return res.json();
 }
 
@@ -164,11 +163,11 @@ export const api = {
 
   // Auth
   login: (data: { username: string; password: string; remember_me?: boolean }) =>
-    request<{ token: string; user: any; totp_required?: boolean; user_id?: string }>('/api/v1/auth/login', {
+    request<{ token: string; user: any; totp_required?: boolean; totp_token?: string }>('/api/v1/auth/login', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
-  loginWithTOTP: (data: { user_id: string; code: string; remember_me?: boolean }) =>
+  loginWithTOTP: (data: { totp_token: string; code: string; remember_me?: boolean }) =>
     request('/api/v1/auth/login/totp', { method: 'POST', body: JSON.stringify(data) }),
   logout: () =>
     request('/api/v1/auth/logout', { method: 'POST' }),

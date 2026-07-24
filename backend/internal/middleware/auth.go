@@ -35,28 +35,54 @@ func AuthRequired(cfg *config.JWTConfig, db *gorm.DB) gin.HandlerFunc {
 			}
 			return []byte(cfg.Secret), nil
 		})
-		if err != nil || !token.Valid {
+		if err != nil || !token.Valid || claims.Issuer != "tano_blog" {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "登录已过期，请重新登录"})
 			return
 		}
 
 		// Verify token_version matches database (supports JWT invalidation on logout)
 		uid, err := uuid.Parse(claims.UserID)
-		if err == nil {
-			var user model.User
-			if db.First(&user, uid).Error != nil {
-				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "用户不存在"})
-				return
-			}
-			if user.TokenVersion != claims.TokenVersion {
-				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "登录已失效，请重新登录"})
-				return
-			}
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "登录凭证无效"})
+			return
 		}
+		var user model.User
+		if db.First(&user, uid).Error != nil {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "用户不存在"})
+			return
+		}
+		if user.TokenVersion != claims.TokenVersion {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "登录已失效，请重新登录"})
+			return
+		}
+		c.Set("must_change_password", user.MustChangePassword)
 
-		c.Set("user_id", claims.UserID)
-		c.Set("username", claims.Username)
-		c.Set("role", claims.Role)
+		// Resolve authorization data from the database so username/role changes
+		// take effect immediately instead of trusting stale token fields.
+		c.Set("user_id", user.ID.String())
+		c.Set("username", user.Username)
+		c.Set("role", user.Role)
+		c.Next()
+	}
+}
+
+// PasswordChangeRequired prevents an account using an initial/reset password from
+// accessing application data before completing the mandatory password change.
+func PasswordChangeRequired() gin.HandlerFunc {
+	allowed := map[string]bool{
+		"/api/v1/auth/me":       true,
+		"/api/v1/auth/password": true,
+		"/api/v1/auth/logout":   true,
+	}
+	return func(c *gin.Context) {
+		mustChange, _ := c.Get("must_change_password")
+		if mustChange == true && !allowed[c.Request.URL.Path] {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+				"error":                "首次登录必须先修改密码",
+				"must_change_password": true,
+			})
+			return
+		}
 		c.Next()
 	}
 }
@@ -76,14 +102,14 @@ func OptionalAuth(cfg *config.JWTConfig, db *gorm.DB) gin.HandlerFunc {
 			}
 			return []byte(cfg.Secret), nil
 		})
-		if err == nil && token.Valid {
+		if err == nil && token.Valid && claims.Issuer == "tano_blog" {
 			uid, err := uuid.Parse(claims.UserID)
 			if err == nil {
 				var user model.User
 				if db.First(&user, uid).Error == nil && user.TokenVersion == claims.TokenVersion {
-					c.Set("user_id", claims.UserID)
-					c.Set("username", claims.Username)
-					c.Set("role", claims.Role)
+					c.Set("user_id", user.ID.String())
+					c.Set("username", user.Username)
+					c.Set("role", user.Role)
 				}
 			}
 		}

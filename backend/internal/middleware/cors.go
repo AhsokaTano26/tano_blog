@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/base64"
 	"net/http"
 	"strings"
@@ -13,7 +14,9 @@ import (
 func CORS(allowedOrigins []string) gin.HandlerFunc {
 	originSet := make(map[string]bool, len(allowedOrigins))
 	for _, o := range allowedOrigins {
-		originSet[o] = true
+		if o = strings.TrimSpace(o); o != "" {
+			originSet[o] = true
+		}
 	}
 
 	return func(c *gin.Context) {
@@ -48,7 +51,10 @@ func CSRF() gin.HandlerFunc {
 		cookie, err := c.Cookie("csrf_token")
 		if err != nil || cookie == "" {
 			b := make([]byte, 32)
-			rand.Read(b)
+			if _, err := rand.Read(b); err != nil {
+				c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "无法生成 CSRF 令牌"})
+				return
+			}
 			cookie = base64.RawURLEncoding.EncodeToString(b)
 			secure := c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https"
 			c.SetSameSite(http.SameSiteStrictMode)
@@ -67,7 +73,8 @@ func CSRF() gin.HandlerFunc {
 			// Also check form value for non-JSON requests
 			token = c.PostForm("csrf_token")
 		}
-		if token == "" || token != cookie {
+		if token == "" || len(token) != len(cookie) ||
+			subtle.ConstantTimeCompare([]byte(token), []byte(cookie)) != 1 {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "CSRF 令牌无效"})
 			return
 		}

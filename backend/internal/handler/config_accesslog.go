@@ -26,13 +26,15 @@ type SiteConfigHandler struct {
 	repo         *repository.SiteConfigRepo
 	db           *gorm.DB
 	emailService *service.EmailService
+	jwtSecret    string
 }
 
-func NewSiteConfigHandler(db *gorm.DB, emailService *service.EmailService) *SiteConfigHandler {
+func NewSiteConfigHandler(db *gorm.DB, emailService *service.EmailService, jwtSecret string) *SiteConfigHandler {
 	return &SiteConfigHandler{
 		repo:         repository.NewSiteConfigRepo(db),
 		db:           db,
 		emailService: emailService,
+		jwtSecret:    jwtSecret,
 	}
 }
 
@@ -43,8 +45,15 @@ func (h *SiteConfigHandler) GetPublic(c *gin.Context) {
 		"footer_text", "comment_enabled", "default_theme",
 		"accent_color", "head_injection", "content_head_injection", "footer_injection",
 		"profile_avatar", "profile_name", "profile_bio", "profile_contacts",
-		"site_favicon", "about_content", "music_playlist", "music_page_config",
+		"site_favicon", "about_content",
 		"turnstile_enabled", "turnstile_sitekey",
+	}
+
+	musicPwd, _ := h.repo.Get("music_password")
+	musicProtected := musicPwd != ""
+	musicCookie, _ := c.Cookie("music_access")
+	if !musicProtected || utils.VerifyResourceToken(musicCookie, utils.ResourceMusic, "library", h.jwtSecret) {
+		publicKeys = append(publicKeys, "music_playlist", "music_page_config")
 	}
 
 	configs, err := h.repo.GetByKeys(publicKeys)
@@ -58,9 +67,7 @@ func (h *SiteConfigHandler) GetPublic(c *gin.Context) {
 		result[cfg.Key] = cfg.Value
 	}
 
-		// Check if music password is set
-	musicPwd, _ := h.repo.Get("music_password")
-	result["music_password_protected"] = musicPwd != ""
+	result["music_password_protected"] = musicProtected
 
 	c.JSON(http.StatusOK, gin.H{"config": result})
 }
@@ -99,7 +106,7 @@ func (h *SiteConfigHandler) Update(c *gin.Context) {
 		"profile_avatar": true, "profile_name": true, "profile_bio": true, "profile_contacts": true,
 		"site_favicon": true, "about_content": true, "music_playlist": true, "music_page_config": true,
 		"music_password": true,
-		"ai_enabled": true, "ai_api_url": true, "ai_api_key": true, "ai_model": true,
+		"ai_enabled":     true, "ai_api_url": true, "ai_api_key": true, "ai_model": true,
 		"turnstile_enabled": true, "turnstile_sitekey": true, "turnstile_secret": true,
 		"ip_ban_auto_enabled": true, "ip_ban_auto_threshold": true, "ip_ban_auto_window": true,
 		"ip_ban_auto_scope": true, "ip_ban_auto_duration": true,
@@ -471,7 +478,6 @@ func (h *AccessLogHandler) Clear(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "已清空"})
 }
 
-
 func verifyTurnstile(db *gorm.DB, module, token, ip string) bool {
 	configRepo := repository.NewSiteConfigRepo(db)
 	enabled, _ := configRepo.Get("turnstile_enabled")
@@ -518,7 +524,6 @@ func verifyTurnstile(db *gorm.DB, module, token, ip string) bool {
 	}
 	return true
 }
-
 
 func parseInt(s string, defaultVal int) int {
 	if s == "" {

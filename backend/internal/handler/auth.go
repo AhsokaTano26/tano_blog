@@ -61,9 +61,16 @@ func (h *AuthHandler) Login(c *gin.Context) {
 
 	// If TOTP is enabled, require TOTP verification code
 	if user.TOTPEnabled {
+		pendingToken, err := utils.GenerateJWTWithVersion(
+			user.ID, user.Username, "totp_pending", h.cfg.Secret, 5*time.Minute, user.TokenVersion,
+		)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "生成两步验证凭证失败"})
+			return
+		}
 		c.JSON(http.StatusOK, gin.H{
 			"totp_required": true,
-			"user_id":       user.ID.String(),
+			"totp_token":    pendingToken,
 		})
 		return
 	}
@@ -87,11 +94,11 @@ func (h *AuthHandler) Login(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"user": gin.H{
-			"id":                  user.ID,
-			"username":            user.Username,
-			"display_name":        user.DisplayName,
-			"avatar_url":          user.AvatarURL,
-			"role":                user.Role,
+			"id":                   user.ID,
+			"username":             user.Username,
+			"display_name":         user.DisplayName,
+			"avatar_url":           user.AvatarURL,
+			"role":                 user.Role,
 			"must_change_password": user.MustChangePassword,
 		},
 	})
@@ -99,7 +106,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 
 func (h *AuthHandler) LoginWithTOTP(c *gin.Context) {
 	var req struct {
-		UserID     string `json:"user_id" binding:"required"`
+		TOTPToken  string `json:"totp_token" binding:"required"`
 		Code       string `json:"code" binding:"required"`
 		RememberMe bool   `json:"remember_me"`
 	}
@@ -108,11 +115,12 @@ func (h *AuthHandler) LoginWithTOTP(c *gin.Context) {
 		return
 	}
 
-	uid, err := uuid.Parse(req.UserID)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
+	claims, err := utils.ParseJWT(req.TOTPToken, h.cfg.Secret)
+	if err != nil || claims.Role != "totp_pending" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "登录验证已过期，请重新输入密码"})
 		return
 	}
+	uid := claims.UserID
 
 	var user model.User
 	if err := h.db.First(&user, uid).Error; err != nil {
@@ -124,13 +132,17 @@ func (h *AuthHandler) LoginWithTOTP(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "未启用 TOTP"})
 		return
 	}
+	if user.TokenVersion != claims.TokenVersion || user.Username != claims.Username {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "登录验证已失效，请重新输入密码"})
+		return
+	}
 
 	if !utils.VerifyTOTP(user.TOTPSecret, req.Code) {
+		checkAutoBan(h.db, c.ClientIP())
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户名或密码错误"})
 		return
 	}
 
-	checkAutoBan(h.db, c.ClientIP())
 	flc.reset(c.ClientIP())
 
 	expiration := h.cfg.Expiration
@@ -151,11 +163,11 @@ func (h *AuthHandler) LoginWithTOTP(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"user": gin.H{
-			"id":                  user.ID,
-			"username":            user.Username,
-			"display_name":        user.DisplayName,
-			"avatar_url":          user.AvatarURL,
-			"role":                user.Role,
+			"id":                   user.ID,
+			"username":             user.Username,
+			"display_name":         user.DisplayName,
+			"avatar_url":           user.AvatarURL,
+			"role":                 user.Role,
 			"must_change_password": user.MustChangePassword,
 		},
 	})
@@ -190,14 +202,14 @@ func (h *AuthHandler) Me(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"id":           user.ID,
-		"username":     user.Username,
-		"email":        user.Email,
-		"display_name": user.DisplayName,
-		"avatar_url":   user.AvatarURL,
-		"bio":          user.Bio,
-		"role":                user.Role,
-		"totp_enabled":        user.TOTPEnabled,
+		"id":                   user.ID,
+		"username":             user.Username,
+		"email":                user.Email,
+		"display_name":         user.DisplayName,
+		"avatar_url":           user.AvatarURL,
+		"bio":                  user.Bio,
+		"role":                 user.Role,
+		"totp_enabled":         user.TOTPEnabled,
 		"must_change_password": user.MustChangePassword,
 	})
 }
@@ -321,12 +333,21 @@ func (h *AuthHandler) ChangePassword(c *gin.Context) {
 	}
 
 	if err := h.db.Model(&user).Updates(map[string]interface{}{
-		"password_hash":       hash,
+		"password_hash":        hash,
 		"must_change_password": false,
+		"token_version":        gorm.Expr("token_version + 1"),
 	}).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "修改失败"})
 		return
 	}
+	token, err := utils.GenerateJWTWithVersion(
+		user.ID, user.Username, user.Role, h.cfg.Secret, h.cfg.Expiration, user.TokenVersion+1,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "密码已修改，请重新登录"})
+		return
+	}
+	setJWTCookie(c, token, h.cfg.Expiration)
 
 	c.JSON(http.StatusOK, gin.H{"message": "密码已修改"})
 }
@@ -608,7 +629,7 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 	var user model.User
 	if err := h.db.Where("email = ?", input.Email).First(&user).Error; err != nil {
 		// Don't reveal if email exists
-		c.JSON(http.StatusOK, gin.H{"message": "如果该邮箱已注册，重置链接将发送到您的邮箱"})
+		c.JSON(http.StatusOK, gin.H{"message": "如果该邮箱已注册且邮件服务可用，重置链接将发送到您的邮箱"})
 		return
 	}
 
@@ -619,11 +640,14 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 		return
 	}
 
-	// Store reset token in dedicated column (separate from TOTP secret)
-	h.db.Model(&user).Update("reset_token", token)
+	// Store reset token in dedicated column (separate from TOTP secret).
+	if err := h.db.Model(&user).Update("reset_token", token).Error; err != nil {
+		utils.LogWarn("Failed to store password reset token", "user", user.Username, "error", err)
+		c.JSON(http.StatusOK, gin.H{"message": "如果该邮箱已注册且邮件服务可用，重置链接将发送到您的邮箱"})
+		return
+	}
 
 	// Try to send email with reset link
-	emailSent := false
 	if h.emailService != nil && user.Email != "" {
 		var siteCfg model.SiteConfig
 		siteURL := ""
@@ -631,32 +655,21 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 			siteURL = siteCfg.Value
 		}
 		resetLink := siteURL + "/admin/reset-password?token=" + token
-		if err := h.emailService.SendPasswordResetEmail(user.Email, resetLink); err == nil {
-			emailSent = true
-		} else {
+		if err := h.emailService.SendPasswordResetEmail(user.Email, resetLink); err != nil {
 			utils.LogWarn("Failed to send password reset email", "email", user.Email, "error", err)
 		}
 	}
 
-	// Construct reset link for non-email delivery (console log + notification)
-	var siteCfg model.SiteConfig
-	siteURL := ""
-	if err := h.db.Where("key = ?", "site_url").First(&siteCfg).Error; err == nil {
-		siteURL = siteCfg.Value
-	}
-	resetLink := siteURL + "/admin/reset-password?token=" + token
-
-	// Log reset link to server console so admin can find it
+	// Log the event, but never the bearer token or reset URL.
 	utils.LogInfo("Password reset requested",
 		"user", user.Username,
-		"email", user.Email,
-		"reset_link", resetLink)
+		"email", user.Email)
 
 	// Create site notification for password reset request
 	var adminUsers []model.User
 	h.db.Where("role = ?", "admin").Find(&adminUsers)
 	for _, adminUser := range adminUsers {
-		notifContent := fmt.Sprintf("用户 %s 申请了密码重置（邮箱: %s）\n重置链接: %s", user.Username, user.Email, resetLink)
+		notifContent := fmt.Sprintf("用户 %s 申请了密码重置（邮箱: %s）", user.Username, user.Email)
 		go func(content string) {
 			notifRepo := repository.NewNotificationRepo(h.db)
 			notifRepo.Create(&model.Notification{
@@ -669,15 +682,9 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 		}(notifContent)
 	}
 
-	if emailSent {
-		c.JSON(http.StatusOK, gin.H{
-			"message": "如果该邮箱已注册，重置链接将发送到您的邮箱",
-		})
-	} else {
-		c.JSON(http.StatusOK, gin.H{
-			"message": "邮件服务未配置，重置链接已记录到服务器日志",
-		})
-	}
+	c.JSON(http.StatusOK, gin.H{
+		"message": "如果该邮箱已注册且邮件服务可用，重置链接将发送到您的邮箱",
+	})
 }
 
 func (h *AuthHandler) ResetPassword(c *gin.Context) {
@@ -725,10 +732,15 @@ func (h *AuthHandler) ResetPassword(c *gin.Context) {
 		return
 	}
 
-	h.db.Model(&user).Updates(map[string]interface{}{
-		"password_hash": hash,
-		"reset_token":   "",
-	})
+	if err := h.db.Model(&user).Updates(map[string]interface{}{
+		"password_hash":        hash,
+		"reset_token":          "",
+		"token_version":        gorm.Expr("token_version + 1"),
+		"must_change_password": false,
+	}).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "密码重置失败"})
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "密码已重置"})
 }

@@ -24,6 +24,32 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Verify backend
+        working-directory: backend
+        run: |
+          go test ./...
+          go vet ./...
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Verify frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run lint
+          npm run build
+
       - name: Determine next version
         id: version
         run: |
@@ -84,27 +110,27 @@ jobs:
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Create Git tag
-        if: steps.check.outputs.exists == 'false'
-        run: |
-          VERSION="v${{ steps.version.outputs.VERSION }}"
-          git config user.name "github-actions"
-          git config user.email "actions@github.com"
-          git tag -a "$VERSION" -m "Release $VERSION"
-          git push origin tag "$VERSION"
-
       - name: Update VERSION file
         if: steps.check.outputs.exists == 'false'
         run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
           echo "${{ steps.version.outputs.VERSION }}" > VERSION
           git add VERSION
           # Only commit if VERSION actually changed
           if git diff --cached --quiet HEAD -- VERSION; then
             echo "VERSION unchanged, skipping commit"
           else
-            git commit -m "chore: bump version to ${{ steps.version.outputs.VERSION }}"
+            git commit -m "chore: bump version to ${{ steps.version.outputs.VERSION }} [skip ci]"
             git push origin HEAD:main
           fi
+
+      - name: Create Git tag
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          VERSION="v${{ steps.version.outputs.VERSION }}"
+          git tag -a "$VERSION" -m "Release $VERSION"
+          git push origin tag "$VERSION"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3

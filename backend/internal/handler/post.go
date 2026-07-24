@@ -13,11 +13,20 @@ import (
 )
 
 type PostHandler struct {
-	repo *repository.PostRepo
+	repo      *repository.PostRepo
+	jwtSecret string
 }
 
-func NewPostHandler(repo *repository.PostRepo) *PostHandler {
-	return &PostHandler{repo: repo}
+func NewPostHandler(repo *repository.PostRepo, jwtSecret string) *PostHandler {
+	return &PostHandler{repo: repo, jwtSecret: jwtSecret}
+}
+
+func (h *PostHandler) hasPostAccess(c *gin.Context, post *model.Post) bool {
+	if post.PasswordHash == "" || c.GetString("role") == "admin" {
+		return true
+	}
+	cookie, _ := c.Cookie("post_access_" + post.ID.String())
+	return utils.VerifyResourceToken(cookie, utils.ResourcePost, post.ID.String(), h.jwtSecret)
 }
 
 // ListPublic returns published posts with pagination
@@ -43,33 +52,33 @@ func (h *PostHandler) ListPublic(c *gin.Context) {
 
 	// Map posts to a simpler response format
 	type PostItem struct {
-		ID          uuid.UUID              `json:"id"`
-		Title       string                 `json:"title"`
-		Slug        string                 `json:"slug"`
-		Excerpt     string                 `json:"excerpt"`
-		CoverImage  string                 `json:"cover_image"`
-		ViewCount   int64                  `json:"view_count"`
-		CommentCount int64                  `json:"comment_count"`
-		PublishedAt *string                `json:"published_at"`
-		CreatedAt   string                 `json:"created_at"`
-		AuthorName  string                 `json:"author_name"`
-		Author      map[string]interface{} `json:"author,omitempty"`
-		Category    map[string]interface{} `json:"category,omitempty"`
-		Tags        []map[string]interface{} `json:"tags,omitempty"`
-		Series      []map[string]interface{} `json:"series,omitempty"`
+		ID           uuid.UUID                `json:"id"`
+		Title        string                   `json:"title"`
+		Slug         string                   `json:"slug"`
+		Excerpt      string                   `json:"excerpt"`
+		CoverImage   string                   `json:"cover_image"`
+		ViewCount    int64                    `json:"view_count"`
+		CommentCount int64                    `json:"comment_count"`
+		PublishedAt  *string                  `json:"published_at"`
+		CreatedAt    string                   `json:"created_at"`
+		AuthorName   string                   `json:"author_name"`
+		Author       map[string]interface{}   `json:"author,omitempty"`
+		Category     map[string]interface{}   `json:"category,omitempty"`
+		Tags         []map[string]interface{} `json:"tags,omitempty"`
+		Series       []map[string]interface{} `json:"series,omitempty"`
 	}
 
 	items := make([]PostItem, 0, len(posts))
 	for _, p := range posts {
 		item := PostItem{
-			ID:         p.ID,
-			Title:      p.Title,
-			Slug:       p.Slug,
-			Excerpt:    p.Excerpt,
-			CoverImage: p.CoverImage,
-			ViewCount:  p.ViewCount,
+			ID:           p.ID,
+			Title:        p.Title,
+			Slug:         p.Slug,
+			Excerpt:      p.Excerpt,
+			CoverImage:   p.CoverImage,
+			ViewCount:    p.ViewCount,
 			CommentCount: p.CommentCount,
-			AuthorName: p.AuthorName,
+			AuthorName:   p.AuthorName,
 		}
 		item.CreatedAt = p.CreatedAt.Format("2006-01-02T15:04:05Z")
 		if p.PublishedAt != nil {
@@ -131,26 +140,23 @@ func (h *PostHandler) GetBySlug(c *gin.Context) {
 	}
 
 	// Check password protection
-	if post.PasswordHash != "" && c.GetString("user_id") == "" {
-		cookieKey := "post_access_" + post.ID.String()
-		if cookie, err := c.Cookie(cookieKey); err != nil || cookie != "granted" {
-			c.JSON(http.StatusOK, gin.H{
-				"post": map[string]interface{}{
-					"id":                 post.ID,
-					"title":              post.Title,
-					"slug":               post.Slug,
-					"excerpt":            post.Excerpt,
-					"cover_image":        post.CoverImage,
-					"category":           post.Category,
-					"tags":               post.Tags,
-					"author_name":        post.AuthorName,
-					"view_count":         post.ViewCount,
-					"password_protected": true,
-					"password_hint":      post.PasswordHint,
-				},
-			})
-			return
-		}
+	if post.PasswordHash != "" && !h.hasPostAccess(c, post) {
+		c.JSON(http.StatusOK, gin.H{
+			"post": map[string]interface{}{
+				"id":                 post.ID,
+				"title":              post.Title,
+				"slug":               post.Slug,
+				"excerpt":            post.Excerpt,
+				"cover_image":        post.CoverImage,
+				"category":           post.Category,
+				"tags":               post.Tags,
+				"author_name":        post.AuthorName,
+				"view_count":         post.ViewCount,
+				"password_protected": true,
+				"password_hint":      post.PasswordHint,
+			},
+		})
+		return
 	}
 
 	// Increment view count
@@ -166,6 +172,10 @@ func (h *PostHandler) VerifyPassword(c *gin.Context) {
 	slug := c.Param("slug")
 	post, err := h.repo.GetBySlug(slug)
 	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "文章不存在"})
+		return
+	}
+	if post.Status != "published" {
 		c.JSON(http.StatusNotFound, gin.H{"error": "文章不存在"})
 		return
 	}
@@ -189,9 +199,14 @@ func (h *PostHandler) VerifyPassword(c *gin.Context) {
 	}
 
 	cookieKey := "post_access_" + post.ID.String()
+	token, err := utils.GenerateResourceToken(utils.ResourcePost, post.ID.String(), h.jwtSecret, 7*24*time.Hour)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "生成访问凭证失败"})
+		return
+	}
 	secure := c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https"
 	c.SetSameSite(http.SameSiteStrictMode)
-	c.SetCookie(cookieKey, "granted", 7*24*3600, "/", "", secure, true)
+	c.SetCookie(cookieKey, token, 7*24*3600, "/", "", secure, true)
 
 	c.JSON(http.StatusOK, gin.H{"verified": true})
 }
@@ -299,6 +314,14 @@ func (h *PostHandler) ToggleReaction(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "文章不存在"})
 		return
 	}
+	if post.Status != "published" {
+		c.JSON(http.StatusNotFound, gin.H{"error": "文章不存在"})
+		return
+	}
+	if !h.hasPostAccess(c, post) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "请先验证文章密码"})
+		return
+	}
 
 	var input struct {
 		Emoji string `json:"emoji"`
@@ -387,26 +410,26 @@ func (h *PostHandler) AdminGet(c *gin.Context) {
 	passwordSet := post.PasswordHash != ""
 	c.JSON(http.StatusOK, gin.H{
 		"post": map[string]interface{}{
-			"password_set": passwordSet,
-			"id":              post.ID,
-			"title":           post.Title,
-			"slug":            post.Slug,
-			"content":         post.Content,
-			"excerpt":         post.Excerpt,
-			"cover_image":     post.CoverImage,
-			"status":          post.Status,
-			"is_top":          post.IsTop,
-			"allow_comment":   post.AllowComment,
-			"author_name":     post.AuthorName,
-			"author_id":       post.AuthorID,
-			"editor_id":       post.EditorID,
-			"category_id":     post.CategoryID,
-			"published_at":    post.PublishedAt,
-			"created_at":      post.CreatedAt,
-			"updated_at":      post.UpdatedAt,
-			"password_hint":   post.PasswordHint,
-			"category":        post.Category,
-			"author":          post.Author,
+			"password_set":  passwordSet,
+			"id":            post.ID,
+			"title":         post.Title,
+			"slug":          post.Slug,
+			"content":       post.Content,
+			"excerpt":       post.Excerpt,
+			"cover_image":   post.CoverImage,
+			"status":        post.Status,
+			"is_top":        post.IsTop,
+			"allow_comment": post.AllowComment,
+			"author_name":   post.AuthorName,
+			"author_id":     post.AuthorID,
+			"editor_id":     post.EditorID,
+			"category_id":   post.CategoryID,
+			"published_at":  post.PublishedAt,
+			"created_at":    post.CreatedAt,
+			"updated_at":    post.UpdatedAt,
+			"password_hint": post.PasswordHint,
+			"category":      post.Category,
+			"author":        post.Author,
 		},
 	})
 }
@@ -512,7 +535,7 @@ func (h *PostHandler) Create(c *gin.Context) {
 			post.CreatedAt = t
 		}
 	}
-	
+
 	if err := h.repo.Create(post); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建文章失败"})
 		return

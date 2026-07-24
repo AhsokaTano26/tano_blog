@@ -13,7 +13,7 @@ export default function LoginPage() {
   const [rememberMe, setRememberMe] = useState(false);
   const [totpCode, setTotpCode] = useState('');
   const [totpRequired, setTotpRequired] = useState(false);
-  const [userId, setUserId] = useState('');
+  const [totpToken, setTotpToken] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -23,9 +23,9 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const res = await api.login({ username, password, remember_me: rememberMe });
-      if (res.totp_required && res.user_id) {
+      if (res.totp_required && res.totp_token) {
         setTotpRequired(true);
-        setUserId(res.user_id);
+        setTotpToken(res.totp_token);
       } else {
         sessionStorage.setItem('jl', '1');
         window.location.href = '/admin';
@@ -40,7 +40,7 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
     try {
-      await api.loginWithTOTP({ user_id: userId, code: totpCode, remember_me: rememberMe });
+      await api.loginWithTOTP({ totp_token: totpToken, code: totpCode, remember_me: rememberMe });
       sessionStorage.setItem('jl', '1');
       window.location.href = '/admin';
     } catch (err: any) {

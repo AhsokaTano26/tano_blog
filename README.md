@@ -125,7 +125,7 @@ cp .env.example .env
 
 `.env` 内容：
 ```env
-DB_DSN=postgres://tano:tano_blog_pass@localhost:5432/tano_blog?sslmode=disable
+DB_DSN=postgres://tano:tano_blog_pass@localhost:5431/tano_blog?sslmode=disable
 JWT_SECRET=<随机字符串>
 ADMIN_PASSWORD=<管理员密码>
 ```
@@ -168,6 +168,7 @@ npm run dev
 | `GIN_MODE` | No | `release` | Gin 模式（debug/release/test） |
 | `LOG_LEVEL` | No | `info` | 日志级别 |
 | `SITE_URL` | No | `https://tano.asia` | 站点 URL，用于 robots.txt |
+| `TRUSTED_PROXIES` | No | `127.0.0.1,::1` | 可信反向代理地址/CIDR，逗号分隔 |
 | `GEOIP_DB_PATH` | No | 空（使用嵌入） | GeoIP 数据库路径（覆盖嵌入文件） |
 | `SMTP_HOST` | No | — | SMTP 服务器地址 |
 | `SMTP_PORT` | No | — | SMTP 端口 |
@@ -183,16 +184,18 @@ npm run dev
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| `NEXT_PUBLIC_API_URL` | `http://localhost:8080` | 后端 API 地址（非 Docker 部署，由 Next.js rewrites 代理） |
+| `NEXT_PUBLIC_API_URL` | 空 | 浏览器 API 前缀；默认使用同源 Next.js rewrites |
 | `API_UPSTREAM_URL` | `http://localhost:8080` | 后端 upstream 地址 |
 
 ## Docker 部署
 
 ```bash
-docker compose up -d
+cp .env.example .env
+# 编辑 .env，替换其中的密码和 JWT 密钥
+docker compose up --build -d
 ```
 
-使用 `docker-compose.yml` 启动 PostgreSQL + 应用容器。应用通过 `docker-entrypoint.sh` 同时启动 Go API（端口 8080）和 Next.js 前端（端口 3000）。
+使用 `docker-compose.yml` 从当前工作区构建并启动 PostgreSQL + 应用容器。应用通过 `docker-entrypoint.sh` 同时启动 Go API（容器内端口 8080）和 Next.js 前端（宿主机端口 3000）。
 
 首次启动务必查看日志获取管理员密码：
 ```bash
