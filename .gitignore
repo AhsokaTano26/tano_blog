@@ -26,6 +26,7 @@ frontend/AGENTS.md
 # Docker
 pgdata/
 .claude/
+.superpowers/
 /文档/
 /.next/
 /qodana.yaml

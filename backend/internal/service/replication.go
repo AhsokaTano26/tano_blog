@@ -215,7 +215,9 @@ func (s *ReplicationService) rsync(ctx context.Context, settings syncSettings, r
 		}
 		ssh += " -i " + settings.keyPath
 	}
-	args := []string{"-az", "--partial", "--append-verify", "--delay-updates", "--protect-args", "--timeout=60", "--contimeout=15", "-e", ssh}
+	// --append-verify 负责断点续传和完整性校验；它与 --delay-updates
+	// 互斥。上传目录会在传输完成后由 swapDirectories 原子切换。
+	args := []string{"-az", "--partial", "--append-verify", "--protect-args", "--timeout=60", "--contimeout=15", "-e", ssh}
 	if settings.bandwidthKBps > 0 {
 		args = append(args, "--bwlimit="+strconv.Itoa(settings.bandwidthKBps))
 	}
