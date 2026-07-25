@@ -3,6 +3,7 @@ package handler
 import (
 	"archive/zip"
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
@@ -21,6 +22,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	"tano_blog/backend/internal/model"
 	"tano_blog/backend/internal/utils"
 )
 
@@ -72,6 +74,12 @@ type backupData struct {
 	Data      map[string][]map[string]interface{} `json:"data"`
 }
 
+type syncUploadFile struct {
+	Path   string `json:"path"`
+	Size   int64  `json:"size"`
+	SHA256 string `json:"sha256"`
+}
+
 // backupTables ordered by dependency (parents first)
 var backupTables = []string{
 	"users", "categories", "tags", "media_tags", "series", "site_configs",
@@ -98,7 +106,7 @@ const (
 
 // generateBackup writes a backup directly to disk so uploaded media is never
 // accumulated in process memory.
-func (h *BackupHandler) generateBackup(path string, includeUploads bool) error {
+func (h *BackupHandler) generateBackup(path string, includeUploads, includeSyncManifest bool) error {
 	data := backupData{
 		Version:   "1.1",
 		CreatedAt: time.Now().UTC().Format(time.RFC3339),
@@ -147,6 +155,23 @@ func (h *BackupHandler) generateBackup(path string, includeUploads bool) error {
 	}
 	if _, err := f.Write(jsonBytes); err != nil {
 		return fmt.Errorf("写入 data.json 失败: %v", err)
+	}
+	if includeSyncManifest {
+		manifest, err := h.buildSyncUploadManifest()
+		if err != nil {
+			return fmt.Errorf("生成上传文件清单失败: %w", err)
+		}
+		manifestBytes, err := json.Marshal(manifest)
+		if err != nil {
+			return err
+		}
+		manifestFile, err := zw.Create(prefix + "/uploads-manifest.json")
+		if err != nil {
+			return err
+		}
+		if _, err := manifestFile.Write(manifestBytes); err != nil {
+			return err
+		}
 	}
 
 	if !includeUploads {
@@ -206,8 +231,55 @@ func (h *BackupHandler) generateBackup(path string, includeUploads bool) error {
 	return nil
 }
 
+func (h *BackupHandler) buildSyncUploadManifest() ([]syncUploadFile, error) {
+	uploadDir := h.uploadDir
+	if !filepath.IsAbs(uploadDir) {
+		uploadDir, _ = filepath.Abs(uploadDir)
+	}
+	manifest := make([]syncUploadFile, 0)
+	err := filepath.Walk(uploadDir, func(path string, info os.FileInfo, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if info.IsDir() {
+			return nil
+		}
+		if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+			return fmt.Errorf("上传目录包含不支持的文件类型: %s", path)
+		}
+		rel, err := filepath.Rel(uploadDir, path)
+		if err != nil {
+			return err
+		}
+		file, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		hash := sha256.New()
+		_, copyErr := io.Copy(hash, file)
+		closeErr := file.Close()
+		if copyErr != nil {
+			return copyErr
+		}
+		if closeErr != nil {
+			return closeErr
+		}
+		manifest = append(manifest, syncUploadFile{Path: filepath.ToSlash(rel), Size: info.Size(), SHA256: fmt.Sprintf("%x", hash.Sum(nil))})
+		return nil
+	})
+	if err != nil && !os.IsNotExist(err) {
+		return nil, err
+	}
+	sort.Slice(manifest, func(i, j int) bool { return manifest[i].Path < manifest[j].Path })
+	return manifest, nil
+}
+
 // restoreFromZip parses and restores data from a zip reader
 func (h *BackupHandler) restoreFromZip(zr *zip.Reader) error {
+	return h.restoreFromZipWithLocalSyncConfigs(zr, nil)
+}
+
+func (h *BackupHandler) restoreFromZipWithLocalSyncConfigs(zr *zip.Reader, localSyncConfigs []model.SiteConfig) error {
 	if err := validateRestoreArchive(zr); err != nil {
 		return err
 	}
@@ -243,6 +315,22 @@ func (h *BackupHandler) restoreFromZip(zr *zip.Reader) error {
 		if _, ok := input.Data[table]; !ok {
 			return fmt.Errorf("备份文件缺少数据表: %s", table)
 		}
+	}
+	if len(localSyncConfigs) > 0 {
+		filtered := make([]map[string]interface{}, 0, len(input.Data["site_configs"])+len(localSyncConfigs))
+		for _, row := range input.Data["site_configs"] {
+			key, _ := row["key"].(string)
+			if !strings.HasPrefix(key, "sync_") {
+				filtered = append(filtered, row)
+			}
+		}
+		for _, cfg := range localSyncConfigs {
+			filtered = append(filtered, map[string]interface{}{
+				"id": cfg.ID, "key": cfg.Key, "value": cfg.Value, "type": cfg.Type,
+				"created_at": cfg.CreatedAt, "updated_at": cfg.UpdatedAt,
+			})
+		}
+		input.Data["site_configs"] = filtered
 	}
 
 	tx := h.db.Begin()
@@ -403,7 +491,7 @@ func (h *BackupHandler) extractUploads(zr *zip.Reader) []string {
 func (h *BackupHandler) CreateBackup(c *gin.Context) {
 	filename := fmt.Sprintf("backup-%s.zip", time.Now().UTC().Format("2006-01-02T150405.000000000"))
 	path := filepath.Join(h.backupDir, filename)
-	err := h.generateBackup(path, true)
+	err := h.generateBackup(path, true, false)
 	if err != nil {
 		utils.LogError("操作失败", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "操作失败"})
@@ -421,13 +509,81 @@ func (h *BackupHandler) CreateSyncSnapshot() (string, error) {
 		return "", fmt.Errorf("创建同步目录失败: %w", err)
 	}
 	filename := fmt.Sprintf("sync-%s.zip", time.Now().UTC().Format("2006-01-02T150405.000000000"))
-	if err := h.generateBackup(filepath.Join(syncDir, filename), false); err != nil {
+	temporaryPath := filepath.Join(syncDir, "."+filename+".tmp")
+	if err := h.generateBackup(temporaryPath, false, true); err != nil {
 		return "", err
+	}
+	if err := os.Rename(temporaryPath, filepath.Join(syncDir, filename)); err != nil {
+		_ = os.Remove(temporaryPath)
+		return "", fmt.Errorf("发布同步快照失败: %w", err)
 	}
 	if err := removeOldSyncSnapshots(syncDir, filename); err != nil {
 		return "", fmt.Errorf("清理旧同步快照失败: %w", err)
 	}
 	return filename, nil
+}
+
+// VerifySyncSnapshotUploads 验证备机暂存目录是否完整匹配快照中的媒体清单。
+func (h *BackupHandler) VerifySyncSnapshotUploads(snapshotPath, uploadDir string) error {
+	f, err := os.Open(snapshotPath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return err
+	}
+	zr, err := zip.NewReader(f, info.Size())
+	if err != nil {
+		return err
+	}
+	var manifest []syncUploadFile
+	for _, entry := range zr.File {
+		if filepath.Base(entry.Name) != "uploads-manifest.json" {
+			continue
+		}
+		rc, err := entry.Open()
+		if err != nil {
+			return err
+		}
+		data, readErr := io.ReadAll(io.LimitReader(rc, maxRestoreDataJSONSize+1))
+		rc.Close()
+		if readErr != nil || int64(len(data)) > maxRestoreDataJSONSize {
+			return fmt.Errorf("读取上传文件清单失败")
+		}
+		if err := json.Unmarshal(data, &manifest); err != nil {
+			return fmt.Errorf("解析上传文件清单失败: %w", err)
+		}
+		break
+	}
+	if manifest == nil {
+		return fmt.Errorf("同步快照缺少上传文件清单")
+	}
+	for _, expected := range manifest {
+		if expected.Path == "" || filepath.IsAbs(expected.Path) || strings.Contains(expected.Path, "..") {
+			return fmt.Errorf("上传文件清单包含无效路径")
+		}
+		path := filepath.Join(uploadDir, filepath.FromSlash(expected.Path))
+		if !strings.HasPrefix(path, filepath.Clean(uploadDir)+string(filepath.Separator)) {
+			return fmt.Errorf("上传文件清单路径越界")
+		}
+		info, err := os.Stat(path)
+		if err != nil || !info.Mode().IsRegular() || info.Size() != expected.Size {
+			return fmt.Errorf("上传文件不完整或大小不匹配: %s", expected.Path)
+		}
+		file, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		hash := sha256.New()
+		_, copyErr := io.Copy(hash, file)
+		closeErr := file.Close()
+		if copyErr != nil || closeErr != nil || fmt.Sprintf("%x", hash.Sum(nil)) != expected.SHA256 {
+			return fmt.Errorf("上传文件校验失败: %s", expected.Path)
+		}
+	}
+	return nil
 }
 
 // removeOldSyncSnapshots 在新快照完整落盘后删除旧同步快照。
@@ -450,16 +606,18 @@ func removeOldSyncSnapshots(syncDir, currentFilename string) error {
 
 // RestoreSyncSnapshot 应用已校验的数据库同步快照，并保留备机本地的同步配置。
 func (h *BackupHandler) RestoreSyncSnapshot(path string) error {
-	// 同步角色、任务计划、SSH 目标和加密私钥只属于本机。若随主机快照覆盖，
-	// 备机会在第一次同步后丢失自己的角色和连接配置。
-	type localSyncConfig struct {
-		Key   string
-		Value string
-		Type  string
-	}
-	var localConfigs []localSyncConfig
-	if err := h.db.Raw("SELECT key, value, type FROM site_configs WHERE key LIKE ?", "sync_%").Scan(&localConfigs).Error; err != nil {
+	// 同步角色、任务计划、SSH 目标和加密私钥只属于本机。它们会直接写入
+	// 同一次恢复事务，避免提交快照后再单独恢复配置造成中间不一致。
+	var localConfigs []model.SiteConfig
+	if err := h.db.Where("key LIKE ?", "sync_%").Find(&localConfigs).Error; err != nil {
 		return fmt.Errorf("读取本机同步配置失败: %w", err)
+	}
+	for i := range localConfigs {
+		if localConfigs[i].Key == "sync_apply_state" {
+			// 此值随恢复事务一起提交，供崩溃恢复流程区分数据库是否已成功切换。
+			localConfigs[i].Value = "db-applied"
+			break
+		}
 	}
 
 	f, err := os.Open(path)
@@ -475,15 +633,7 @@ func (h *BackupHandler) RestoreSyncSnapshot(path string) error {
 	if err != nil {
 		return err
 	}
-	if err := h.restoreFromZip(zr); err != nil {
-		return err
-	}
-	for _, cfg := range localConfigs {
-		if err := h.db.Exec("INSERT INTO site_configs (key, value, type) VALUES (?, ?, ?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, type = EXCLUDED.type", cfg.Key, cfg.Value, cfg.Type).Error; err != nil {
-			return fmt.Errorf("恢复本机同步配置失败: %w", err)
-		}
-	}
-	return nil
+	return h.restoreFromZipWithLocalSyncConfigs(zr, localConfigs)
 }
 
 // ListBackups returns all backup files in the backups directory

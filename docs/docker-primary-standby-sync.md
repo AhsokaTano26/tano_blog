@@ -126,6 +126,7 @@ SSH 连接的是主服务器**宿主机**，不是应用容器。因此后台中
 | 后台字段 | 填写值 |
 | --- | --- |
 | 主机 SSH 目标 | `sync@blog-primary.example.com` |
+| SSH 端口 | `22`（主服务器使用非默认端口时填写实际端口） |
 | 主机快照目录 | `/srv/tano_blog/data/backups/sync` |
 | 主机上传目录 | `/srv/tano_blog/data/uploads` |
 

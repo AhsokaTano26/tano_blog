@@ -101,6 +101,16 @@ func (h *SiteConfigHandler) Update(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
 		return
 	}
+	role, roleErr := h.repo.Get("sync_role")
+	enabled, enabledErr := h.repo.Get("sync_enabled")
+	if roleErr == nil && enabledErr == nil && role == "standby" && enabled == "true" {
+		for key := range input {
+			if !strings.HasPrefix(key, "sync_") {
+				c.JSON(http.StatusServiceUnavailable, gin.H{"error": "备服务器只允许修改同步配置，请在主服务器修改站点设置"})
+				return
+			}
+		}
+	}
 	if privateKey, ok := input["sync_ssh_private_key"]; ok && strings.TrimSpace(privateKey) != "" {
 		if !strings.Contains(privateKey, "-----BEGIN") || !strings.Contains(privateKey, "PRIVATE KEY-----") {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "SSH 私钥格式无效"})
@@ -142,7 +152,7 @@ func (h *SiteConfigHandler) Update(c *gin.Context) {
 		"ip_ban_auto_scope": true, "ip_ban_auto_duration": true,
 		"sync_enabled": true, "sync_role": true, "sync_schedule_mode": true,
 		"sync_interval_minutes": true, "sync_weekdays": true, "sync_time_of_day": true,
-		"sync_timezone": true, "sync_ssh_target": true, "sync_ssh_key_path": true,
+		"sync_timezone": true, "sync_ssh_target": true, "sync_ssh_key_path": true, "sync_ssh_port": true,
 		"sync_remote_backup_dir": true, "sync_remote_upload_dir": true,
 		"sync_bandwidth_kbps": true,
 	}

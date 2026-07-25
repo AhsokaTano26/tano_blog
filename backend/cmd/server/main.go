@@ -101,7 +101,7 @@ func main() {
 	siteConfigHandler := handler.NewSiteConfigHandler(db, emailService, cfg.JWT.Secret, cfg.SyncKeyEncryptionKey)
 	accessLogHandler := handler.NewAccessLogHandler(db)
 	backupHandler := handler.NewBackupHandler(db, cfg.Upload.Dir, cfg.BackupDir)
-	replicationService := service.NewReplicationService(repository.NewSiteConfigRepo(db), cfg.BackupDir, cfg.Upload.Dir, backupHandler.CreateSyncSnapshot, backupHandler.RestoreSyncSnapshot, cfg.SyncKeyEncryptionKey)
+	replicationService := service.NewReplicationService(repository.NewSiteConfigRepo(db), cfg.BackupDir, cfg.Upload.Dir, backupHandler.CreateSyncSnapshot, backupHandler.RestoreSyncSnapshot, backupHandler.VerifySyncSnapshotUploads, cfg.SyncKeyEncryptionKey)
 	syncHandler := handler.NewSyncHandler(replicationService)
 	seriesHandler := handler.NewSeriesHandler(seriesRepo)
 	feedHandler := handler.NewFeedHandler(db)
@@ -145,7 +145,7 @@ func main() {
 	r.Static("/uploads", cfg.Upload.Dir)
 
 	api := r.Group("/api/v1")
-	api.Use(middleware.StandbyReadOnly(repository.NewSiteConfigRepo(db)))
+	api.Use(middleware.StandbyReadOnly(repository.NewSiteConfigRepo(db), replicationService.AcquireWriteLease))
 
 	// Restore endpoints (exempt from maxBodySize to allow large uploads up to 500MB)
 	restoreGroup := api.Group("/admin/restore")
@@ -445,7 +445,9 @@ func main() {
 		ticker := time.NewTicker(1 * time.Minute)
 		defer ticker.Stop()
 		for range ticker.C {
-			replicationService.RunScheduled(context.Background())
+			ctx, cancel := context.WithTimeout(context.Background(), 6*time.Hour)
+			replicationService.RunScheduled(ctx)
+			cancel()
 		}
 	}()
 
@@ -554,7 +556,7 @@ func seedSiteConfigs(db *gorm.DB) {
 		"ai_model":         "gpt-3.5-turbo",
 		"sync_enabled":     "false", "sync_role": "standby", "sync_schedule_mode": "interval",
 		"sync_interval_minutes": "60", "sync_weekdays": "1", "sync_time_of_day": "02:00",
-		"sync_timezone": "Asia/Shanghai", "sync_ssh_target": "", "sync_ssh_key_path": "",
+		"sync_timezone": "Asia/Shanghai", "sync_ssh_target": "", "sync_ssh_key_path": "", "sync_ssh_port": "22",
 		"sync_remote_backup_dir": "/data/backups/sync", "sync_remote_upload_dir": "/data/uploads", "sync_bandwidth_kbps": "0",
 	}
 

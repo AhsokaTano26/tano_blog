@@ -24,19 +24,22 @@ const (
 	syncSnapshotKey    = "sync_last_snapshot"
 	syncScheduleRunKey = "sync_last_schedule_run"
 	syncAttemptedAtKey = "sync_last_attempted_at"
+	syncApplyStateKey  = "sync_apply_state"
 )
 
 var syncTargetRe = regexp.MustCompile(`^[A-Za-z0-9._-]+@[A-Za-z0-9._:-]+$`)
 
 type ReplicationService struct {
-	repo                 *repository.SiteConfigRepo
-	backupDir            string
-	uploadDir            string
-	createSnapshot       func() (string, error)
-	restoreSnapshot      func(string) error
-	syncKeyEncryptionKey string
-	mu                   sync.Mutex
-	running              bool
+	repo                  *repository.SiteConfigRepo
+	backupDir             string
+	uploadDir             string
+	createSnapshot        func() (string, error)
+	restoreSnapshot       func(string) error
+	verifySnapshotUploads func(string, string) error
+	syncKeyEncryptionKey  string
+	mu                    sync.Mutex
+	running               bool
+	writeGate             sync.RWMutex
 }
 
 type SyncStatus struct {
@@ -61,17 +64,24 @@ type syncSettings struct {
 	timezone             *time.Location
 	target               string
 	keyPath              string
+	sshPort              int
 	privateKeyCiphertext string
 	remoteBackup         string
 	remoteUploads        string
 	bandwidthKBps        int
 }
 
-func NewReplicationService(repo *repository.SiteConfigRepo, backupDir, uploadDir string, createSnapshot func() (string, error), restoreSnapshot func(string) error, syncKeyEncryptionKey string) *ReplicationService {
+func NewReplicationService(repo *repository.SiteConfigRepo, backupDir, uploadDir string, createSnapshot func() (string, error), restoreSnapshot func(string) error, verifySnapshotUploads func(string, string) error, syncKeyEncryptionKey string) *ReplicationService {
 	if !filepath.IsAbs(uploadDir) {
 		uploadDir, _ = filepath.Abs(uploadDir)
 	}
-	return &ReplicationService{repo: repo, backupDir: backupDir, uploadDir: uploadDir, createSnapshot: createSnapshot, restoreSnapshot: restoreSnapshot, syncKeyEncryptionKey: syncKeyEncryptionKey}
+	return &ReplicationService{repo: repo, backupDir: backupDir, uploadDir: uploadDir, createSnapshot: createSnapshot, restoreSnapshot: restoreSnapshot, verifySnapshotUploads: verifySnapshotUploads, syncKeyEncryptionKey: syncKeyEncryptionKey}
+}
+
+// AcquireWriteLease 让业务写请求与主服务器创建快照互斥，确保数据库和媒体清单处于同一时点。
+func (s *ReplicationService) AcquireWriteLease() func() {
+	s.writeGate.RLock()
+	return s.writeGate.RUnlock
 }
 
 func (s *ReplicationService) GetStatus() SyncStatus {
@@ -91,6 +101,9 @@ func (s *ReplicationService) RunNow(ctx context.Context) error {
 	s.running = true
 	s.mu.Unlock()
 	defer func() { s.mu.Lock(); s.running = false; s.mu.Unlock() }()
+	if err := s.recoverInterruptedDirectorySwitch(); err != nil {
+		return s.finish("failed", "恢复中断的文件切换失败: "+err.Error(), "")
+	}
 
 	settings, _, err := s.settings()
 	if err != nil {
@@ -102,7 +115,9 @@ func (s *ReplicationService) RunNow(ctx context.Context) error {
 	_ = s.repo.Upsert(syncAttemptedAtKey, time.Now().UTC().Format(time.RFC3339), "string")
 
 	if settings.role == "primary" {
+		s.writeGate.Lock()
 		name, err := s.createSnapshot()
+		s.writeGate.Unlock()
 		if err != nil {
 			return s.finish("failed", "创建同步快照失败: "+err.Error(), "")
 		}
@@ -124,21 +139,24 @@ func (s *ReplicationService) RunScheduled(ctx context.Context) {
 	}
 	if err := s.RunNow(ctx); err != nil {
 		utils.LogWarn("replication task failed", "error", err)
+		return
+	}
+	if settings.scheduleMode == "weekly" {
+		_ = s.repo.Upsert(syncScheduleRunKey, time.Now().In(settings.timezone).Format("2006-01-02"), "string")
 	}
 }
 
 func (s *ReplicationService) isDue(settings syncSettings, values map[string]string) bool {
 	now := time.Now().In(settings.timezone)
 	if settings.scheduleMode == "weekly" {
-		if !settings.weekdays[now.Weekday()] || now.Format("15:04") != settings.timeOfDay {
+		if !settings.weekdays[now.Weekday()] || now.Format("15:04") < settings.timeOfDay {
 			return false
 		}
-		slot := now.Format("2006-01-02 15:04")
-		if values[syncScheduleRunKey] == slot {
+		if values[syncScheduleRunKey] == now.Format("2006-01-02") {
 			return false
 		}
-		_ = s.repo.Upsert(syncScheduleRunKey, slot, "string")
-		return true
+		last, err := time.Parse(time.RFC3339, values[syncAttemptedAtKey])
+		return err != nil || time.Since(last) >= 5*time.Minute
 	}
 	last, err := time.Parse(time.RFC3339, values[syncAttemptedAtKey])
 	return err != nil || time.Since(last) >= settings.interval
@@ -175,17 +193,67 @@ func (s *ReplicationService) pullAndApply(ctx context.Context, settings syncSett
 	if err := s.rsync(ctx, settings, settings.remoteUploads, stage, true); err != nil {
 		return fmt.Errorf("拉取上传文件失败: %w", err)
 	}
-	if err := s.restoreSnapshot(filepath.Join(incoming, snapshot)); err != nil {
+	snapshotPath := filepath.Join(incoming, snapshot)
+	if err := s.verifySnapshotUploads(snapshotPath, stage); err != nil {
+		return fmt.Errorf("校验上传文件失败: %w", err)
+	}
+	if err := s.repo.Upsert(syncApplyStateKey, "pending", "string"); err != nil {
+		return fmt.Errorf("记录文件切换状态失败: %w", err)
+	}
+	commitSwap, rollbackSwap, err := activateDirectory(s.uploadDir, stage)
+	if err != nil {
+		return fmt.Errorf("切换上传文件失败: %w", err)
+	}
+	if err := s.restoreSnapshot(snapshotPath); err != nil {
+		_ = rollbackSwap()
+		_ = s.repo.Delete(syncApplyStateKey)
 		return fmt.Errorf("应用数据库快照失败: %w", err)
 	}
-	if err := swapDirectories(s.uploadDir, stage); err != nil {
-		return fmt.Errorf("切换上传文件失败: %w", err)
+	if err := commitSwap(); err != nil {
+		return fmt.Errorf("清理旧上传文件失败: %w", err)
+	}
+	_ = s.repo.Delete(syncApplyStateKey)
+	if err := removeOldIncomingSnapshots(incoming, snapshot); err != nil {
+		return fmt.Errorf("清理旧下载快照失败: %w", err)
 	}
 	return s.finish("success", "同步完成", snapshot)
 }
 
+func (s *ReplicationService) recoverInterruptedDirectorySwitch() error {
+	state, err := s.repo.Get(syncApplyStateKey)
+	if err != nil || state == "" {
+		return nil
+	}
+	current := s.uploadDir
+	stage := current + ".sync-stage"
+	old := current + ".sync-old"
+	if state == "pending" {
+		if _, err := os.Stat(old); err == nil {
+			if _, err := os.Stat(current); err == nil {
+				if err := os.RemoveAll(stage); err != nil {
+					return err
+				}
+				if err := os.Rename(current, stage); err != nil {
+					return err
+				}
+			}
+			if err := os.Rename(old, current); err != nil {
+				return err
+			}
+		}
+	} else if state == "db-applied" {
+		if err := os.RemoveAll(old); err != nil {
+			return err
+		}
+	}
+	return s.repo.Delete(syncApplyStateKey)
+}
+
 func (s *ReplicationService) rsync(ctx context.Context, settings syncSettings, remoteDir, localDir string, delete bool) error {
 	ssh := "ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=15"
+	if settings.sshPort > 0 {
+		ssh += " -o Port=" + strconv.Itoa(settings.sshPort)
+	}
 	if settings.privateKeyCiphertext != "" {
 		privateKey, err := utils.DecryptSyncSecret(s.syncKeyEncryptionKey, settings.privateKeyCiphertext)
 		if err != nil {
@@ -217,7 +285,7 @@ func (s *ReplicationService) rsync(ctx context.Context, settings syncSettings, r
 	}
 	// --append-verify 负责断点续传和完整性校验；它与 --delay-updates
 	// 互斥。上传目录会在传输完成后由 swapDirectories 原子切换。
-	args := []string{"-az", "--partial", "--append-verify", "--protect-args", "--timeout=60", "--contimeout=15", "-e", ssh}
+	args := []string{"-az", "--partial", "--append-verify", "--protect-args", "--timeout=60", "-e", ssh}
 	if settings.bandwidthKBps > 0 {
 		args = append(args, "--bwlimit="+strconv.Itoa(settings.bandwidthKBps))
 	}
@@ -264,6 +332,10 @@ func (s *ReplicationService) settings() (syncSettings, map[string]string, error)
 		minutes = 10080
 	}
 	bandwidth, _ := strconv.Atoi(values["sync_bandwidth_kbps"])
+	sshPort, _ := strconv.Atoi(values["sync_ssh_port"])
+	if sshPort < 1 || sshPort > 65535 {
+		sshPort = 22
+	}
 	weekdays := map[time.Weekday]bool{}
 	for _, day := range strings.Split(values["sync_weekdays"], ",") {
 		if value, parseErr := strconv.Atoi(strings.TrimSpace(day)); parseErr == nil && value >= 0 && value <= 6 {
@@ -277,7 +349,7 @@ func (s *ReplicationService) settings() (syncSettings, map[string]string, error)
 	if _, parseErr := time.Parse("15:04", timeOfDay); parseErr != nil {
 		timeOfDay = "02:00"
 	}
-	return syncSettings{enabled: values["sync_enabled"] == "true", role: defaultValue(values["sync_role"], "standby"), scheduleMode: defaultValue(values["sync_schedule_mode"], "interval"), interval: time.Duration(minutes) * time.Minute, weekdays: weekdays, timeOfDay: timeOfDay, timezone: loc, target: values["sync_ssh_target"], keyPath: values["sync_ssh_key_path"], privateKeyCiphertext: values["sync_ssh_private_key_enc"], remoteBackup: defaultValue(values["sync_remote_backup_dir"], "/data/backups/sync"), remoteUploads: defaultValue(values["sync_remote_upload_dir"], "/data/uploads"), bandwidthKBps: bandwidth}, values, err
+	return syncSettings{enabled: values["sync_enabled"] == "true", role: defaultValue(values["sync_role"], "standby"), scheduleMode: defaultValue(values["sync_schedule_mode"], "interval"), interval: time.Duration(minutes) * time.Minute, weekdays: weekdays, timeOfDay: timeOfDay, timezone: loc, target: values["sync_ssh_target"], keyPath: values["sync_ssh_key_path"], sshPort: sshPort, privateKeyCiphertext: values["sync_ssh_private_key_enc"], remoteBackup: defaultValue(values["sync_remote_backup_dir"], "/data/backups/sync"), remoteUploads: defaultValue(values["sync_remote_upload_dir"], "/data/uploads"), bandwidthKBps: bandwidth}, values, err
 }
 
 func latestSnapshot(dir string) (string, error) {
@@ -308,20 +380,50 @@ func defaultValue(value, fallback string) string {
 	return value
 }
 
-func swapDirectories(current, stage string) error {
+func removeOldIncomingSnapshots(dir, currentFilename string) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || entry.Name() == currentFilename || !strings.HasPrefix(entry.Name(), "sync-") || !strings.HasSuffix(entry.Name(), ".zip") {
+			continue
+		}
+		if err := os.Remove(filepath.Join(dir, entry.Name())); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func activateDirectory(current, stage string) (commit func() error, rollback func() error, err error) {
 	old := current + ".sync-old"
 	if current == "/" || stage == "/" || !filepath.IsAbs(current) {
-		return fmt.Errorf("上传目录必须为安全的绝对路径")
+		return nil, nil, fmt.Errorf("上传目录必须为安全的绝对路径")
+	}
+	if _, statErr := os.Stat(current); os.IsNotExist(statErr) {
+		if _, oldErr := os.Stat(old); oldErr == nil {
+			if err := os.Rename(old, current); err != nil {
+				return nil, nil, err
+			}
+		}
 	}
 	_ = os.RemoveAll(old)
 	if _, err := os.Stat(current); err == nil {
 		if err := os.Rename(current, old); err != nil {
-			return err
+			return nil, nil, err
 		}
 	}
 	if err := os.Rename(stage, current); err != nil {
 		_ = os.Rename(old, current)
-		return err
+		return nil, nil, err
 	}
-	return os.RemoveAll(old)
+	commit = func() error { return os.RemoveAll(old) }
+	rollback = func() error {
+		if err := os.Rename(current, stage); err != nil {
+			return err
+		}
+		return os.Rename(old, current)
+	}
+	return commit, rollback, nil
 }
