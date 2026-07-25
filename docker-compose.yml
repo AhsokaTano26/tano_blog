@@ -40,8 +40,8 @@ services:
       API_UPSTREAM_URL: http://localhost:8080
       TZ: ${TZ:-Asia/Shanghai}
     volumes:
-      - ./data/uploads:/data/uploads
-      - ./data/backups:/data/backups
+      # 挂载数据父目录，而非单独挂载 uploads。备机需要原子切换 uploads 目录。
+      - ./data:/data
       # 备机请将主服务器的 SSH 指纹写入 data/ssh/known_hosts。
       - ./data/ssh:/root/.ssh:ro
     depends_on:

@@ -967,9 +967,13 @@ func (r *SiteConfigRepo) GetByKeys(keys []string) ([]model.SiteConfig, error) {
 
 func (r *SiteConfigRepo) Get(key string) (string, error) {
 	var config model.SiteConfig
-	err := r.db.Where("key = ?", key).First(&config).Error
-	if err != nil {
-		return "", err
+	result := r.db.Where("key = ?", key).Limit(1).Find(&config)
+	if result.Error != nil {
+		return "", result.Error
+	}
+	if result.RowsAffected == 0 {
+		// 保持调用方依赖的“未找到”语义，但避免 GORM 对可选配置输出误导性日志。
+		return "", gorm.ErrRecordNotFound
 	}
 	return config.Value, nil
 }

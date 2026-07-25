@@ -513,9 +513,15 @@ func (h *BackupHandler) CreateSyncSnapshot() (string, error) {
 	if err := h.generateBackup(temporaryPath, false, true); err != nil {
 		return "", err
 	}
-	if err := os.Rename(temporaryPath, filepath.Join(syncDir, filename)); err != nil {
+	finalPath := filepath.Join(syncDir, filename)
+	if err := os.Rename(temporaryPath, finalPath); err != nil {
 		_ = os.Remove(temporaryPath)
 		return "", fmt.Errorf("发布同步快照失败: %w", err)
+	}
+	// 同步快照默认仅允许所有者与组读取；部署文档中的 blogsync 默认 ACL
+	// 会借助组权限掩码获得读取权限，而不会把快照暴露给所有本机用户。
+	if err := os.Chmod(finalPath, 0640); err != nil {
+		return "", fmt.Errorf("设置同步快照权限失败: %w", err)
 	}
 	if err := removeOldSyncSnapshots(syncDir, filename); err != nil {
 		return "", fmt.Errorf("清理旧同步快照失败: %w", err)

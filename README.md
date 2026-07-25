@@ -236,7 +236,7 @@ openssl rand -base64 32
 SYNC_KEY_ENCRYPTION_KEY=<上一步输出，主备完全相同>
 ```
 
-各服务器的 `data/postgres`、`data/uploads`、`data/backups` 必须保留为本机持久化目录。当前 Compose 配置还会把 `data/ssh` 只读挂载到容器内的 `/root/.ssh`，供 SSH 严格校验远程主机指纹。
+各服务器的 `data/postgres`、`data/uploads`、`data/backups` 必须保留为本机持久化目录。应用容器会挂载整个 `data/` 到 `/data`，让备机能够原子切换上传目录；`data/ssh` 仍会只读挂载到容器内的 `/root/.ssh`，供 SSH 严格校验远程主机指纹。
 
 ### 2. 配置主机 SSH 账户
 

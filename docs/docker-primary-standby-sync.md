@@ -68,7 +68,7 @@ SYNC_KEY_ENCRYPTION_KEY=<主备完全相同的值>
 openssl rand -base64 32
 ```
 
-不要把真实 `.env` 提交到 Git、截图或发送给无关人员。每台机器的 PostgreSQL、上传文件和备份必须各自持久化在项目的 `data/` 下；当前 `docker-compose.yml` 已提供对应挂载。
+不要把真实 `.env` 提交到 Git、截图或发送给无关人员。每台机器的 PostgreSQL、上传文件和备份必须各自持久化在项目的 `data/` 下；应用容器会将整个 `data/` 挂载到 `/data`，而不是分别挂载 `/data/uploads` 与 `/data/backups`，以便备机原子切换上传目录。
 
 启动服务：
 
@@ -82,14 +82,18 @@ docker compose ps
 备机会通过 SSH 登录**主服务器宿主机**并运行 rsync。请创建一个仅用于同步的账户，而不是使用 root：
 
 ```bash
-sudo adduser --disabled-password --gecos '' sync
+sudo adduser --disabled-password --gecos '' blogsync
 ```
 
-假设主服务器项目路径是 `/srv/tano_blog`，授权该用户读取同步来源。具体权限策略取决于系统管理员规范，以下仅为示例：
+若项目位于 `/root/tano_blog`，还必须允许 `blogsync` 穿过 `/root`。以下 ACL 仅授予读取同步来源所需的最小权限：
 
 ```bash
-sudo setfacl -R -m u:sync:rx /srv/tano_blog/data/uploads
-sudo setfacl -R -m u:sync:rx /srv/tano_blog/data/backups
+sudo setfacl -m u:blogsync:--x /root
+sudo setfacl -m u:blogsync:--x /root/tano_blog
+sudo setfacl -R -m u:blogsync:rX /root/tano_blog/data/uploads
+sudo setfacl -R -m u:blogsync:rX /root/tano_blog/data/backups
+sudo find /root/tano_blog/data/uploads /root/tano_blog/data/backups -type d -exec setfacl -m d:u:blogsync:rx {} +
+sudo setfacl -m u:blogsync:r-- /root/tano_blog/data/backups/sync/sync-*.zip
 ```
 
 如果系统未安装 `setfacl`，可改用专用用户组和最小必要的目录读/执行权限。不要让同步账户拥有 sudo、写权限或交互式管理权限。
