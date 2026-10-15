@@ -150,6 +150,34 @@ npm run dev
 
 前端默认运行在 `http://localhost:3000`，通过 Next.js rewrites 将 `/api/*` 代理到后端。
 
+## Development Checks
+
+```bash
+cd frontend
+npm test
+npm run lint
+npm run build
+```
+
+```bash
+cd backend
+go test ./...
+go vet ./...
+```
+
+To include PostgreSQL integration tests for uploads, filtering, thumbnail backfill,
+and concurrent gallery ordering, set `TEST_DATABASE_DSN` to a disposable test
+database before running `go test ./...`. Tests create isolated schemas and remove
+them afterward.
+
+Image uploads generate previews up to 480 pixels on their longest side while
+preserving originals. JPEG, PNG, GIF (first frame), WebP, and BMP previews are
+supported; transparent images retain transparency and JPEG orientation is applied.
+Existing supported images receive missing previews in background batches on API
+startup. Unsupported or oversized images retain their original-image fallback.
+The article editor supports pasting screenshots/image files and dropping multiple
+images; uploads insert at their original position while editing continues.
+
 ## Environment Variables
 
 ### Backend

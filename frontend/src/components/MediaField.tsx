@@ -109,6 +109,8 @@ const typeTabs = [
 
 export function MediaPickerModal({ onSelect, onClose, onUpload, triggerRect, filterType }: { onSelect: (url: string, originalName?: string, thumbnailUrl?: string) => void; onClose: () => void; onUpload?: () => void; triggerRect?: DOMRect; filterType?: 'image' | 'video' | 'audio' | 'document' | '' }) {
   const [items, setItems] = useState<any[]>([]);
+  const [loadError, setLoadError] = useState('');
+  const [retryKey, setRetryKey] = useState(0);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
@@ -124,31 +126,25 @@ export function MediaPickerModal({ onSelect, onClose, onUpload, triggerRect, fil
     } catch { /* ignore */ }
   };
 
-  async function loadItems() {
-    setLoading(true);
-    try {
-      const params: Record<string, string> = { page: String(page), page_size: String(pageSize) };
-      if (tagFilter) params.tag = tagFilter;
-      const res = await api.admin.media.list(params);
-      if (page === 1) {
-        setItems(res.items || []);
-      } else {
-        setItems(prev => [...prev, ...(res.items || [])]);
-      }
-      setTotal(res.total || 0);
-    } catch {
-      // ignore
-    }
-    setLoading(false);
-  }
-
   useEffect(() => { loadTags(); }, []);
-  useEffect(() => { loadItems(); }, [page, tagFilter]);
-  useEffect(() => { setPage(1); }, [tagFilter, typeFilter]);
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setLoadError('');
+    const params: Record<string, string> = { page: String(page), page_size: String(pageSize) };
+    if (tagFilter) params.tag = tagFilter;
+    if (typeFilter) params.type = typeFilter;
+    api.admin.media.list(params).then(res => {
+      if (!active) return;
+      setItems(previous => page === 1 ? res.items || [] : [...previous, ...(res.items || [])]);
+      setTotal(res.total || 0);
+    }).catch(err => {
+      if (active) setLoadError(err instanceof Error ? err.message : '加载媒体库失败');
+    }).finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [page, tagFilter, typeFilter, retryKey]);
 
-  const filtered = typeFilter
-    ? items.filter(item => getMediaType(item.mime_type) === typeFilter)
-    : items;
+  const filtered = items;
 
   const hasMore = items.length < total;
 
@@ -172,7 +168,7 @@ export function MediaPickerModal({ onSelect, onClose, onUpload, triggerRect, fil
       {!filterType && (
         <div className="flex items-center gap-1 mb-2 flex-shrink-0">
           {typeTabs.map(tab => (
-            <button key={tab.key} onClick={() => setTypeFilter(tab.key)}
+            <button key={tab.key} onClick={() => { setTypeFilter(tab.key); setPage(1); }}
               className="px-3 py-1 rounded-lg text-xs font-medium transition-all"
               style={{
                 background: typeFilter === tab.key ? 'var(--primary-sub)' : 'transparent',
@@ -192,7 +188,7 @@ export function MediaPickerModal({ onSelect, onClose, onUpload, triggerRect, fil
             const tag = id ? mediaTags.find(t => t.id === id) : null;
             const active = tagFilter === id;
             return (
-              <button key={id || 'all'} onClick={() => setTagFilter(id)}
+              <button key={id || 'all'} onClick={() => { setTagFilter(id); setPage(1); }}
                 className="px-2.5 py-1 rounded-lg text-xs whitespace-nowrap transition-colors"
                 style={{
                   background: active ? 'var(--primary-sub)' : 'transparent',
@@ -217,6 +213,9 @@ export function MediaPickerModal({ onSelect, onClose, onUpload, triggerRect, fil
             {item.thumbnail_url || item.mime_type?.startsWith('image/') ? (
               <ImageWithFallback
                 src={item.thumbnail_url || item.url}
+                fallbackSrc={item.url}
+                loading="lazy"
+                decoding="async"
                 alt={item.original_name || ''}
                 className="w-full h-16 object-cover"
               />
@@ -231,12 +230,15 @@ export function MediaPickerModal({ onSelect, onClose, onUpload, triggerRect, fil
           </div>
         ))}
       </div>
+      {loadError && <p role="alert" className="text-center text-sm mt-2" style={{ color: 'var(--color-error)' }}>
+        {loadError} <button onClick={() => setRetryKey(key => key + 1)} className="underline">重试</button>
+      </p>}
       {loading && (
         <p className="text-center text-sm mt-2" style={{ color: 'var(--text-info)' }}>加载中...</p>
       )}
       {hasMore && !loading && (
         <button
-          onClick={() => setPage(p => p + 1)}
+          onClick={() => setPage(page + 1)}
           className="w-full mt-2 py-2 rounded-xl text-sm btn-glass"
           style={{ color: 'var(--text-secondary)' }}
         >

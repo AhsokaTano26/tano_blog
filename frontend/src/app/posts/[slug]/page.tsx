@@ -27,6 +27,7 @@ import { remarkMhchem } from '@/lib/remark-mhchem';
 import { remarkAlerts } from '@/lib/remark-alerts';
 import { rehypeKatexWithMhchem } from '@/lib/rehype-katex-mhchem';
 import { ImageWithFallback } from '@/components/ImageWithFallback';
+import { MarkdownImage } from '@/components/MarkdownImage';
 import { MarkdownAlert } from '@/components/MarkdownAlert';
 
 interface TocItem {
@@ -574,13 +575,7 @@ export default function PostPage({ params }: { params: Promise<{ slug: string }>
     pre: CodeBlock,
     audio: ({ src }: any) => <ArticleAudioPlayer src={src || ''} />,
     div: MarkdownAlert,
-    img: ({ src, alt }: any) => (
-      <ImageWithFallback
-        src={src}
-        alt={typeof alt === 'string' ? alt : ''}
-        className="max-w-full rounded-lg"
-      />
-    ),
+    img: MarkdownImage,
   }), []);
 
   if (loading) {

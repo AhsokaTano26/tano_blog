@@ -9,6 +9,7 @@ import { Loading } from '@/components/Loading';
 interface GalleryImage {
   id: string;
   url: string;
+  thumbnail_url?: string;
   title: string;
   description: string;
   width: number;
@@ -47,7 +48,6 @@ export default function GalleryPage() {
         ) : (
           <div className="gallery-masonry">
             {images.map((img, index) => {
-              const aspectRatio = img.width && img.height ? img.height / img.width : 1;
               return (
                 <div
                   key={img.id}
@@ -57,10 +57,12 @@ export default function GalleryPage() {
                 >
                   <div className="gallery-masonry-inner">
                     <ImageWithFallback
-                      src={img.url}
+                      src={img.thumbnail_url || img.url}
+                      fallbackSrc={img.url}
                       alt={img.title || '图片'}
                       loading="lazy"
-                      style={{ aspectRatio: aspectRatio ? `${img.width}/${img.height}` : undefined }}
+                      decoding="async"
+                      style={{ aspectRatio: img.width && img.height ? `${img.width}/${img.height}` : undefined }}
                     />
                     {img.title && (
                       <div className="gallery-masonry-overlay">

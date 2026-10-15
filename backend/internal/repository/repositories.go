@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
@@ -832,22 +833,30 @@ func NewMediaRepo(db *gorm.DB) *MediaRepo {
 	return &MediaRepo{db: db}
 }
 
-func (r *MediaRepo) List(page, pageSize int, tagID string, search string) ([]model.Media, int64, error) {
+func (r *MediaRepo) List(page, pageSize int, tagID string, search string, mediaType string) ([]model.Media, int64, error) {
 	var media []model.Media
 	var total int64
 
 	// Build filter conditions
 	query := r.db.Model(&model.Media{})
+	switch mediaType {
+	case "image", "audio", "video":
+		query = query.Where("mime_type LIKE ?", mediaType+"/%")
+	case "document":
+		query = query.Where("mime_type NOT LIKE 'image/%' AND mime_type NOT LIKE 'audio/%' AND mime_type NOT LIKE 'video/%'")
+	}
 	if tagID != "" {
 		query = query.Joins("JOIN media_tag_links ON media_tag_links.media_id = media.id").
 			Where("media_tag_links.media_tag_id = ?", tagID)
 	}
 	if search != "" {
 		pattern := "%" + strings.NewReplacer("%", "\\%", "_", "\\_").Replace(search) + "%"
-		query = query.Where("original_name ILIKE ? OR filename ILIKE ? OR title ILIKE ? OR artist ILIKE ?", pattern, pattern)
+		query = query.Where("original_name ILIKE ? OR filename ILIKE ? OR title ILIKE ? OR artist ILIKE ?", pattern, pattern, pattern, pattern)
 	}
 
-	query.Count(&total)
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
 
 	err := query.Preload("Tags").
 		Order("created_at DESC").
@@ -855,6 +864,22 @@ func (r *MediaRepo) List(page, pageSize int, tagID string, search string) ([]mod
 		Limit(pageSize).
 		Find(&media).Error
 	return media, total, err
+}
+
+func (r *MediaRepo) MissingImageThumbnails(ctx context.Context, after uuid.UUID) ([]model.Media, error) {
+	var items []model.Media
+	err := r.db.WithContext(ctx).
+		Where("id > ? AND (thumbnail_url = '' OR thumbnail_url IS NULL)", after).
+		Where("mime_type IN ?", []string{"image/jpeg", "image/png", "image/gif", "image/webp", "image/bmp", "image/x-ms-bmp"}).
+		Order("id ASC").Limit(32).Find(&items).Error
+	return items, err
+}
+
+func (r *MediaRepo) SetThumbnailIfEmpty(ctx context.Context, id uuid.UUID, url string) (bool, error) {
+	result := r.db.WithContext(ctx).Model(&model.Media{}).
+		Where("id = ? AND (thumbnail_url = '' OR thumbnail_url IS NULL)", id).
+		Update("thumbnail_url", url)
+	return result.RowsAffected > 0, result.Error
 }
 
 func (r *MediaRepo) Create(m *model.Media) error {

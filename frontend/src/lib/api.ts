@@ -1,3 +1,5 @@
+import { uploadFilename } from './editor-upload';
+
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
 
 interface FetchOptions extends RequestInit {
@@ -288,7 +290,7 @@ export const api = {
         request('/api/v1/admin/media/batch-tag', { method: 'POST', body: JSON.stringify({ ids, tag_ids: tagIds }) }),
       upload: async (file: File, tagIds?: string[]) => {
         const form = new FormData();
-        form.append('file', file);
+        form.append('file', file, uploadFilename(file));
         if (tagIds && tagIds.length > 0) form.append('tag_ids', tagIds.join(','));
         const res = await fetch(`${API_BASE}/api/v1/admin/upload`, {
           method: 'POST',

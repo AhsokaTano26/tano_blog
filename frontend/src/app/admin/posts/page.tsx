@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { api } from '@/lib/api';
 import {
@@ -32,18 +32,12 @@ import { remarkAlerts } from '@/lib/remark-alerts';
 import { rehypeKatexWithMhchem } from '@/lib/rehype-katex-mhchem';
 import { ImageWithFallback } from '@/components/ImageWithFallback';
 import { MarkdownAlert } from '@/components/MarkdownAlert';
+import { MarkdownImage } from '@/components/MarkdownImage';
+import { generateImageHtml, findImageInContent, type ImageAttrs } from '@/lib/article-image';
+import { getClipboardImages, isImageFile, replaceUploadPlaceholder, uploadSelection } from '@/lib/editor-upload';
 
 // ===== Image helper types and functions =====
 
-interface ImageAttrs {
-  url: string;
-  alt: string;
-  width: string;
-  height: string;
-  align: 'left' | 'center' | 'right';
-  caption: string;
-  linkUrl: string;
-}
 
 const markdownReference = [
   { title: '标题与强调', example: '# 一级标题\n## 二级标题\n**粗体**  *斜体*  ~~删除线~~' },
@@ -71,67 +65,6 @@ const WIDTH_PRESETS = [
   { label: '大', value: '100%' },
   { label: '原始', value: '' },
 ];
-
-function escapeHtmlAttr(s: string): string {
-  return (s ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
-function generateImageHtml(attrs: ImageAttrs): string {
-  let style = `width: ${attrs.width || 'auto'};`;
-  if (attrs.height) style += ` height: ${attrs.height};`;
-  let alignItems = 'center';
-  if (attrs.align === 'left') alignItems = 'flex-start';
-  else if (attrs.align === 'right') alignItems = 'flex-end';
-  let html = `<figure class="editor-image" style="display: flex; flex-direction: column; align-items: ${alignItems}; margin: 1em 0;">\n`;
-  if (attrs.linkUrl) {
-    html += `  <a href="${escapeHtmlAttr(attrs.linkUrl)}" target="_blank" rel="noopener noreferrer">\n`;
-  }
-  html += `  <img src="${escapeHtmlAttr(attrs.url)}" alt="${escapeHtmlAttr(attrs.alt)}" style="${style}" />\n`;
-  if (attrs.linkUrl) {
-    html += `  </a>\n`;
-  }
-  if (attrs.caption) {
-    html += `  <figcaption>${escapeHtmlAttr(attrs.caption)}</figcaption>\n`;
-  }
-  html += '</figure>';
-  return html;
-}
-
-function findImageInContent(content: string, srcUrl: string): { start: number; end: number; attrs: Partial<ImageAttrs> } | null {
-  const escSrc = srcUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const figureRegex = new RegExp(`<figure[^>]*>[\\s\\S]*?<img[^>]*src=["']${escSrc}["'][\\s\\S]*?<\\/figure>`, 'i');
-  const figureMatch = content.match(figureRegex);
-  if (figureMatch && figureMatch.index !== undefined) {
-    return { start: figureMatch.index, end: figureMatch.index + figureMatch[0].length, attrs: parseFigureAttrs(figureMatch[0]) };
-  }
-  const mdRegex = new RegExp(`!\\[([^\\]]*)\\]\\(${escSrc}\\)`);
-  const mdMatch = content.match(mdRegex);
-  if (mdMatch && mdMatch.index !== undefined) {
-    return { start: mdMatch.index, end: mdMatch.index + mdMatch[0].length, attrs: { url: srcUrl, alt: mdMatch[1] || '' } };
-  }
-  return null;
-}
-
-function parseFigureAttrs(figureHtml: string): Partial<ImageAttrs> {
-  const attrs: Partial<ImageAttrs> = {};
-  let alignMatch = figureHtml.match(/align-items:\s*(flex-start|center|flex-end)/i);
-  if (alignMatch) {
-    attrs.align = alignMatch[1] === 'flex-start' ? 'left' : alignMatch[1] === 'flex-end' ? 'right' : 'center';
-  }
-  const srcMatch = figureHtml.match(/<img[^>]*src=["']([^"']*)["']/i);
-  if (srcMatch) attrs.url = srcMatch[1];
-  const altMatch = figureHtml.match(/<img[^>]*alt=["']([^"']*)["']/i);
-  if (altMatch) attrs.alt = altMatch[1];
-  const widthMatch = figureHtml.match(/<img[^>]*style=["'][^"']*width:\s*([^;"']+)/i);
-  if (widthMatch) attrs.width = widthMatch[1].trim();
-  const heightMatch = figureHtml.match(/<img[^>]*style=["'][^"']*height:\s*([^;"']+)/i);
-  if (heightMatch) attrs.height = heightMatch[1].trim();
-  const capMatch = figureHtml.match(/<figcaption>([\s\S]*?)<\/figcaption>/i);
-  if (capMatch) attrs.caption = capMatch[1].trim();
-  const linkMatch = figureHtml.match(/<a[^>]*href=["']([^"']*)["'][^>]*>/i);
-  if (linkMatch) attrs.linkUrl = linkMatch[1];
-  return attrs;
-}
 
 // ===== ImageEditDialog Component =====
 
@@ -994,7 +927,18 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
   const [mediaPickerType, setMediaPickerType] = useState<'image' | 'video' | 'audio' | null>(null);
   const mediaFileRef = useRef<HTMLInputElement>(null);
   const mediaPickerBtnRef = useRef<HTMLButtonElement>(null);
-  const [mediaUploading, setMediaUploading] = useState(false);
+  const [mediaUploadCount, setMediaUploadCount] = useState(0);
+  const mediaUploading = mediaUploadCount > 0;
+  const pendingUploadSelection = useRef<{ start: number; end: number; scrollTop: number } | null>(null);
+  useLayoutEffect(() => {
+    const selection = pendingUploadSelection.current;
+    const editor = textareaRef.current;
+    if (selection && editor && document.activeElement === editor) {
+      editor.setSelectionRange(selection.start, selection.end);
+      editor.scrollTop = selection.scrollTop;
+    }
+    pendingUploadSelection.current = null;
+  }, [content]);
   const previewScrollRef = useRef<HTMLDivElement>(null);
   const syncingRef = useRef<'editor' | 'preview' | null>(null);
   const [imageDialog, setImageDialog] = useState<{ attrs: ImageAttrs; range?: { start: number; end: number } } | null>(null);
@@ -1131,6 +1075,10 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
   }
 
   async function handleSave(publishStatus?: string) {
+    if (mediaUploading) {
+      setError('文件仍在上传，请等待上传完成后保存');
+      return;
+    }
     if (!title.trim()) {
       setError('标题为必填项');
       return;
@@ -1224,43 +1172,67 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
   }
 
 
-  async function handleMediaUpload(e: React.ChangeEvent<HTMLInputElement>, type: 'image' | 'video' | 'audio') {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setMediaUploading(true);
-    try {
-      const res = await api.admin.media.upload(file);
-      const url = res.media?.url;
-      if (url) insertMedia(url, type);
-    } catch (err) {
-      console.error('Upload failed', err);
-    } finally {
-      setMediaUploading(false);
-      if (mediaFileRef.current) mediaFileRef.current.value = '';
+  function finishEditorUpload(placeholder: string, replacement: string) {
+    const editor = textareaRef.current;
+    pendingUploadSelection.current = null;
+    if (editor && document.activeElement === editor) {
+      const selection = uploadSelection(editor.value, placeholder, replacement, editor.selectionStart, editor.selectionEnd);
+      if (selection) pendingUploadSelection.current = { ...selection, scrollTop: editor.scrollTop };
+    }
+    setContent((previous: string) => replaceUploadPlaceholder(previous, placeholder, replacement));
+  }
+
+  async function uploadEditorFiles(files: File[], fallbackType: 'image' | 'video' | 'audio' = 'image') {
+    if (!files.length) return;
+    const ta = textareaRef.current;
+    const start = ta?.selectionStart ?? content.length;
+    const end = ta?.selectionEnd ?? start;
+    const tasks = files.map(file => ({
+      file,
+      type: isImageFile(file) ? 'image' : file.type.startsWith('video/') ? 'video' : fallbackType,
+      placeholder: `<!-- upload:${crypto.randomUUID()} -->`,
+    }));
+    const insertion = tasks.map(task => task.placeholder).join('\n') + '\n';
+    setError('');
+    setMediaUploadCount(count => count + tasks.length);
+    setContent((previous: string) => previous.slice(0, start) + insertion + previous.slice(end));
+    setMediaPickerType(null);
+    requestAnimationFrame(() => {
+      ta?.focus();
+      ta?.setSelectionRange(start + insertion.length, start + insertion.length);
+    });
+
+    for (const task of tasks) {
+      try {
+        const res = await api.admin.media.upload(task.file);
+        const url = res.media?.url;
+        if (typeof url !== 'string' || !url) throw new Error('上传响应缺少文件地址');
+        const name = task.file.name.replace(/[\[\]\\]/g, '\\$&').replace(/[\r\n]/g, ' ');
+        const markup = task.type === 'image'
+          ? `![${name}](${url})`
+          : `<${task.type} src="${url}" controls></${task.type}>`;
+        finishEditorUpload(task.placeholder, markup);
+      } catch (err) {
+        finishEditorUpload(task.placeholder, '');
+        const message = `${task.file.name || '图片'}：${err instanceof Error ? err.message : '上传失败'}，请重新上传`;
+        setError((previous: string) => previous ? `${previous}\n${message}` : message);
+      } finally {
+        setMediaUploadCount(count => count - 1);
+      }
     }
   }
 
-  // Image paste from clipboard
-  async function handleEditorPaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
-    const items = e.clipboardData?.items;
-    if (!items) return;
-    for (const item of Array.from(items)) {
-      if (item.type.startsWith('image/')) {
-        e.preventDefault();
-        const file = item.getAsFile();
-        if (!file) continue;
-        setMediaUploading(true);
-        try {
-          const res = await api.admin.media.upload(file);
-          if (res.media?.url) insertMedia(res.media.url, 'image');
-        } catch (err) {
-          console.error('Paste upload failed', err);
-        } finally {
-          setMediaUploading(false);
-        }
-        return;
-      }
-    }
+  function handleMediaUpload(e: React.ChangeEvent<HTMLInputElement>, type: 'image' | 'video' | 'audio') {
+    const files = Array.from(e.target.files || []);
+    e.target.value = '';
+    void uploadEditorFiles(files, type);
+  }
+
+  function handleEditorPaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const files = getClipboardImages(e.clipboardData);
+    if (!files.length) return;
+    e.preventDefault();
+    void uploadEditorFiles(files);
   }
 
   function handleEditImage(srcUrl: string, altText: string) {
@@ -1305,6 +1277,7 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
   // Drag-and-drop image upload
   const [dragOver, setDragOver] = useState(false);
   function handleEditorDragOver(e: React.DragEvent) {
+    if (!e.dataTransfer.types.includes('Files')) return;
     e.preventDefault();
     e.stopPropagation();
     setDragOver(true);
@@ -1314,26 +1287,13 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
     e.stopPropagation();
     setDragOver(false);
   }
-  async function handleEditorDrop(e: React.DragEvent) {
+  function handleEditorDrop(e: React.DragEvent) {
+    setDragOver(false);
+    const files = Array.from(e.dataTransfer.files).filter(isImageFile);
+    if (!files.length) return;
     e.preventDefault();
     e.stopPropagation();
-    setDragOver(false);
-    const files = e.dataTransfer?.files;
-    if (!files) return;
-    for (const file of Array.from(files)) {
-      if (file.type.startsWith('image/')) {
-        setMediaUploading(true);
-        try {
-          const res = await api.admin.media.upload(file);
-          if (res.media?.url) insertMedia(res.media.url, 'image');
-        } catch (err) {
-          console.error('Drop upload failed', err);
-        } finally {
-          setMediaUploading(false);
-        }
-        return;
-      }
-    }
+    void uploadEditorFiles(files);
   }
 
   const headings = content.split('\n').filter((line: string) => /^#{1,3}\s/.test(line)).map((line: string, i: number) => {
@@ -1482,19 +1442,24 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7" />
             </svg>
           </button>
-          <button onClick={() => handleSave()} disabled={saving}
+          <button onClick={() => handleSave()} disabled={saving || mediaUploading}
             className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm btn-glass disabled:opacity-50 transition-all"
             style={{ color: 'var(--text-primary)' }}>
             <Save className={`w-4 h-4${saving ? ' animate-spin' : ''}`} />
             {saving ? '保存中...' : '保存'}
           </button>
-          <button onClick={() => handleSave('published')} disabled={saving}
+          <button onClick={() => handleSave('published')} disabled={saving || mediaUploading}
             className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium text-white transition-all hover:opacity-90 disabled:opacity-50"
             style={{ background: 'var(--primary)', boxShadow: '0 0 16px var(--primary-glow)' }}>
             {saving ? '发布中...' : '发布'}
           </button>
         </div>
       </header>
+
+      <div role="status" aria-live="polite" className="px-6 py-2 text-xs flex-shrink-0"
+        style={{ color: mediaUploading ? 'var(--primary)' : 'var(--text-info)' }}>
+        {mediaUploading ? `正在上传 ${mediaUploadCount} 个文件，可继续编辑，完成后会自动插入原位置` : '支持粘贴截图、图片文件或拖入多张图片，自动上传并插入正文'}
+      </div>
 
       {/* Error */}
       {error && (
@@ -1586,7 +1551,7 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
               </div>
 
               {/* Media picker & upload for toolbar */}
-              <input ref={mediaFileRef} type="file" accept="image/*,video/*,audio/*"
+              <input ref={mediaFileRef} type="file" multiple accept={mediaPickerType ? `${mediaPickerType}/*` : undefined}
                 onChange={e => mediaPickerType && handleMediaUpload(e, mediaPickerType)}
                 style={{ display: 'none' }} />
               {mediaPickerType && (
@@ -1607,7 +1572,7 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
               onDrop={handleEditorDrop}>
               <textarea
                 ref={textareaRef}
-                placeholder="输入 Markdown 内容..."
+                placeholder="输入 Markdown 内容，可直接粘贴截图或拖入多张图片自动上传..."
                 value={content}
                 onChange={e => setContent(e.target.value)}
                 onKeyDown={handleKeyDown}
@@ -1651,8 +1616,8 @@ function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
                       a: ({ href, children }) => (
                         <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary)' }}>{children}</a>
                       ),
-                      img: ({ src, alt }) => (
-                        <ImageWithFallback src={src} alt={typeof alt === 'string' ? alt : ''} style={{ maxWidth: '100%', borderRadius: '8px', cursor: 'pointer' }}
+                      img: ({ src, alt, style, ...props }) => (
+                        <MarkdownImage {...props} src={src} alt={typeof alt === 'string' ? alt : ''} style={{ ...style, cursor: 'pointer' }}
                           onClick={(e) => {
                             e.preventDefault();
                             e.stopPropagation();

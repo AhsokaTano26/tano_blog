@@ -5,6 +5,7 @@ import { ImageOff } from 'lucide-react';
 
 type ImageWithFallbackProps = Omit<ImgHTMLAttributes<HTMLImageElement>, 'src'> & {
   src?: string | Blob | null;
+  fallbackSrc?: string;
   fallbackLabel?: string;
 };
 
@@ -14,6 +15,7 @@ type ImageWithFallbackProps = Omit<ImgHTMLAttributes<HTMLImageElement>, 'src'> &
  */
 export function ImageWithFallback({
   src,
+  fallbackSrc,
   alt = '',
   className,
   style,
@@ -22,10 +24,12 @@ export function ImageWithFallback({
   ...props
 }: ImageWithFallbackProps) {
   const [failed, setFailed] = useState(!src);
+  const [activeSrc, setActiveSrc] = useState(src);
 
   useEffect(() => {
     setFailed(!src);
-  }, [src]);
+    setActiveSrc(src);
+  }, [src, fallbackSrc]);
 
   if (failed) {
     return (
@@ -45,12 +49,16 @@ export function ImageWithFallback({
 
   return (
     <img
-      src={src || undefined}
+      src={activeSrc || undefined}
       alt={alt}
       className={className}
       style={style}
       onError={(event) => {
         onError?.(event);
+        if (fallbackSrc && activeSrc !== fallbackSrc) {
+          setActiveSrc(fallbackSrc);
+          return;
+        }
         setFailed(true);
       }}
       {...props}

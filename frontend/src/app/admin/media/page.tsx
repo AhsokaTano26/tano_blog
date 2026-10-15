@@ -7,6 +7,7 @@ import { Image, Upload, Trash2, Copy, Check, Grid, List, Search, X, FileText, Vi
 import { Loading } from '@/components/Loading';
 import { useConfirm, Checkbox, Select } from '@/components/ConfirmDialog';
 import { MediaField } from '@/components/MediaField';
+import { ImageWithFallback } from '@/components/ImageWithFallback';
 
 const SITE_URL = typeof window !== 'undefined' ? window.location.origin : 'https://tano.asia';
 
@@ -106,6 +107,13 @@ export default function AdminMedia() {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [typeFilter, setTypeFilter] = useState('');
   const [search, setSearch] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [loadError, setLoadError] = useState('');
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [uploadNotice, setUploadNotice] = useState('');
+  const [failedUploads, setFailedUploads] = useState<File[]>([]);
+  const [dragOver, setDragOver] = useState(false);
+  const loadSequence = useRef(0);
   const [openLinksId, setOpenLinksId] = useState<string | null>(null);
   const [openLinksEl, setOpenLinksEl] = useState<HTMLElement | null>(null);
   const [editingTagsId, setEditingTagsId] = useState<string | null>(null);
@@ -149,25 +157,39 @@ export default function AdminMedia() {
     return () => document.removeEventListener('keydown', handleKey);
   }, [viewerItem]);
 
+  const loadGallery = useCallback(async () => {
+    try {
+      const res = await api.admin.gallery.list();
+      setGalleryUrls(new Set((res.items || []).map((image: { url: string }) => image.url)));
+    } catch { /* gallery badges do not block the media list */ }
+  }, []);
+
   const load = useCallback(async () => {
+    const sequence = ++loadSequence.current;
     setSelectedIds(new Set());
     setLoading(true);
+    setLoadError('');
     try {
       const params: Record<string, string> = { page: String(page), page_size: String(pageSize) };
-      if (search) params.search = search;
+      if (searchQuery) params.search = searchQuery;
       if (tagFilter) params.tag = tagFilter;
+      if (typeFilter) params.type = typeFilter;
       const res = await api.admin.media.list(params);
+      if (sequence !== loadSequence.current) return;
       setItems(res.items || []);
       setTotal(res.total);
-      // Load gallery URLs for toggle display
-      try {
-        const galleryRes = await api.admin.gallery.list();
-        const urls = (galleryRes.items || []).map((img: any) => img.url);
-        setGalleryUrls(new Set(urls));
-      } catch { /* empty */ }
-    } catch { /* empty */ }
-    setLoading(false);
-  }, [search, tagFilter, page, pageSize]);
+    } catch (err) {
+      if (sequence === loadSequence.current) setLoadError(err instanceof Error ? err.message : '加载媒体库失败');
+    } finally {
+      if (sequence === loadSequence.current) setLoading(false);
+    }
+  }, [searchQuery, tagFilter, typeFilter, page, pageSize]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => { setSearchQuery(search.trim()); setPage(1); }, 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+  useEffect(() => { void loadGallery(); }, [loadGallery]);
 
   const loadTags = useCallback(async () => {
     try {
@@ -176,28 +198,50 @@ export default function AdminMedia() {
     } catch { /* empty */ }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); }, [load, refreshKey]);
   useEffect(() => { loadTags(); }, [loadTags]);
 
-  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
+  async function uploadFiles(files: File[]) {
+    if (!files.length || uploading) return;
     setUploading(true);
-    setUploadProgress('');
+    setUploadProgress(`0/${files.length}`);
     setUploadError('');
-    const tagIds = uploadTagIds.length > 0 ? uploadTagIds : undefined;
-    try {
-      for (let i = 0; i < files.length; i++) {
-        setUploadProgress(`${i + 1}/${files.length}`);
-        await api.admin.media.upload(files[i], tagIds);
+    setUploadNotice('');
+    setFailedUploads([]);
+    const failures: File[] = [];
+    const errors: string[] = [];
+    let cursor = 0;
+    let completed = 0;
+    const tagIds = uploadTagIds.length ? uploadTagIds : undefined;
+    async function worker() {
+      while (cursor < files.length) {
+        const file = files[cursor++];
+        try {
+          await api.admin.media.upload(file, tagIds);
+        } catch (err) {
+          failures.push(file);
+          errors.push(`${file.name}：${err instanceof Error ? err.message : '上传失败'}`);
+        } finally {
+          completed++;
+          setUploadProgress(`${completed}/${files.length}`);
+        }
       }
-      load();
-    } catch (err: any) {
-      setUploadError(err.message || '上传失败');
     }
+    await Promise.all(Array.from({ length: Math.min(2, files.length) }, () => worker()));
+    setFailedUploads(failures);
+    setUploadError(errors.join('；'));
+    setUploadNotice(`已上传 ${files.length - failures.length}/${files.length} 个文件${failures.length ? `，${failures.length} 个失败，可重试` : ''}`);
     setUploadProgress('');
     setUploading(false);
+    setPage(1);
+    setRefreshKey(key => key + 1);
+    void loadGallery();
+  }
+
+  function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files || []);
     e.target.value = '';
+    void uploadFiles(files);
   }
 
   async function handleDelete(id: string, anchorEl?: HTMLElement | null) {
@@ -217,11 +261,9 @@ export default function AdminMedia() {
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   }
 
-  const filtered = typeFilter
-    ? items.filter(item => getMediaType(item.mime_type) === typeFilter)
-    : items;
+  const filtered = items;
 
-  function handleSearch() { setPage(1); load(); }
+  function handleSearch() { setPage(1); setSearchQuery(search.trim()); }
 
   function toggleSelect(id: string) {
     const next = new Set(selectedIds);
@@ -425,7 +467,17 @@ export default function AdminMedia() {
   }
 
   return (
-    <div>
+    <div onDragOver={e => {
+      if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); setDragOver(true); }
+    }} onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(false); }}
+      onDrop={e => {
+        if (!e.dataTransfer.types.includes('Files')) return;
+        e.preventDefault(); setDragOver(false); void uploadFiles(Array.from(e.dataTransfer.files));
+      }}>
+      {dragOver && <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none"
+        style={{ background: 'var(--primary-sub)', border: '3px dashed var(--primary)' }}>
+        <p className="glass-card rounded-xl px-6 py-4" style={{ color: 'var(--primary)' }}>释放文件以上传到媒体库</p>
+      </div>}
       {/* Header */}
       <div className="flex items-center justify-between mb-5">
         <h1 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>附件</h1>
@@ -450,6 +502,16 @@ export default function AdminMedia() {
           </label>
         </div>
       </div>
+
+      <div role="status" aria-live="polite" className="mb-3 text-xs" style={{ color: 'var(--text-info)' }}>
+        {uploading ? `正在上传 ${uploadProgress}，请稍候…` : uploadNotice || '支持选择多个文件或拖拽上传，点击缩略图查看原图'}
+      </div>
+      {failedUploads.length > 0 && !uploading && <button onClick={() => void uploadFiles(failedUploads)}
+        className="mb-3 px-3 py-2 rounded-xl text-sm btn-glass" style={{ color: 'var(--primary)' }}>重试失败文件（{failedUploads.length}）</button>}
+      {loadError && <div role="alert" className="mb-3 text-sm" style={{ color: 'var(--color-error)' }}>
+        {loadError} <button onClick={() => void load()} className="underline">重试加载</button>
+      </div>}
+      {loading && items.length > 0 && <p className="mb-2 text-xs" style={{ color: 'var(--text-info)' }}>正在刷新…</p>}
 
       {/* Upload error */}
       {uploadError && (
@@ -496,7 +558,7 @@ export default function AdminMedia() {
               className="w-full pl-9 pr-8 py-2 rounded-xl text-sm outline-none glass-card"
               style={{ color: 'var(--text-primary)' }} />
             {search && (
-              <button onClick={() => { setSearch(''); setTimeout(load, 0); }}
+              <button onClick={() => { setSearch(''); setSearchQuery(''); setPage(1); }}
                 className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded transition-colors"
                 style={{ color: 'var(--text-info)' }}>
                 <X className="w-3.5 h-3.5" />
@@ -530,7 +592,7 @@ export default function AdminMedia() {
         {mediaTags.length > 0 && (
           <div className="flex items-center gap-2 px-4 py-2.5 flex-wrap" style={{ borderBottom: '1px solid var(--glass-border)' }}>
             <Tag className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'var(--text-info)' }} />
-            <button onClick={() => setTagFilter('')}
+            <button onClick={() => { setTagFilter(''); setPage(1); }}
               className="px-2.5 py-1 rounded-lg text-xs transition-colors"
               style={{
                 background: !tagFilter ? 'var(--primary-sub)' : 'transparent',
@@ -539,7 +601,7 @@ export default function AdminMedia() {
               全部
             </button>
             {mediaTags.map(tag => (
-              <button key={tag.id} onClick={() => setTagFilter(tagFilter === tag.id ? '' : tag.id)}
+              <button key={tag.id} onClick={() => { setTagFilter(tagFilter === tag.id ? '' : tag.id); setPage(1); }}
                 className="px-2.5 py-1 rounded-lg text-xs transition-colors"
                 style={{
                   background: tagFilter === tag.id ? 'var(--primary-sub)' : 'transparent',
@@ -612,7 +674,7 @@ export default function AdminMedia() {
         )}
 
         {/* Content */}
-        {loading ? (
+        {loading && items.length === 0 ? (
           <Loading />
         ) : filtered.length === 0 ? (
           <div className="text-center py-20" style={{ color: 'var(--text-secondary)' }}>
@@ -628,7 +690,7 @@ export default function AdminMedia() {
                   <div className="relative aspect-square cursor-pointer" style={{ background: 'var(--surface-bg)' }}
                     onClick={() => setViewerItem(item)}>
                     {item.mime_type?.startsWith('image/') ? (
-                      <img src={item.url} alt={item.original_name || item.filename} className="w-full h-full object-cover" />
+                      <ImageWithFallback src={item.thumbnail_url || item.url} fallbackSrc={item.url} alt={item.original_name || item.filename} loading="lazy" decoding="async" className="w-full h-full object-cover" />
                     ) : item.mime_type?.startsWith('video/') ? (
                       <div className="w-full h-full relative bg-black/20">
                         <video src={item.url} preload="metadata"
@@ -641,7 +703,7 @@ export default function AdminMedia() {
                         </div>
                       </div>
                     ) : item.thumbnail_url ? (
-                      <img src={item.thumbnail_url} alt={item.original_name || item.filename} className="w-full h-full object-cover" />
+                      <ImageWithFallback src={item.thumbnail_url} alt={item.original_name || item.filename} loading="lazy" decoding="async" className="w-full h-full object-cover" />
                     ) : item.mime_type?.startsWith('audio/') ? (
                       <div className="w-full h-full flex items-center justify-center"
                         style={{ background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)' }}>
@@ -749,7 +811,7 @@ export default function AdminMedia() {
                       <td className="px-4 py-3">
                         <div className="cursor-pointer" onClick={() => setViewerItem(item)}>
                           {item.mime_type?.startsWith('image/') ? (
-                            <img src={item.url} alt={item.original_name || item.filename} className="w-10 h-10 rounded object-cover" />
+                            <ImageWithFallback src={item.thumbnail_url || item.url} fallbackSrc={item.url} alt={item.original_name || item.filename} loading="lazy" decoding="async" className="w-10 h-10 rounded object-cover" />
                           ) : item.mime_type?.startsWith('video/') ? (
                             <div className="relative w-20 h-12 rounded bg-black/20 flex items-center justify-center overflow-hidden">
                               <video src={item.url} preload="metadata" className="w-full h-full object-contain" />
@@ -761,7 +823,7 @@ export default function AdminMedia() {
                               </div>
                             </div>
                           ) : item.thumbnail_url ? (
-                            <img src={item.thumbnail_url} alt={item.original_name || item.filename} className="w-14 h-12 rounded object-cover" />
+                            <ImageWithFallback src={item.thumbnail_url} alt={item.original_name || item.filename} loading="lazy" decoding="async" className="w-14 h-12 rounded object-cover" />
                           ) : item.mime_type?.startsWith('audio/') ? (
                             <div className="w-14 h-12 rounded flex items-center justify-center"
                               style={{ background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)' }}>
@@ -855,7 +917,7 @@ export default function AdminMedia() {
                     }}>{p}</button>
                 );
               })}
-              <button onClick={() => setPage(Math.min(Math.ceil(total / pageSize), page + 1))} disabled={page === Math.ceil(total / pageSize)}
+              <button onClick={() => setPage(Math.min(Math.max(1, Math.ceil(total / pageSize)), page + 1))} disabled={page >= Math.max(1, Math.ceil(total / pageSize))}
                 className="px-3 py-1.5 rounded-xl btn-glass disabled:opacity-40 transition-colors"
                 style={{ color: 'var(--text-primary)' }}>下一页</button>
             </div>
@@ -905,7 +967,7 @@ export default function AdminMedia() {
                     <div className="w-24 h-24 rounded-full overflow-hidden flex items-center justify-center relative z-10"
                       style={{ background: 'var(--glass-bg)', border: '2px solid var(--glass-border)' }}>
                       {item.thumbnail_url ? (
-                        <img src={item.thumbnail_url} alt={item.original_name || item.filename} className="w-full h-full object-cover" />
+                        <ImageWithFallback src={item.thumbnail_url} alt={item.original_name || item.filename} loading="lazy" decoding="async" className="w-full h-full object-cover" />
                       ) : (
                         <Music className="w-10 h-10" style={{ color: 'var(--primary)' }} />
                       )}

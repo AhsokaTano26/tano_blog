@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"os"
@@ -125,6 +126,12 @@ func (h *MediaHandler) Upload(c *gin.Context) {
 	// Extract embedded album art and metadata from audio files
 	var thumbnailURL string
 	var audioTitle, audioArtist, audioAlbum string
+	if strings.HasPrefix(mimeType, "image/") {
+		thumbnailURL, err = utils.GenerateImageThumbnail(filePath)
+		if err != nil {
+			utils.LogWarn("image thumbnail unavailable; keeping original", "file", filename, "error", err)
+		}
+	}
 	if strings.HasPrefix(mimeType, "audio/") {
 		thumbnailURL, _ = extractAudioCover(filePath, uploadDir, filename)
 		audioTitle, audioArtist, audioAlbum = extractAudioMetadata(filePath)
@@ -169,20 +176,11 @@ func (h *MediaHandler) Upload(c *gin.Context) {
 
 	// 图片上传时自动加入图片馆
 	if strings.HasPrefix(mimeType, "image/") {
-		existing, _ := h.galleryRepo.FindByURL(media.URL)
-		if existing == nil {
-			items, _ := h.galleryRepo.List()
-			maxOrder := 0
-			for _, item := range items {
-				if item.SortOrder > maxOrder {
-					maxOrder = item.SortOrder
-				}
-			}
+		if h.galleryRepo != nil {
 			galleryImg := &model.GalleryImage{
-				ID:        uuid.New(),
-				URL:       media.URL,
-				Title:     media.OriginalName,
-				SortOrder: maxOrder + 1,
+				ID:    uuid.New(),
+				URL:   media.URL,
+				Title: media.OriginalName,
 			}
 			_ = h.galleryRepo.Create(galleryImg)
 		}
@@ -218,7 +216,7 @@ func (h *MediaHandler) List(c *gin.Context) {
 		pageSize = 20
 	}
 
-	media, total, err := h.repo.List(page, pageSize, tagID, search)
+	media, total, err := h.repo.List(page, pageSize, tagID, search, c.Query("type"))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取媒体列表失败"})
 		return
@@ -230,6 +228,39 @@ func (h *MediaHandler) List(c *gin.Context) {
 		"page":  page,
 		"size":  pageSize,
 	})
+}
+
+// BackfillImageThumbnails runs once in the background at startup. Keyset batches
+// keep memory bounded and failed/unsupported files cannot stall later batches.
+func (h *MediaHandler) BackfillImageThumbnails(ctx context.Context) error {
+	after := uuid.Nil
+	for {
+		items, err := h.repo.MissingImageThumbnails(ctx, after)
+		if err != nil || len(items) == 0 {
+			return err
+		}
+		for _, item := range items {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			after = item.ID
+			if filepath.Base(item.Filename) != item.Filename {
+				continue
+			}
+			url, err := utils.GenerateImageThumbnail(filepath.Join(h.cfg.Dir, item.Filename))
+			if err != nil {
+				utils.LogWarn("could not backfill image thumbnail", "file", item.Filename, "error", err)
+				continue
+			}
+			updated, err := h.repo.SetThumbnailIfEmpty(ctx, item.ID, url)
+			if err != nil || !updated {
+				_ = os.Remove(filepath.Join(h.cfg.Dir, filepath.Base(url)))
+			}
+			if err != nil {
+				return err
+			}
+		}
+	}
 }
 
 func (h *MediaHandler) Delete(c *gin.Context) {

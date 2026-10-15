@@ -4,11 +4,13 @@ import { useState, useEffect, useRef } from 'react';
 import { api } from '@/lib/api';
 import { Loading } from '@/components/Loading';
 import { MediaPickerModal } from '@/components/MediaField';
+import { ImageWithFallback } from '@/components/ImageWithFallback';
 import { Plus, Trash2, ArrowUp, ArrowDown, X } from 'lucide-react';
 
 interface GalleryImage {
   id: string;
   url: string;
+  thumbnail_url?: string;
   title: string;
   description: string;
   width: number;
@@ -137,7 +139,7 @@ export default function AdminGalleryPage() {
               className="rounded-xl overflow-hidden card-base group"
               style={{ background: 'var(--card-bg)', border: '1px solid var(--glass-border)' }}>
               <div className="aspect-[4/3] overflow-hidden cursor-pointer" onClick={() => openEdit(img)}>
-                <img src={img.url} alt={img.title || '图片'}
+                <ImageWithFallback src={img.thumbnail_url || img.url} fallbackSrc={img.url} alt={img.title || '图片'} loading="lazy" decoding="async"
                   className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
               </div>
               <div className="p-3">

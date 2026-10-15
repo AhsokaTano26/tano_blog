@@ -98,6 +98,13 @@ func main() {
 	tagHandler := handler.NewTagHandler(db)
 	commentHandler := handler.NewCommentHandler(commentRepo, db, emailService, cfg.JWT.Secret)
 	mediaHandler := handler.NewMediaHandler(mediaRepo, galleryRepo, &cfg.Upload)
+	thumbnailCtx, cancelThumbnails := context.WithCancel(context.Background())
+	defer cancelThumbnails()
+	go func() {
+		if err := mediaHandler.BackfillImageThumbnails(thumbnailCtx); err != nil {
+			utils.LogWarn("image thumbnail backfill stopped", "error", err)
+		}
+	}()
 	siteConfigHandler := handler.NewSiteConfigHandler(db, emailService, cfg.JWT.Secret, cfg.SyncKeyEncryptionKey)
 	accessLogHandler := handler.NewAccessLogHandler(db)
 	backupHandler := handler.NewBackupHandler(db, cfg.Upload.Dir, cfg.BackupDir)
