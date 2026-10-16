@@ -1,25 +1,15 @@
 package middleware
 
 import (
-	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
-	"github.com/google/uuid"
 	"gorm.io/gorm"
 
 	"tano_blog/backend/internal/config"
 	"tano_blog/backend/internal/model"
+	"tano_blog/backend/internal/utils"
 )
-
-type jwtClaims struct {
-	UserID       string `json:"user_id"`
-	Username     string `json:"username"`
-	Role         string `json:"role"`
-	TokenVersion int    `json:"token_version"`
-	jwt.RegisteredClaims
-}
 
 func AuthRequired(cfg *config.JWTConfig, db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -28,30 +18,19 @@ func AuthRequired(cfg *config.JWTConfig, db *gorm.DB) gin.HandlerFunc {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "未登录"})
 			return
 		}
-		claims := &jwtClaims{}
-		token, err := jwt.ParseWithClaims(tokenStr, claims, func(t *jwt.Token) (interface{}, error) {
-			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-				return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
-			}
-			return []byte(cfg.Secret), nil
-		})
-		if err != nil || !token.Valid || claims.Issuer != "tano_blog" {
+		claims, err := utils.ParseJWT(tokenStr, cfg.Secret)
+		if err != nil || !claims.IsSession() {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "登录已过期，请重新登录"})
 			return
 		}
 
 		// Verify token_version matches database (supports JWT invalidation on logout)
-		uid, err := uuid.Parse(claims.UserID)
-		if err != nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "登录凭证无效"})
-			return
-		}
 		var user model.User
-		if db.WithContext(c.Request.Context()).First(&user, uid).Error != nil {
+		if db.WithContext(c.Request.Context()).First(&user, claims.UserID).Error != nil {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "用户不存在"})
 			return
 		}
-		if user.TokenVersion != claims.TokenVersion {
+		if user.TokenVersion != claims.TokenVersion || user.SessionEpoch != claims.SessionEpoch {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "登录已失效，请重新登录"})
 			return
 		}
@@ -95,22 +74,13 @@ func OptionalAuth(cfg *config.JWTConfig, db *gorm.DB) gin.HandlerFunc {
 			c.Next()
 			return
 		}
-		claims := &jwtClaims{}
-		token, err := jwt.ParseWithClaims(tokenStr, claims, func(t *jwt.Token) (interface{}, error) {
-			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-				return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
-			}
-			return []byte(cfg.Secret), nil
-		})
-		if err == nil && token.Valid && claims.Issuer == "tano_blog" {
-			uid, err := uuid.Parse(claims.UserID)
-			if err == nil {
-				var user model.User
-				if db.WithContext(c.Request.Context()).First(&user, uid).Error == nil && user.TokenVersion == claims.TokenVersion {
-					c.Set("user_id", user.ID.String())
-					c.Set("username", user.Username)
-					c.Set("role", user.Role)
-				}
+		claims, err := utils.ParseJWT(tokenStr, cfg.Secret)
+		if err == nil && claims.IsSession() {
+			var user model.User
+			if db.WithContext(c.Request.Context()).First(&user, claims.UserID).Error == nil && user.TokenVersion == claims.TokenVersion && user.SessionEpoch == claims.SessionEpoch && !user.MustChangePassword {
+				c.Set("user_id", user.ID.String())
+				c.Set("username", user.Username)
+				c.Set("role", user.Role)
 			}
 		}
 		c.Next()

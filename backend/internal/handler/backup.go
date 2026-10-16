@@ -22,19 +22,22 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 
 	"tano_blog/backend/internal/model"
 	"tano_blog/backend/internal/utils"
 )
 
+var errRestoreStandby = errors.New("备服务器为只读模式，请在主服务器执行恢复操作")
+
 var restoreSafeColumns = map[string][]string{
-	"users":             {"id", "username", "email", "password_hash", "display_name", "avatar_url", "bio", "totp_secret", "totp_enabled", "reset_token", "token_version", "role", "must_change_password", "created_at", "updated_at"},
+	"users":             {"id", "username", "email", "password_hash", "display_name", "avatar_url", "bio", "totp_secret", "totp_enabled", "reset_token", "token_version", "session_epoch", "role", "must_change_password", "created_at", "updated_at"},
 	"categories":        {"id", "name", "slug", "description", "sort_order", "created_at", "updated_at"},
 	"tags":              {"id", "name", "slug", "sort_order", "created_at"},
 	"media_tags":        {"id", "name", "created_at"},
 	"site_configs":      {"id", "key", "value", "type", "created_at", "updated_at"},
-	"posts":             {"id", "title", "slug", "content", "excerpt", "cover_image", "status", "is_top", "allow_comment", "author_name", "author_id", "editor_id", "category_id", "view_count", "published_at", "preview_token", "password_hash", "password_hint", "created_at", "updated_at"},
+	"posts":             {"id", "title", "slug", "content", "excerpt", "cover_image", "status", "is_top", "allow_comment", "author_name", "author_id", "editor_id", "category_id", "view_count", "published_at", "scheduled_at", "preview_token", "password_hash", "password_hint", "created_at", "updated_at"},
 	"post_tags":         {"post_id", "tag_id"},
 	"comments":          {"id", "post_id", "parent_id", "nickname", "email", "website", "content", "status", "ip_address", "user_agent", "country", "city", "fingerprint", "edited_count", "edited_at", "updated_at", "created_at"},
 	"media":             {"id", "filename", "original_name", "mime_type", "size", "url", "thumbnail_url", "alt_text", "title", "artist", "album", "description", "uploaded_by", "created_at"},
@@ -62,9 +65,11 @@ type BackupHandler struct {
 	operation         BackupProgress
 	cancelOperation   context.CancelFunc
 	acquireBackupGate func(context.Context) (func(), error)
+	requireRecovery   func()
 }
 
 func NewBackupHandler(db *gorm.DB, uploadDir, backupDir string) *BackupHandler {
+	uploadDir, _ = filepath.Abs(uploadDir)
 	h := &BackupHandler{db: db, uploadDir: uploadDir, backupDir: backupDir}
 	os.MkdirAll(backupDir, 0755)
 	return h
@@ -75,6 +80,10 @@ func NewBackupHandler(db *gorm.DB, uploadDir, backupDir string) *BackupHandler {
 func (h *BackupHandler) SetBackupGate(acquire func(context.Context) (func(), error)) {
 	h.acquireBackupGate = acquire
 }
+
+// SetRestoreRecoveryGuard blocks future writers if a file/DB outcome cannot be
+// resolved before this restore releases its exclusive gate.
+func (h *BackupHandler) SetRestoreRecoveryGuard(require func()) { h.requireRecovery = require }
 
 // backupData is the serializable backup format for all tables
 type backupData struct {
@@ -433,7 +442,11 @@ func (h *BackupHandler) generateBackupContext(ctx context.Context, path string, 
 }
 
 func (h *BackupHandler) streamTable(ctx context.Context, tx *gorm.DB, table string, w io.Writer, remaining int64) (int64, error) {
-	rows, err := tx.Table(table).Rows()
+	query := tx.Table(table)
+	if table == "site_configs" {
+		query = query.Where("key NOT IN ?", []string{restoreTransactionKey, "sync_apply_state"})
+	}
+	rows, err := query.Rows()
 	if err != nil {
 		return 0, fmt.Errorf("导出 %s 失败: %w", table, err)
 	}
@@ -580,6 +593,31 @@ func (h *BackupHandler) restoreFromZipWithLocalSyncConfigs(zr *zip.Reader, local
 // Validate and spool each table before touching the live database. Spooling also
 // handles legacy JSON whose object keys are alphabetical rather than FK order.
 func (h *BackupHandler) restoreFromZipContext(ctx context.Context, zr *zip.Reader, localSyncConfigs []model.SiteConfig) error {
+	if localSyncConfigs == nil {
+		if h.acquireBackupGate != nil {
+			release, err := h.acquireBackupGate(ctx)
+			if err != nil {
+				return err
+			}
+			defer release()
+		}
+		// The role may change while an ordinary restore waits for the gate.
+		// Sync restore already holds the gate and deliberately writes a standby.
+		var settings []model.SiteConfig
+		if err := h.db.WithContext(ctx).Where("key IN ?", []string{"sync_enabled", "sync_role"}).Find(&settings).Error; err != nil {
+			return fmt.Errorf("读取本机同步角色失败: %w", err)
+		}
+		values := make(map[string]string, len(settings))
+		for _, setting := range settings {
+			values[setting.Key] = setting.Value
+		}
+		if values["sync_enabled"] == "true" && values["sync_role"] == "standby" {
+			return errRestoreStandby
+		}
+	}
+	if err := h.RecoverInterruptedRestore(); err != nil {
+		return err
+	}
 	if err := validateRestoreArchive(zr); err != nil {
 		return err
 	}
@@ -616,7 +654,17 @@ func (h *BackupHandler) restoreFromZipContext(ctx context.Context, zr *zip.Reade
 	if err = ctx.Err(); err != nil {
 		return err
 	}
-	tx := h.db.WithContext(ctx).Begin()
+	staged, err := h.stageRestoreUploads(ctx, zr)
+	if err != nil {
+		return fmt.Errorf("暂存上传文件失败: %w", err)
+	}
+	defer func() {
+		// Retain recovery material when database commit outcome is unknown.
+		if _, err := os.Stat(h.uploadDir + ".restore-journal.json"); os.IsNotExist(err) {
+			_ = os.RemoveAll(h.uploadDir + ".restore-stage")
+		}
+	}()
+	tx := h.db.WithContext(context.WithoutCancel(ctx)).Begin().WithContext(ctx)
 	if tx.Error != nil {
 		return tx.Error
 	}
@@ -661,14 +709,28 @@ func (h *BackupHandler) restoreFromZipContext(ctx context.Context, zr *zip.Reade
 				file.Close()
 				return err
 			}
-			if table == "site_configs" && localSyncConfigs != nil {
+			if table == "site_configs" {
 				key, _ := row["key"].(string)
-				if strings.HasPrefix(key, "sync_") {
+				if key == restoreTransactionKey || key == "sync_apply_state" || (localSyncConfigs != nil && strings.HasPrefix(key, "sync_")) {
 					continue
 				}
 			}
 			if table == "passkeys" && (row["credential_id"] == nil || row["public_key"] == nil) {
 				continue
+			}
+			if table == "users" {
+				row["session_epoch"] = uuid.NewString()
+				row["reset_token"] = ""
+			}
+			if table == "posts" {
+				if _, present := row["scheduled_at"]; !present && row["status"] == "draft" {
+					if value, ok := row["published_at"].(string); ok {
+						if scheduled, err := time.Parse(time.RFC3339Nano, value); err == nil && scheduled.After(time.Now()) {
+							row["scheduled_at"] = value
+							row["published_at"] = nil
+						}
+					}
+				}
 			}
 			cleaned := make(map[string]interface{}, len(row))
 			names := make([]string, 0, len(row))
@@ -720,11 +782,50 @@ func (h *BackupHandler) restoreFromZipContext(ctx context.Context, zr *zip.Reade
 	if err = tx.Exec("UPDATE users SET token_version = token_version + 1, reset_token = ''").Error; err != nil {
 		return fmt.Errorf("使旧会话失效失败: %w", err)
 	}
+	if tx.Migrator().HasTable("media_file_cleanups") {
+		if err = tx.Exec("DELETE FROM media_file_cleanups").Error; err != nil {
+			return err
+		}
+	}
 	if err = h.beginRestoreCommit(ctx); err != nil {
 		return err
 	}
-	if err = tx.Commit().Error; err != nil {
-		return fmt.Errorf("提交事务失败: %w", err)
+	// The boundary is irreversible from the client's perspective. The SQL
+	// transaction itself was begun without cancellation; detach final statements
+	// too, while every earlier validation/query remains request-cancellable.
+	tx = tx.WithContext(context.WithoutCancel(ctx))
+	if staged {
+		journal, err := h.prepareRestoreJournal()
+		if err != nil {
+			return err
+		}
+		if err = tx.Create(&model.SiteConfig{Key: restoreTransactionKey, Value: journal.ID, Type: "string"}).Error; err != nil {
+			tx.Rollback()
+			return errors.Join(err, h.RecoverInterruptedRestore())
+		}
+		if journal.HadUploads {
+			err = os.Rename(h.uploadDir, h.uploadDir+".restore-old")
+		}
+		if err == nil {
+			err = os.Rename(h.uploadDir+".restore-stage", h.uploadDir)
+		}
+		if err == nil {
+			err = syncRestoreDirectory(filepath.Dir(h.uploadDir))
+		}
+		if err != nil {
+			tx.Rollback()
+			return errors.Join(err, h.RecoverInterruptedRestore())
+		}
+	}
+	commitErr := tx.Commit().Error
+	if staged {
+		// Resolve by the database marker even when Commit returned a transport error.
+		if err := h.RecoverInterruptedRestore(); err != nil {
+			return fmt.Errorf("恢复提交状态待恢复: %w", errors.Join(commitErr, err))
+		}
+	}
+	if commitErr != nil {
+		return fmt.Errorf("提交事务失败: %w", commitErr)
 	}
 	return nil
 }
@@ -937,70 +1038,6 @@ func normalizeRestoreValue(table, column string, value interface{}) interface{} 
 	return value
 }
 
-// extractUploads extracts upload files from a zip reader
-func (h *BackupHandler) extractUploads(zr *zip.Reader) []string {
-	uploadDir := h.uploadDir
-	if !filepath.IsAbs(uploadDir) {
-		uploadDir, _ = filepath.Abs(uploadDir)
-	}
-	var fileErrors []string
-	for _, f := range zr.File {
-		parts := strings.SplitN(f.Name, "/uploads/", 2)
-		if len(parts) != 2 || parts[1] == "" {
-			continue
-		}
-		rel := parts[1]
-		if strings.Contains(filepath.ToSlash(rel), ".sync-snapshots/") {
-			fileErrors = append(fileErrors, rel)
-			continue
-		}
-		if f.Mode()&os.ModeSymlink != 0 {
-			fileErrors = append(fileErrors, rel)
-			continue
-		}
-		targetPath := filepath.Join(uploadDir, rel)
-		// Security: prevent Zip Slip — ensure path stays within uploadDir
-		if !strings.HasPrefix(targetPath, uploadDir+string(filepath.Separator)) {
-			fileErrors = append(fileErrors, rel)
-			continue
-		}
-		if f.FileInfo().IsDir() {
-			if err := os.MkdirAll(targetPath, 0755); err != nil {
-				fileErrors = append(fileErrors, rel)
-			}
-			continue
-		}
-		os.MkdirAll(filepath.Dir(targetPath), 0755)
-
-		rc, err := f.Open()
-		if err != nil {
-			fileErrors = append(fileErrors, rel)
-			continue
-		}
-		out, err := os.CreateTemp(filepath.Dir(targetPath), ".restore-*")
-		if err != nil {
-			rc.Close()
-			fileErrors = append(fileErrors, rel)
-			continue
-		}
-
-		_, copyErr := io.CopyN(out, rc, int64(f.UncompressedSize64))
-		closeErr := out.Close()
-		rc.Close()
-		if copyErr == nil && closeErr == nil {
-			copyErr = os.Chmod(out.Name(), 0644)
-		}
-		if copyErr == nil && closeErr == nil {
-			copyErr = os.Rename(out.Name(), targetPath)
-		}
-		if copyErr != nil || closeErr != nil {
-			fileErrors = append(fileErrors, rel)
-		}
-		_ = os.Remove(out.Name())
-	}
-	return fileErrors
-}
-
 // ===== Routes =====
 
 // CreateBackup generates a backup and saves it to the backups directory
@@ -1074,16 +1111,10 @@ func (h *BackupHandler) CreateSyncSnapshotContext(ctx context.Context, releaseWr
 	if err := removeOldSyncSnapshots(syncDir, filename); err != nil {
 		return "", fmt.Errorf("清理旧同步快照失败: %w", err)
 	}
-	if entries, err := os.ReadDir(filepath.Join(h.uploadDir, ".sync-snapshots")); err == nil {
-		current := strings.TrimSuffix(filename, ".zip")
-		for _, entry := range entries {
-			if entry.IsDir() && strings.HasPrefix(entry.Name(), "sync-") && entry.Name() != current {
-				if err := os.RemoveAll(filepath.Join(h.uploadDir, ".sync-snapshots", entry.Name())); err != nil {
-					return "", err
-				}
-			}
-		}
+	if err := h.retireSyncUploadSources(strings.TrimSuffix(filename, ".zip"), time.Now()); err != nil {
+		return "", err
 	}
+
 	return filename, nil
 }
 
@@ -1385,6 +1416,10 @@ func (h *BackupHandler) RestoreUpload(c *gin.Context) {
 	}
 
 	if err := h.restoreFromZipContext(ctx, zr, nil); err != nil {
+		if errors.Is(err, errRestoreStandby) {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": errRestoreStandby.Error()})
+			return
+		}
 		if errors.Is(err, context.Canceled) {
 			c.JSON(http.StatusConflict, gin.H{"error": "操作已取消"})
 			return
@@ -1394,12 +1429,7 @@ func (h *BackupHandler) RestoreUpload(c *gin.Context) {
 		return
 	}
 
-	fileErrors := h.extractUploads(zr)
-	result := gin.H{"message": "恢复完成"}
-	if len(fileErrors) > 0 {
-		result["warning"] = fmt.Sprintf("%d 个文件恢复失败", len(fileErrors))
-	}
-	c.JSON(http.StatusOK, result)
+	c.JSON(http.StatusOK, gin.H{"message": "恢复完成"})
 }
 
 // RestoreURL downloads a zip from URL and restores
@@ -1507,6 +1537,10 @@ func (h *BackupHandler) RestoreURL(c *gin.Context) {
 	}
 
 	if err := h.restoreFromZipContext(ctx, zr, nil); err != nil {
+		if errors.Is(err, errRestoreStandby) {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": errRestoreStandby.Error()})
+			return
+		}
 		if errors.Is(err, context.Canceled) {
 			c.JSON(http.StatusConflict, gin.H{"error": "操作已取消"})
 			return
@@ -1516,12 +1550,7 @@ func (h *BackupHandler) RestoreURL(c *gin.Context) {
 		return
 	}
 
-	fileErrors := h.extractUploads(zr)
-	result := gin.H{"message": "恢复完成"}
-	if len(fileErrors) > 0 {
-		result["warning"] = fmt.Sprintf("%d 个文件恢复失败", len(fileErrors))
-	}
-	c.JSON(http.StatusOK, result)
+	c.JSON(http.StatusOK, gin.H{"message": "恢复完成"})
 }
 
 // RestoreLocal restores from a local backup file
@@ -1570,6 +1599,10 @@ func (h *BackupHandler) RestoreLocal(c *gin.Context) {
 	}
 
 	if err := h.restoreFromZipContext(ctx, zr, nil); err != nil {
+		if errors.Is(err, errRestoreStandby) {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": errRestoreStandby.Error()})
+			return
+		}
 		if errors.Is(err, context.Canceled) {
 			c.JSON(http.StatusConflict, gin.H{"error": "操作已取消"})
 			return
@@ -1579,12 +1612,7 @@ func (h *BackupHandler) RestoreLocal(c *gin.Context) {
 		return
 	}
 
-	fileErrors := h.extractUploads(zr)
-	result := gin.H{"message": "恢复完成"}
-	if len(fileErrors) > 0 {
-		result["warning"] = fmt.Sprintf("%d 个文件恢复失败", len(fileErrors))
-	}
-	c.JSON(http.StatusOK, result)
+	c.JSON(http.StatusOK, gin.H{"message": "恢复完成"})
 }
 
 // CleanupOldBackups removes backups older than 7 days

@@ -478,7 +478,7 @@ func (r *PostRepo) RelatedPosts(slug string, limit int) ([]model.Post, error) {
 	return posts, err
 }
 
-func (r *PostRepo) AdminList(page, pageSize int, status string) ([]model.Post, int64, error) {
+func (r *PostRepo) AdminList(page, pageSize int, status string, search ...string) ([]model.Post, int64, error) {
 	var posts []model.Post
 	var total int64
 	query := r.db.Model(&model.Post{}).Preload("Category").Preload("Tags").Preload("Author", publicAuthorColumns).Preload("Editor", publicAuthorColumns)
@@ -487,6 +487,10 @@ func (r *PostRepo) AdminList(page, pageSize int, status string) ([]model.Post, i
 		query = query.Where("status = ?", status)
 	}
 
+	if len(search) > 0 && strings.TrimSpace(search[0]) != "" {
+		escaped := strings.NewReplacer("\\", "\\\\", "%", "\\%", "_", "\\_").Replace(strings.TrimSpace(search[0]))
+		query = query.Where("title ILIKE ? OR content ILIKE ? OR excerpt ILIKE ?", "%"+escaped+"%", "%"+escaped+"%", "%"+escaped+"%")
+	}
 	if err := query.Session(&gorm.Session{}).Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
@@ -511,18 +515,7 @@ func (r *PostRepo) BatchUpdate(ids []uuid.UUID, updates map[string]interface{}) 
 }
 
 func (r *PostRepo) Delete(id uuid.UUID) error {
-	return r.db.Transaction(func(tx *gorm.DB) error {
-		// Delete associated comments
-		if err := tx.Where("post_id = ?", id).Delete(&model.Comment{}).Error; err != nil {
-			return err
-		}
-		// Delete post-tag associations
-		if err := tx.Table("post_tags").Where("post_id = ?", id).Delete(nil).Error; err != nil {
-			return err
-		}
-		// Delete the post
-		return tx.Delete(&model.Post{}, id).Error
-	})
+	return r.db.Transaction(func(tx *gorm.DB) error { return deletePost(tx, id) })
 }
 
 func (r *PostRepo) GetByID(id uuid.UUID) (*model.Post, error) {
@@ -538,19 +531,28 @@ func (r *PostRepo) GetAccessBySlug(slug string) (*model.Post, error) {
 }
 
 func (r *PostRepo) SetTags(postID uuid.UUID, tagIDs []uuid.UUID) error {
-	post, err := r.GetByID(postID)
-	if err != nil {
-		return err
-	}
+	tagIDs = uniqueUUIDs(tagIDs)
 	var tags []model.Tag
 	if len(tagIDs) > 0 {
-		r.db.Where("id IN ?", tagIDs).Find(&tags)
+		if err := r.db.Where("id IN ?", tagIDs).Find(&tags).Error; err != nil {
+			return err
+		}
+		if len(tags) != len(tagIDs) {
+			return ErrInvalidPostAssociation
+		}
 	}
-	return r.db.Model(post).Association("Tags").Replace(tags)
+	return r.db.Model(&model.Post{ID: postID}).Association("Tags").Replace(tags)
 }
 
 func (r *PostRepo) SetSeries(postID uuid.UUID, seriesID uuid.UUID) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
+		var series model.Series
+		if err := tx.First(&series, seriesID).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrInvalidPostAssociation
+			}
+			return err
+		}
 		if err := tx.Where("post_id = ?", postID).Delete(&model.PostSeries{}).Error; err != nil {
 			return err
 		}
@@ -722,7 +724,12 @@ func (r *CategoryRepo) Update(id uuid.UUID, updates map[string]interface{}) erro
 }
 
 func (r *CategoryRepo) Delete(id uuid.UUID) error {
-	return r.db.Delete(&model.Category{}, id).Error
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&model.Post{}).Where("category_id = ?", id).Update("category_id", nil).Error; err != nil {
+			return err
+		}
+		return tx.Delete(&model.Category{}, id).Error
+	})
 }
 
 type TagRepo struct {
@@ -754,7 +761,12 @@ func (r *TagRepo) Update(id uuid.UUID, updates map[string]interface{}) error {
 }
 
 func (r *TagRepo) Delete(id uuid.UUID) error {
-	return r.db.Delete(&model.Tag{}, id).Error
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Table("post_tags").Where("tag_id = ?", id).Delete(nil).Error; err != nil {
+			return err
+		}
+		return tx.Delete(&model.Tag{}, id).Error
+	})
 }
 
 type CommentRepo struct {
@@ -803,7 +815,16 @@ func (r *CommentRepo) UpdateStatus(id uuid.UUID, status string) error {
 }
 
 func (r *CommentRepo) Delete(id uuid.UUID) error {
-	return r.db.Delete(&model.Comment{}, id).Error
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		var ids []uuid.UUID
+		if err := tx.Raw(`WITH RECURSIVE thread AS (
+   SELECT id FROM comments WHERE id = ?
+   UNION SELECT c.id FROM comments c JOIN thread ON c.parent_id = thread.id
+  ) SELECT id FROM thread`, id).Scan(&ids).Error; err != nil {
+			return err
+		}
+		return deleteComments(tx, ids)
+	})
 }
 
 func (r *CommentRepo) ToggleReaction(commentID uuid.UUID, emoji, ipAddress string) (bool, error) {
@@ -958,7 +979,7 @@ func (r *MediaRepo) Create(m *model.Media) error {
 }
 
 func (r *MediaRepo) Delete(id uuid.UUID) error {
-	return r.db.Delete(&model.Media{}, id).Error
+	return r.deleteWithFileCleanup([]uuid.UUID{id})
 }
 
 func (r *MediaRepo) GetByID(id uuid.UUID) (*model.Media, error) {
@@ -980,38 +1001,42 @@ func (r *MediaRepo) GetByURL(url string) (*model.Media, error) {
 }
 
 func (r *MediaRepo) UpdateTags(mediaID uuid.UUID, tagIDs []uuid.UUID) error {
-	var m model.Media
-	m.ID = mediaID
-	var tags []model.MediaTag
-	if len(tagIDs) > 0 {
-		if err := r.db.Find(&tags, tagIDs).Error; err != nil {
-			return err
-		}
-	}
-	return r.db.Model(&m).Association("Tags").Replace(tags)
+	return r.BatchUpdateTags([]uuid.UUID{mediaID}, tagIDs)
 }
 
 func (r *MediaRepo) BatchDelete(ids []uuid.UUID) error {
-	if len(ids) == 0 {
-		return nil
-	}
-	return r.db.Where("id IN ?", ids).Delete(&model.Media{}).Error
+	return r.deleteWithFileCleanup(ids)
 }
 
 func (r *MediaRepo) BatchUpdateTags(ids []uuid.UUID, tagIDs []uuid.UUID) error {
 	if len(ids) == 0 {
 		return nil
 	}
-	var items []model.Media
-	if err := r.db.Where("id IN ?", ids).Find(&items).Error; err != nil {
-		return err
-	}
-	for _, item := range items {
-		if err := r.db.Model(&item).Association("Tags").Replace(tagIDs); err != nil {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		var tags []model.MediaTag
+		tagIDs = uniqueUUIDs(tagIDs)
+		if len(tagIDs) > 0 {
+			if err := tx.Where("id IN ?", tagIDs).Find(&tags).Error; err != nil {
+				return err
+			}
+			if len(tags) != len(tagIDs) {
+				return errors.New("invalid media tag")
+			}
+		}
+		var items []model.Media
+		if err := tx.Where("id IN ?", ids).Find(&items).Error; err != nil {
 			return err
 		}
-	}
-	return nil
+		if len(items) != len(uniqueUUIDs(ids)) {
+			return gorm.ErrRecordNotFound
+		}
+		for _, item := range items {
+			if err := tx.Model(&item).Association("Tags").Replace(tags); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 func (r *MediaRepo) ListTags() ([]model.MediaTag, error) {
@@ -1031,8 +1056,12 @@ func (r *MediaRepo) CreateTag(name string) (*model.MediaTag, error) {
 }
 
 func (r *MediaRepo) DeleteTag(id uuid.UUID) error {
-	r.db.Table("media_tag_links").Where("media_tag_id = ?", id).Delete(nil)
-	return r.db.Delete(&model.MediaTag{}, id).Error
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Table("media_tag_links").Where("media_tag_id = ?", id).Delete(nil).Error; err != nil {
+			return err
+		}
+		return tx.Delete(&model.MediaTag{}, id).Error
+	})
 }
 
 func (r *MediaRepo) GetTagByID(id uuid.UUID) (*model.MediaTag, error) {

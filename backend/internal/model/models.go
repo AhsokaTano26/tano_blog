@@ -17,8 +17,9 @@ type User struct {
 	Bio                string    `gorm:"type:text" json:"bio"`
 	TOTPSecret         string    `gorm:"size:100" json:"-"`
 	TOTPEnabled        bool      `gorm:"default:false" json:"totp_enabled"`
-	ResetToken         string    `gorm:"size:500" json:"-"`
+	ResetToken         string    `gorm:"type:text" json:"-"`
 	TokenVersion       int       `gorm:"default:0" json:"-"`
+	SessionEpoch       string    `gorm:"size:64;not null;default:''" json:"-"`
 	Role               string    `gorm:"size:20;default:user" json:"role"`
 	MustChangePassword bool      `gorm:"default:false" json:"-"`
 	CreatedAt          time.Time `json:"created_at"`
@@ -78,6 +79,7 @@ type Post struct {
 	PasswordHash      string     `gorm:"size:255" json:"-"`
 	PasswordHint      string     `gorm:"size:200" json:"password_hint,omitempty"`
 	PublishedAt       *time.Time `json:"published_at"`
+	ScheduledAt       *time.Time `gorm:"index" json:"scheduled_at"`
 	CreatedAt         time.Time  `json:"created_at"`
 	UpdatedAt         time.Time  `json:"updated_at"`
 	Category          *Category  `gorm:"foreignKey:CategoryID" json:"category"`
@@ -278,6 +280,11 @@ type FriendLink struct {
 }
 
 func AutoMigrate(db *gorm.DB) error {
+	return db.Transaction(func(tx *gorm.DB) error { return migrateModels(tx) })
+}
+
+func migrateModels(db *gorm.DB) error {
+	legacySchedule := db.Migrator().HasTable(&Post{}) && !db.Migrator().HasColumn(&Post{}, "scheduled_at")
 	if err := db.AutoMigrate(
 		&User{},
 		&Passkey{},
@@ -288,6 +295,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&Comment{},
 		&Media{},
 		&MediaTag{},
+		&MediaFileCleanup{},
 		&SiteConfig{},
 		&AccessLog{},
 		&PostRevision{},
@@ -303,6 +311,14 @@ func AutoMigrate(db *gorm.DB) error {
 		&GalleryImage{},
 	); err != nil {
 		return err
+	}
+	// The legacy field mixed actual publication dates with pending schedules.
+	// Only future drafts are safe to migrate; past drafts may be withdrawn posts.
+	// Schema and data changes share a transaction so a failed upgrade can retry.
+	if legacySchedule {
+		if err := db.Exec(`UPDATE posts SET scheduled_at = published_at, published_at = NULL WHERE status = 'draft' AND published_at > CURRENT_TIMESTAMP`).Error; err != nil {
+			return err
+		}
 	}
 	// AutoMigrate creates the new partial unique index first. Only then remove
 	// the legacy index, which incorrectly allowed just one empty preview token.

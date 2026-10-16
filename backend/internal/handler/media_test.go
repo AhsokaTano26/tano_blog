@@ -128,7 +128,9 @@ func TestMediaFiltersApplyBeforePaginationAndSearch(t *testing.T) {
 
 func TestBackfillCreatesMissingImageThumbnails(t *testing.T) {
 	h, db, userID := mediaTestHandler(t)
-	backfiller, ok := interface{}(h).(interface{ BackfillImageThumbnails(context.Context) error })
+	backfiller, ok := interface{}(h).(interface {
+		BackfillImageThumbnails(context.Context, ...func(context.Context) (func(), error)) error
+	})
 	if !ok {
 		t.Fatal("media handler does not backfill legacy thumbnails")
 	}

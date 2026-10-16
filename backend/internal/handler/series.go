@@ -57,14 +57,14 @@ func (h *SeriesHandler) AdminList(c *gin.Context) {
 		pageSize = 20
 	}
 
-	total, err := h.repo.Count()
+	total, err := h.repo.Count(c.Query("search"))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取系列列表失败"})
 		return
 	}
 
 	var series []map[string]interface{}
-	series, err = h.repo.ListPaginatedWithCount(page, pageSize)
+	series, err = h.repo.ListPaginatedWithCount(page, pageSize, c.Query("search"))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取系列列表失败"})
 		return

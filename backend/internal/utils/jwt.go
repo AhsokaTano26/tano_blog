@@ -13,6 +13,8 @@ type Claims struct {
 	Username     string    `json:"username"`
 	Role         string    `json:"role"`
 	TokenVersion int       `json:"token_version"`
+	Purpose      string    `json:"purpose,omitempty"`
+	SessionEpoch string    `json:"session_epoch,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -21,11 +23,23 @@ func GenerateJWT(userID uuid.UUID, username, role, secret string, expiration tim
 }
 
 func GenerateJWTWithVersion(userID uuid.UUID, username, role, secret string, expiration time.Duration, tokenVersion int) (string, error) {
+	return GenerateJWTWithSession(userID, username, role, secret, expiration, tokenVersion, "")
+}
+
+// GenerateJWTWithSession binds both full sessions and intermediate credentials
+// to the account's restore epoch. Intermediate purposes never authorize API use.
+func GenerateJWTWithSession(userID uuid.UUID, username, role, secret string, expiration time.Duration, tokenVersion int, sessionEpoch string) (string, error) {
+	purpose := "session"
+	if role == "totp_pending" || role == "reset" {
+		purpose = role
+	}
 	claims := Claims{
 		UserID:       userID,
 		Username:     username,
 		Role:         role,
 		TokenVersion: tokenVersion,
+		Purpose:      purpose,
+		SessionEpoch: sessionEpoch,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(expiration)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -42,7 +56,7 @@ func ParseJWT(tokenString, secret string) (*Claims, error) {
 			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
 		}
 		return []byte(secret), nil
-	})
+	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}), jwt.WithExpirationRequired())
 	if err != nil {
 		return nil, err
 	}
@@ -50,6 +64,12 @@ func ParseJWT(tokenString, secret string) (*Claims, error) {
 		return claims, nil
 	}
 	return nil, jwt.ErrSignatureInvalid
+}
+
+// IsSession allows pre-upgrade sessions, but never credentials issued for a
+// password reset or an unfinished second factor. Roles are still resolved from DB.
+func (c *Claims) IsSession() bool {
+	return (c.Role == "admin" || c.Role == "user") && (c.Purpose == "" || c.Purpose == "session")
 }
 
 const (

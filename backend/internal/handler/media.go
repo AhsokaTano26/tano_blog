@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 	"github.com/dhowden/tag"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 
 	"tano_blog/backend/internal/config"
 	"tano_blog/backend/internal/model"
@@ -336,7 +338,7 @@ func (h *MediaHandler) List(c *gin.Context) {
 
 // BackfillImageThumbnails runs once in the background at startup. Keyset batches
 // keep memory bounded and failed/unsupported files cannot stall later batches.
-func (h *MediaHandler) BackfillImageThumbnails(ctx context.Context) error {
+func (h *MediaHandler) BackfillImageThumbnails(ctx context.Context, guards ...func(context.Context) (func(), error)) error {
 	after := uuid.Nil
 	for {
 		items, err := h.repo.MissingImageThumbnails(ctx, after)
@@ -348,23 +350,51 @@ func (h *MediaHandler) BackfillImageThumbnails(ctx context.Context) error {
 				return err
 			}
 			after = item.ID
-			if filepath.Base(item.Filename) != item.Filename {
-				continue
-			}
-			url, err := utils.GenerateImageThumbnail(filepath.Join(h.cfg.Dir, item.Filename))
-			if err != nil {
-				utils.LogWarn("could not backfill image thumbnail", "file", item.Filename, "error", err)
-				continue
-			}
-			updated, err := h.repo.SetThumbnailIfEmpty(ctx, item.ID, url)
-			if err != nil || !updated {
-				_ = os.Remove(filepath.Join(h.cfg.Dir, filepath.Base(url)))
-			}
-			if err != nil {
+			if err := h.backfillThumbnail(ctx, item.ID, guards); err != nil {
 				return err
 			}
 		}
 	}
+}
+
+func (h *MediaHandler) backfillThumbnail(ctx context.Context, id uuid.UUID, guards []func(context.Context) (func(), error)) error {
+	releases := make([]func(), 0, len(guards))
+	defer func() {
+		for i := len(releases) - 1; i >= 0; i-- {
+			releases[i]()
+		}
+	}()
+	for _, guard := range guards {
+		release, err := guard(ctx)
+		if err != nil {
+			return err
+		}
+		if release != nil {
+			releases = append(releases, release)
+		}
+	}
+	// A restore can replace files and records while the outer scan is waiting for
+	// a lease. Reload inside the lease before generating from that record's path.
+	item, err := h.repo.WithContext(ctx).GetByID(id)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if item.ThumbnailURL != "" || filepath.Base(item.Filename) != item.Filename {
+		return nil
+	}
+	url, err := utils.GenerateImageThumbnail(filepath.Join(h.cfg.Dir, item.Filename))
+	if err != nil {
+		utils.LogWarn("could not backfill image thumbnail", "file", item.Filename, "error", err)
+		return nil
+	}
+	updated, err := h.repo.SetThumbnailIfEmpty(ctx, item.ID, url)
+	if err != nil || !updated {
+		_ = os.Remove(filepath.Join(h.cfg.Dir, filepath.Base(url)))
+	}
+	return err
 }
 
 func (h *MediaHandler) Delete(c *gin.Context) {
@@ -375,26 +405,17 @@ func (h *MediaHandler) Delete(c *gin.Context) {
 		return
 	}
 
-	m, err := h.repo.GetByID(id)
+	_, err = h.repo.GetByID(id)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "文件不存在"})
 		return
 	}
 
-	// Remove source file
-	if err := os.Remove(filepath.Join(h.cfg.Dir, m.Filename)); err != nil && !os.IsNotExist(err) {
-		utils.LogWarn("failed to remove media file", "error", err)
-	}
-	// Remove thumbnail if present
-	if m.ThumbnailURL != "" {
-		if err := os.Remove(filepath.Join(h.cfg.Dir, filepath.Base(m.ThumbnailURL))); err != nil && !os.IsNotExist(err) {
-			utils.LogWarn("failed to remove media thumbnail", "error", err)
-		}
-	}
 	if err := h.repo.Delete(id); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "删除记录失败"})
 		return
 	}
+	h.CleanupDeletedFiles(c.Request.Context())
 	c.JSON(http.StatusOK, gin.H{"message": "已删除"})
 }
 
@@ -503,27 +524,11 @@ func (h *MediaHandler) BatchDelete(c *gin.Context) {
 		ids[i] = uid
 	}
 
-	// Fetch items to remove files before deleting from DB
-	items, err := h.repo.GetByIDs(ids)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取文件信息失败"})
-		return
-	}
-	for _, item := range items {
-		if err := os.Remove(filepath.Join(h.cfg.Dir, item.Filename)); err != nil && !os.IsNotExist(err) {
-			utils.LogWarn("failed to remove media file", "error", err)
-		}
-		if item.ThumbnailURL != "" {
-			if err := os.Remove(filepath.Join(h.cfg.Dir, filepath.Base(item.ThumbnailURL))); err != nil && !os.IsNotExist(err) {
-				utils.LogWarn("failed to remove media thumbnail", "error", err)
-			}
-		}
-	}
-
 	if err := h.repo.BatchDelete(ids); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "删除失败"})
 		return
 	}
+	h.CleanupDeletedFiles(c.Request.Context())
 	c.JSON(http.StatusOK, gin.H{"message": "已删除"})
 }
 
@@ -665,4 +670,47 @@ func hasAnyPrefix(s string, prefixes ...string) bool {
 		}
 	}
 	return false
+}
+
+// CleanupDeletedFiles retries removals queued in the media deletion transaction.
+// A failed database deletion never reaches the filesystem.
+func (h *MediaHandler) CleanupDeletedFiles(ctx context.Context) {
+	h = h.withContext(ctx)
+	jobs, err := h.repo.PendingFileCleanup(100)
+	if err != nil {
+		utils.LogWarn("failed to read media cleanup queue", "error", err)
+		return
+	}
+	for _, job := range jobs {
+		if ctx.Err() != nil {
+			return
+		}
+		inUse, err := h.repo.FileCleanupInUse(job.Filename)
+		if err != nil {
+			utils.LogWarn("failed to check media cleanup references", "error", err)
+			continue
+		}
+		if inUse {
+			if err := h.repo.CompleteFileCleanup(job.ID); err != nil {
+				utils.LogWarn("failed to complete shared media cleanup", "error", err)
+			}
+			continue
+		}
+		var removeErr error
+		if job.Filename == "" || job.Filename == "." || job.Filename == ".." || filepath.Base(job.Filename) != job.Filename {
+			removeErr = fmt.Errorf("invalid cleanup filename")
+		} else {
+			removeErr = os.Remove(filepath.Join(h.cfg.Dir, job.Filename))
+		}
+		if removeErr != nil && !os.IsNotExist(removeErr) {
+			utils.LogWarn("media file cleanup pending", "id", job.ID, "filename", job.Filename, "error", removeErr)
+			if err := h.repo.FailFileCleanup(job.ID, removeErr.Error()); err != nil {
+				utils.LogWarn("failed to record media cleanup error", "error", err)
+			}
+			continue
+		}
+		if err := h.repo.CompleteFileCleanup(job.ID); err != nil {
+			utils.LogWarn("failed to complete media cleanup", "error", err)
+		}
+	}
 }

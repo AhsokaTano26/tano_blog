@@ -62,8 +62,8 @@ func (h *AuthHandler) Login(c *gin.Context) {
 
 	// If TOTP is enabled, require TOTP verification code
 	if user.TOTPEnabled {
-		pendingToken, err := utils.GenerateJWTWithVersion(
-			user.ID, user.Username, "totp_pending", h.cfg.Secret, 5*time.Minute, user.TokenVersion,
+		pendingToken, err := utils.GenerateJWTWithSession(
+			user.ID, user.Username, "totp_pending", h.cfg.Secret, 5*time.Minute, user.TokenVersion, user.SessionEpoch,
 		)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "生成两步验证凭证失败"})
@@ -82,7 +82,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		expiration = h.cfg.RememberMeExpiration
 	}
 
-	token, err := utils.GenerateJWTWithVersion(user.ID, user.Username, user.Role, h.cfg.Secret, expiration, user.TokenVersion)
+	token, err := utils.GenerateJWTWithSession(user.ID, user.Username, user.Role, h.cfg.Secret, expiration, user.TokenVersion, user.SessionEpoch)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "生成令牌失败"})
 		return
@@ -134,7 +134,7 @@ func (h *AuthHandler) LoginWithTOTP(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "未启用 TOTP"})
 		return
 	}
-	if user.TokenVersion != claims.TokenVersion || user.Username != claims.Username {
+	if user.TokenVersion != claims.TokenVersion || user.SessionEpoch != claims.SessionEpoch || user.Username != claims.Username {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "登录验证已失效，请重新输入密码"})
 		return
 	}
@@ -152,7 +152,7 @@ func (h *AuthHandler) LoginWithTOTP(c *gin.Context) {
 		expiration = h.cfg.RememberMeExpiration
 	}
 
-	token, err := utils.GenerateJWTWithVersion(user.ID, user.Username, user.Role, h.cfg.Secret, expiration, user.TokenVersion)
+	token, err := utils.GenerateJWTWithSession(user.ID, user.Username, user.Role, h.cfg.Secret, expiration, user.TokenVersion, user.SessionEpoch)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "生成令牌失败"})
 		return
@@ -346,8 +346,8 @@ func (h *AuthHandler) ChangePassword(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "修改失败"})
 		return
 	}
-	token, err := utils.GenerateJWTWithVersion(
-		user.ID, user.Username, user.Role, h.cfg.Secret, h.cfg.Expiration, user.TokenVersion+1,
+	token, err := utils.GenerateJWTWithSession(
+		user.ID, user.Username, user.Role, h.cfg.Secret, h.cfg.Expiration, user.TokenVersion+1, user.SessionEpoch,
 	)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "密码已修改，请重新登录"})
@@ -539,7 +539,7 @@ func (h *AuthHandler) PasskeyLoginVerify(c *gin.Context) {
 		return
 	}
 
-	token, err := utils.GenerateJWTWithVersion(user.ID, user.Username, user.Role, h.cfg.Secret, h.cfg.Expiration, user.TokenVersion)
+	token, err := utils.GenerateJWTWithSession(user.ID, user.Username, user.Role, h.cfg.Secret, h.cfg.Expiration, user.TokenVersion, user.SessionEpoch)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "生成令牌失败"})
 		return
@@ -652,7 +652,7 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 	}
 
 	// Generate reset token (valid for 1 hour)
-	token, err := utils.GenerateJWT(user.ID, user.Username, "reset", h.cfg.Secret, 1*time.Hour)
+	token, err := utils.GenerateJWTWithSession(user.ID, user.Username, "reset", h.cfg.Secret, time.Hour, user.TokenVersion, user.SessionEpoch)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "生成重置令牌失败"})
 		return
@@ -740,7 +740,7 @@ func (h *AuthHandler) ResetPassword(c *gin.Context) {
 	}
 
 	// Validate token against stored value to prevent reuse of old tokens
-	if user.ResetToken != input.Token {
+	if user.ResetToken != input.Token || user.SessionEpoch != claims.SessionEpoch || user.TokenVersion != claims.TokenVersion {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "重置链接无效或已过期"})
 		return
 	}

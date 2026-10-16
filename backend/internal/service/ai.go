@@ -2,6 +2,7 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -21,22 +22,31 @@ func NewAIService(db *gorm.DB) *AIService {
 	return &AIService{db: db}
 }
 
-func (s *AIService) getConfigMap() map[string]string {
+func (s *AIService) WithContext(ctx context.Context) *AIService {
+	return &AIService{db: s.db.WithContext(ctx)}
+}
+
+func (s *AIService) getConfigMap() (map[string]string, error) {
 	var configs []model.SiteConfig
-	s.db.Where("key IN ?", []string{
+	if err := s.db.Where("key IN ?", []string{
 		"ai_enabled", "ai_api_url", "ai_api_key", "ai_model",
-	}).Find(&configs)
+	}).Find(&configs).Error; err != nil {
+		return nil, err
+	}
 
 	m := make(map[string]string, len(configs))
 	for _, c := range configs {
 		m[c.Key] = c.Value
 	}
-	return m
+	return m, nil
 }
 
 // GenerateExcerpt calls the OpenAI-compatible API to generate an excerpt for the given content.
 func (s *AIService) GenerateExcerpt(content string) (string, error) {
-	cfg := s.getConfigMap()
+	cfg, err := s.getConfigMap()
+	if err != nil {
+		return "", fmt.Errorf("read AI settings: %w", err)
+	}
 
 	if cfg["ai_enabled"] != "true" {
 		return "", fmt.Errorf("AI 功能未启用")
@@ -56,10 +66,8 @@ func (s *AIService) GenerateExcerpt(content string) (string, error) {
 	}
 
 	// Truncate content to 3000 characters
-	truncated := content
-	if len(truncated) > 3000 {
-		truncated = truncated[:3000]
-	}
+	characters := []rune(content)
+	truncated := string(characters[:min(len(characters), 3000)])
 
 	// Strip Markdown for cleaner input
 	truncated = stripMarkdown(truncated)
@@ -81,7 +89,7 @@ func (s *AIService) GenerateExcerpt(content string) (string, error) {
 		return "", fmt.Errorf("marshal payload: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", strings.TrimRight(apiURL, "/")+"/chat/completions", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(s.db.Statement.Context, "POST", strings.TrimRight(apiURL, "/")+"/chat/completions", bytes.NewReader(body))
 	if err != nil {
 		return "", fmt.Errorf("create request: %w", err)
 	}
@@ -95,9 +103,13 @@ func (s *AIService) GenerateExcerpt(content string) (string, error) {
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	const maxResponseSize = 1 << 20
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseSize+1))
 	if err != nil {
 		return "", fmt.Errorf("read response: %w", err)
+	}
+	if len(respBody) > maxResponseSize {
+		return "", fmt.Errorf("API response exceeds 1 MiB")
 	}
 
 	if resp.StatusCode != 200 {

@@ -6,7 +6,7 @@ import (
 )
 
 // Keep full content and secrets on detail/edit endpoints only.
-const PostSummaryColumns = "posts.id, posts.title, posts.slug, posts.excerpt, posts.cover_image, posts.status, posts.is_top, posts.allow_comment, posts.view_count, posts.category_id, posts.author_id, posts.author_name, posts.editor_id, posts.published_at, posts.created_at, posts.updated_at"
+const PostSummaryColumns = "posts.id, posts.title, posts.slug, posts.excerpt, posts.cover_image, posts.status, posts.is_top, posts.allow_comment, posts.view_count, posts.category_id, posts.author_id, posts.author_name, posts.editor_id, posts.published_at, posts.scheduled_at, posts.created_at, posts.updated_at"
 
 func publicAuthorColumns(db *gorm.DB) *gorm.DB {
 	return db.Select("id, username, display_name, avatar_url")

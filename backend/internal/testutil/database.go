@@ -15,6 +15,9 @@ func Database(t *testing.T, models ...interface{}) *gorm.DB {
 	t.Helper()
 	dsn := os.Getenv("TEST_DATABASE_DSN")
 	if dsn == "" {
+		if os.Getenv("REQUIRE_TEST_DATABASE") == "1" {
+			t.Fatal("TEST_DATABASE_DSN is required: integration tests must not be skipped in CI")
+		}
 		t.Skip("TEST_DATABASE_DSN is required for PostgreSQL integration tests")
 	}
 	root, err := gorm.Open(postgres.Open(dsn), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})

@@ -49,6 +49,7 @@ func (h *SeriesHandler) withContext(ctx context.Context) *SeriesHandler {
 func (h *AIHandler) withContext(ctx context.Context) *AIHandler {
 	copy := *h
 	copy.db = h.db.WithContext(ctx)
+	copy.aiService = h.aiService.WithContext(ctx)
 	return &copy
 }
 

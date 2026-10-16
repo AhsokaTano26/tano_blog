@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -119,13 +121,6 @@ func main() {
 	tagHandler := handler.NewTagHandler(db)
 	commentHandler := handler.NewCommentHandler(commentRepo, db, emailService, cfg.JWT.Secret)
 	mediaHandler := handler.NewMediaHandler(mediaRepo, galleryRepo, &cfg.Upload)
-	thumbnailCtx, cancelThumbnails := context.WithCancel(context.Background())
-	defer cancelThumbnails()
-	go func() {
-		if err := mediaHandler.BackfillImageThumbnails(thumbnailCtx); err != nil {
-			utils.LogWarn("image thumbnail backfill stopped", "error", err)
-		}
-	}()
 	siteConfigHandler := handler.NewSiteConfigHandler(db, emailService, cfg.JWT.Secret, cfg.SyncKeyEncryptionKey)
 	accessLogHandler := handler.NewAccessLogHandler(db)
 	backupHandler := handler.NewBackupHandler(db, cfg.Upload.Dir, cfg.BackupDir)
@@ -133,6 +128,29 @@ func main() {
 	replicationService.SetSnapshotCreator(backupHandler.CreateSyncSnapshotContext)
 	backupHandler.SetBackupGate(replicationService.AcquireBackupGate)
 	replicationService.SetSnapshotRestorer(backupHandler.RestoreSyncSnapshotContext)
+	replicationService.SetRestoreRecovery(backupHandler.RecoverInterruptedRestoreContext)
+	backupHandler.SetRestoreRecoveryGuard(replicationService.RequireRecovery)
+	// Resolve any interrupted filesystem switch before serving uploads or starting
+	// background writers. The transaction marker decides whether to roll forward.
+	if err := backupHandler.RecoverInterruptedRestore(); err != nil {
+		log.Fatalf("Failed to recover interrupted restore: %v", err)
+	}
+	if err := replicationService.RecoverInterruptedApply(); err != nil {
+		log.Fatalf("Failed to recover interrupted replication: %v", err)
+	}
+	backgroundCtx, cancelBackground := context.WithCancel(context.Background())
+	defer cancelBackground()
+	var backgroundWorkers sync.WaitGroup
+	acquireBackgroundWrite := func(ctx context.Context) (func(), error) {
+		return backgroundWriteLease(ctx, repository.NewSiteConfigRepo(db), replicationService.AcquireWriteLeaseContext)
+	}
+	backgroundWorkers.Add(1)
+	go func() {
+		defer backgroundWorkers.Done()
+		if err := mediaHandler.BackfillImageThumbnails(backgroundCtx, acquireBackgroundWrite); err != nil && !errors.Is(err, errStandby) && !errors.Is(err, context.Canceled) {
+			utils.LogWarn("image thumbnail backfill stopped", "error", err)
+		}
+	}()
 	syncHandler := handler.NewSyncHandler(replicationService)
 	seriesHandler := handler.NewSeriesHandler(seriesRepo)
 	feedHandler := handler.NewFeedHandler(db)
@@ -190,7 +208,7 @@ func main() {
 	r.Static("/uploads", cfg.Upload.Dir)
 
 	api := r.Group("/api/v1")
-	api.Use(middleware.StandbyReadOnly(repository.NewSiteConfigRepo(db), replicationService.AcquireWriteLease))
+	api.Use(middleware.StandbyReadOnly(repository.NewSiteConfigRepo(db), replicationService.AcquireWriteLease, replicationService.AcquireWriteLeaseContext))
 
 	// Restore endpoints (exempt from maxBodySize to allow large uploads up to 500MB)
 	restoreGroup := api.Group("/admin/restore")
@@ -484,55 +502,51 @@ func main() {
 		WriteTimeout:      cfg.Server.WriteTimeout,
 	}
 
-	// Publish scheduled posts every minute
-	go func() {
-		ticker := time.NewTicker(1 * time.Minute)
-		defer ticker.Stop()
-		for range ticker.C {
-			now := time.Now()
-			result := db.Model(&model.Post{}).
-				Where("status = ? AND published_at IS NOT NULL AND published_at <= ?", "draft", now).
-				Updates(map[string]interface{}{"status": "published"})
-			if result.RowsAffected > 0 {
-				utils.LogInfo("Published scheduled posts", "count", result.RowsAffected)
-			}
+	// Explicit schedules and pending file cleanup are primary-only writes, and
+	// must not race snapshot capture or restore directory switches.
+	runMaintenance := func(parent context.Context) {
+		ctx, cancel := context.WithTimeout(parent, time.Minute)
+		defer cancel()
+		release, err := acquireBackgroundWrite(ctx)
+		if errors.Is(err, errStandby) || errors.Is(err, context.Canceled) {
+			return
 		}
-	}()
+		if err != nil {
+			utils.LogWarn("background write skipped", "error", err)
+			return
+		}
+		defer release()
+		count, err := postRepo.WithContext(ctx).PublishScheduled(time.Now())
+		if err != nil {
+			utils.LogWarn("scheduled publication failed", "error", err)
+		} else if count > 0 {
+			utils.LogInfo("Published scheduled posts", "count", count)
+		}
+		mediaHandler.CleanupDeletedFiles(ctx)
+	}
+	backgroundWorkers.Add(1)
+	go func() { defer backgroundWorkers.Done(); runMaintenance(backgroundCtx) }()
+	startPeriodic(backgroundCtx, &backgroundWorkers, time.Minute, runMaintenance)
 
 	// Run the configured primary snapshot / standby pull schedule once a minute.
-	go func() {
-		ticker := time.NewTicker(1 * time.Minute)
-		defer ticker.Stop()
-		for range ticker.C {
-			ctx, cancel := context.WithTimeout(context.Background(), 6*time.Hour)
-			replicationService.RunScheduled(ctx)
-			cancel()
-		}
-	}()
+	startPeriodic(backgroundCtx, &backgroundWorkers, time.Minute, func(parent context.Context) {
+		ctx, cancel := context.WithTimeout(parent, 6*time.Hour)
+		defer cancel()
+		replicationService.RunScheduled(ctx)
+	})
 
 	// Raw log retention is opt-in; never silently erase existing history.
 	if days, _ := strconv.Atoi(os.Getenv("ACCESS_LOG_RETENTION_DAYS")); days > 0 {
-		go func() {
-			ticker := time.NewTicker(time.Hour)
-			defer ticker.Stop()
-			for range ticker.C {
-				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-				err := middleware.PruneAccessLogs(ctx, db, time.Now().AddDate(0, 0, -days))
-				cancel()
-				if err != nil {
-					utils.LogWarn("log retention failed", "error", err)
-				}
+		startPeriodic(backgroundCtx, &backgroundWorkers, time.Hour, func(parent context.Context) {
+			ctx, cancel := context.WithTimeout(parent, 5*time.Minute)
+			defer cancel()
+			if err := middleware.PruneAccessLogs(ctx, db, time.Now().AddDate(0, 0, -days)); err != nil {
+				utils.LogWarn("log retention failed", "error", err)
 			}
-		}()
+		})
 	}
 	// Cleanup old backups every hour
-	go func() {
-		ticker := time.NewTicker(1 * time.Hour)
-		defer ticker.Stop()
-		for range ticker.C {
-			backupHandler.CleanupOldBackups()
-		}
-	}()
+	startPeriodic(backgroundCtx, &backgroundWorkers, time.Hour, func(context.Context) { backupHandler.CleanupOldBackups() })
 
 	go func() {
 		utils.LogInfo("Server starting", "port", port)
@@ -544,12 +558,22 @@ func main() {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
+	signal.Stop(quit)
 	utils.LogInfo("Shutting down server...")
+	cancelBackground()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
-		log.Fatalf("Server forced to shutdown: %v", err)
+		utils.LogWarn("server requests did not drain", "error", err)
+		_ = srv.Close()
+	}
+	workersDone := make(chan struct{})
+	go func() { backgroundWorkers.Wait(); close(workersDone) }()
+	select {
+	case <-workersDone:
+	case <-time.After(5 * time.Second):
+		utils.LogWarn("background shutdown deadline exceeded")
 	}
 	drainCtx, drainCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	if err := accessWriter.Close(drainCtx); err != nil {

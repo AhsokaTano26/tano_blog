@@ -58,7 +58,7 @@ func backupTestHandler(t *testing.T) *BackupHandler {
 		cols := "id uuid PRIMARY KEY DEFAULT gen_random_uuid()"
 		switch table {
 		case "users":
-			cols += ", token_version bigint DEFAULT 0, reset_token text DEFAULT ''"
+			cols += ", token_version bigint DEFAULT 0, reset_token text DEFAULT '', session_epoch text DEFAULT ''"
 		case "access_logs":
 			cols += ", path text, response_time bigint"
 		case "site_configs":
@@ -406,6 +406,8 @@ func TestRestoreUploadReplacementPreservesPinnedInode(t *testing.T) {
 	}
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
+	dataEntry, _ := zw.Create("backup/data.json")
+	dataEntry.Write([]byte(emptyBackupJSON(t)))
 	entry, _ := zw.Create("backup/uploads/file.txt")
 	entry.Write([]byte("after"))
 	zw.Close()
@@ -413,8 +415,8 @@ func TestRestoreUploadReplacementPreservesPinnedInode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if failures := h.extractUploads(zr); len(failures) != 0 {
-		t.Fatal(failures)
+	if err := h.restoreFromZip(zr); err != nil {
+		t.Fatal(err)
 	}
 	previous, err := os.ReadFile(filepath.Join(frozen, "file.txt"))
 	if err != nil || string(previous) != "before" {
@@ -673,6 +675,7 @@ func TestCreateBackupCoordinatesCaptureWithBusinessWrites(t *testing.T) {
 	if !found {
 		t.Fatal("archive omitted the captured upload")
 	}
+	h.SetBackupGate(replication.AcquireBackupGate)
 	if err := h.restoreFromZip(&archive.Reader); err != nil {
 		t.Fatal(err)
 	}

@@ -4,7 +4,9 @@ import (
 	"archive/zip"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"gorm.io/gorm"
 	"io"
 	"os"
 	"os/exec"
@@ -14,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"tano_blog/backend/internal/repository"
@@ -45,6 +48,9 @@ type ReplicationService struct {
 	mu                    sync.Mutex
 	running               bool
 	writeGate             sync.RWMutex
+	backupWaiters         atomic.Int32
+	recoveryRequired      atomic.Bool
+	restoreRecovery       func(context.Context) error
 }
 
 type SyncStatus struct {
@@ -92,6 +98,34 @@ func (s *ReplicationService) SetSnapshotRestorer(restore func(context.Context, s
 	s.snapshotRestorer = restore
 }
 
+// SetRestoreRecovery joins ordinary restore and sync recovery under the same
+// exclusive gate. Startup also recovers durable state before serving requests.
+func (s *ReplicationService) SetRestoreRecovery(recover func(context.Context) error) {
+	s.restoreRecovery = recover
+}
+
+// RequireRecovery is called before persisting a file switch intent. It remains
+// set after an error until both durable journals are conclusively resolved.
+func (s *ReplicationService) RequireRecovery() { s.recoveryRequired.Store(true) }
+
+func (s *ReplicationService) recoverBeforeWriting(ctx context.Context) error {
+	if !s.recoveryRequired.Load() {
+		return nil
+	}
+	if s.restoreRecovery != nil {
+		if err := s.restoreRecovery(ctx); err != nil {
+			return fmt.Errorf("恢复状态未决，暂时禁止写入: %w", err)
+		}
+	}
+	if s.repo != nil {
+		if err := s.recoverInterruptedDirectorySwitchContext(ctx); err != nil {
+			return fmt.Errorf("同步状态未决，暂时禁止写入: %w", err)
+		}
+	}
+	s.recoveryRequired.Store(false)
+	return nil
+}
+
 func (s *ReplicationService) createPrimarySnapshot(ctx context.Context) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
@@ -113,6 +147,8 @@ func (s *ReplicationService) createPrimarySnapshot(ctx context.Context) (string,
 // AcquireBackupGate bounds the capture interval and lets a cancelled backup
 // stop waiting for an in-flight upload or restore without retaining a goroutine.
 func (s *ReplicationService) AcquireBackupGate(ctx context.Context) (func(), error) {
+	s.backupWaiters.Add(1)
+	defer s.backupWaiters.Add(-1)
 	ticker := time.NewTicker(10 * time.Millisecond)
 	defer ticker.Stop()
 	for {
@@ -123,6 +159,10 @@ func (s *ReplicationService) AcquireBackupGate(ctx context.Context) (func(), err
 			var once sync.Once
 			release := func() { once.Do(s.writeGate.Unlock) }
 			if err := ctx.Err(); err != nil {
+				release()
+				return nil, err
+			}
+			if err := s.recoverBeforeWriting(ctx); err != nil {
 				release()
 				return nil, err
 			}
@@ -138,8 +178,53 @@ func (s *ReplicationService) AcquireBackupGate(ctx context.Context) (func(), err
 
 // AcquireWriteLease 让业务写请求与主服务器创建快照互斥，确保数据库和媒体清单处于同一时点。
 func (s *ReplicationService) AcquireWriteLease() func() {
-	s.writeGate.RLock()
-	return s.writeGate.RUnlock
+	for {
+		release, err := s.AcquireWriteLeaseContext(context.Background())
+		if err == nil {
+			return release
+		}
+		// Legacy callers cannot receive an error; remain blocked until recovery.
+		time.Sleep(time.Second)
+	}
+}
+
+// AcquireWriteLeaseContext lets disconnected requests stop waiting for a restore.
+// Pending exclusive operations get priority so sustained HTTP writes cannot
+// starve a backup or restore indefinitely.
+func (s *ReplicationService) AcquireWriteLeaseContext(ctx context.Context) (func(), error) {
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if s.recoveryRequired.Load() {
+			release, err := s.AcquireBackupGate(ctx)
+			if err != nil {
+				return nil, err
+			}
+			release()
+			continue
+		}
+		if s.backupWaiters.Load() == 0 && s.writeGate.TryRLock() {
+			var once sync.Once
+			release := func() { once.Do(s.writeGate.RUnlock) }
+			if err := ctx.Err(); err != nil {
+				release()
+				return nil, err
+			}
+			if s.recoveryRequired.Load() {
+				release()
+				continue
+			}
+			return release, nil
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-ticker.C:
+		}
+	}
 }
 
 func (s *ReplicationService) GetStatus() SyncStatus {
@@ -159,8 +244,14 @@ func (s *ReplicationService) RunNow(ctx context.Context) error {
 	s.running = true
 	s.mu.Unlock()
 	defer func() { s.mu.Lock(); s.running = false; s.mu.Unlock() }()
-	if err := s.recoverInterruptedDirectorySwitch(); err != nil {
-		return s.finish("failed", "恢复中断的文件切换失败: "+err.Error(), "")
+	releaseRecovery, err := s.AcquireBackupGate(ctx)
+	if err != nil {
+		return err
+	}
+	recoveryErr := s.recoverInterruptedDirectorySwitch()
+	releaseRecovery()
+	if recoveryErr != nil {
+		return s.finish("failed", "恢复中断的文件切换失败: "+recoveryErr.Error(), "")
 	}
 
 	settings, _, err := s.settings()
@@ -219,6 +310,10 @@ func (s *ReplicationService) isDue(settings syncSettings, values map[string]stri
 }
 
 func (s *ReplicationService) pullAndApply(ctx context.Context, settings syncSettings) error {
+	// The primary keeps retired upload sources for 48 hours. Bound the entire
+	// pull (including snapshot download) to half that grace period.
+	ctx, cancel := context.WithTimeout(ctx, 24*time.Hour)
+	defer cancel()
 	if !syncTargetRe.MatchString(settings.target) {
 		return fmt.Errorf("SSH 目标格式无效，应为 user@host")
 	}
@@ -257,10 +352,31 @@ func (s *ReplicationService) pullAndApply(ctx context.Context, settings syncSett
 	if err := s.verifySnapshotUploads(snapshotPath, stage); err != nil {
 		return fmt.Errorf("校验上传文件失败: %w", err)
 	}
-	if err := s.repo.Upsert(syncApplyStateKey, "pending", "string"); err != nil {
+	release, err := s.AcquireBackupGate(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
+	// Configuration changes take the same write lease. If this machine was
+	// promoted or syncing disabled during transfer, do not overwrite its data.
+	currentSettings, _, err := s.settings()
+	if err != nil {
+		return err
+	}
+	if !currentSettings.enabled || currentSettings.role != "standby" {
+		return fmt.Errorf("同步角色或启用状态已变化，已取消应用快照")
+	}
+	applyState := "pending"
+	if _, err := os.Stat(s.uploadDir); os.IsNotExist(err) {
+		applyState = "pending-empty"
+	} else if err != nil {
+		return err
+	}
+	s.RequireRecovery()
+	if err := s.repo.Upsert(syncApplyStateKey, applyState, "string"); err != nil {
 		return fmt.Errorf("记录文件切换状态失败: %w", err)
 	}
-	commitSwap, rollbackSwap, err := activateDirectory(s.uploadDir, stage)
+	commitSwap, _, err := activateDirectory(s.uploadDir, stage)
 	if err != nil {
 		return fmt.Errorf("切换上传文件失败: %w", err)
 	}
@@ -271,9 +387,10 @@ func (s *ReplicationService) pullAndApply(ctx context.Context, settings syncSett
 		return s.restoreSnapshot(snapshotPath)
 	}
 	if err := restore(); err != nil {
-		_ = rollbackSwap()
-		_ = s.repo.Delete(syncApplyStateKey)
-		return fmt.Errorf("应用数据库快照失败: %w", err)
+		// A Commit transport error can still mean success. The restore transaction
+		// changes sync_apply_state atomically, so recover from that durable state.
+		recoveryErr := s.recoverInterruptedDirectorySwitch()
+		return fmt.Errorf("应用数据库快照失败: %w", errors.Join(err, recoveryErr))
 	}
 	if err := commitSwap(); err != nil {
 		return fmt.Errorf("清理旧上传文件失败: %w", err)
@@ -285,9 +402,25 @@ func (s *ReplicationService) pullAndApply(ctx context.Context, settings syncSett
 	return s.finish("success", "同步完成", snapshot)
 }
 
+// RecoverInterruptedApply must run before the HTTP server accepts requests.
+func (s *ReplicationService) RecoverInterruptedApply() error {
+	return s.recoverInterruptedDirectorySwitch()
+}
+
 func (s *ReplicationService) recoverInterruptedDirectorySwitch() error {
-	state, err := s.repo.Get(syncApplyStateKey)
-	if err != nil || state == "" {
+	return s.recoverInterruptedDirectorySwitchContext(context.Background())
+}
+func (s *ReplicationService) recoverInterruptedDirectorySwitchContext(ctx context.Context) error {
+	recoveryCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	state, err := s.repo.WithContext(recoveryCtx).Get(syncApplyStateKey)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if state == "" {
 		return nil
 	}
 	current := s.uploadDir
@@ -306,13 +439,31 @@ func (s *ReplicationService) recoverInterruptedDirectorySwitch() error {
 			if err := os.Rename(old, current); err != nil {
 				return err
 			}
+		} else if !os.IsNotExist(err) {
+			return err
+		}
+	} else if state == "pending-empty" {
+		if _, err := os.Stat(current); err == nil {
+			if err := os.RemoveAll(stage); err != nil {
+				return err
+			}
+			if err := os.Rename(current, stage); err != nil {
+				return err
+			}
+		} else if !os.IsNotExist(err) {
+			return err
 		}
 	} else if state == "db-applied" {
+		if _, err := os.Stat(current); err != nil {
+			return fmt.Errorf("已提交同步的上传目录缺失: %w", err)
+		}
 		if err := os.RemoveAll(old); err != nil {
 			return err
 		}
+	} else {
+		return fmt.Errorf("未知同步恢复状态: %s", state)
 	}
-	return s.repo.Delete(syncApplyStateKey)
+	return s.repo.WithContext(recoveryCtx).Delete(syncApplyStateKey)
 }
 
 func (s *ReplicationService) rsync(ctx context.Context, settings syncSettings, remoteDir, localDir string, delete bool) error {
@@ -351,7 +502,7 @@ func (s *ReplicationService) rsync(ctx context.Context, settings syncSettings, r
 	}
 	// --append-verify 负责断点续传和完整性校验；它与 --delay-updates
 	// 互斥。上传目录会在传输完成后由 swapDirectories 原子切换。
-	args := []string{"-az", "--partial", "--append-verify", "--protect-args", "--timeout=60", "--exclude=.sync-snapshots/", "-e", ssh}
+	args := []string{"-az", "--partial", "--append-verify", "--protect-args", "--timeout=60", "--exclude=.sync-snapshots/", "--exclude=.retired-at", "-e", ssh}
 	if settings.bandwidthKBps > 0 {
 		args = append(args, "--bwlimit="+strconv.Itoa(settings.bandwidthKBps))
 	}
@@ -524,7 +675,11 @@ func activateDirectory(current, stage string) (commit func() error, rollback fun
 			}
 		}
 	}
-	_ = os.RemoveAll(old)
+	if _, err := os.Stat(old); err == nil {
+		return nil, nil, fmt.Errorf("旧同步目录尚未恢复")
+	} else if !os.IsNotExist(err) {
+		return nil, nil, err
+	}
 	if _, err := os.Stat(current); err == nil {
 		if err := os.Rename(current, old); err != nil {
 			return nil, nil, err

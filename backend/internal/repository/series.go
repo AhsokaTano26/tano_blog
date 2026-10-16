@@ -3,6 +3,7 @@ package repository
 import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"strings"
 	"tano_blog/backend/internal/model"
 )
 
@@ -20,9 +21,9 @@ func (r *SeriesRepo) List() ([]model.Series, error) {
 	return series, err
 }
 
-func (r *SeriesRepo) Count() (int64, error) {
+func (r *SeriesRepo) Count(search ...string) (int64, error) {
 	var total int64
-	err := r.db.Model(&model.Series{}).Count(&total).Error
+	err := filterSeries(r.db.Model(&model.Series{}), search...).Count(&total).Error
 	return total, err
 }
 
@@ -45,9 +46,9 @@ func (r *SeriesRepo) ListWithCount() ([]map[string]interface{}, error) {
 	return results, err
 }
 
-func (r *SeriesRepo) ListPaginatedWithCount(page, pageSize int) ([]map[string]interface{}, error) {
+func (r *SeriesRepo) ListPaginatedWithCount(page, pageSize int, search ...string) ([]map[string]interface{}, error) {
 	var results []map[string]interface{}
-	err := r.db.Model(&model.Series{}).
+	err := filterSeries(r.db.Model(&model.Series{}), search...).
 		Select("series.*, COUNT(post_series.post_id) FILTER (WHERE posts.status = 'published') as post_count").
 		Joins("LEFT JOIN post_series ON post_series.series_id = series.id").
 		Joins("LEFT JOIN posts ON posts.id = post_series.post_id").
@@ -108,8 +109,12 @@ func (r *SeriesRepo) Update(id uuid.UUID, updates map[string]interface{}) error 
 }
 
 func (r *SeriesRepo) Delete(id uuid.UUID) error {
-	r.db.Where("series_id = ?", id).Delete(&model.PostSeries{})
-	return r.db.Delete(&model.Series{}, id).Error
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("series_id = ?", id).Delete(&model.PostSeries{}).Error; err != nil {
+			return err
+		}
+		return tx.Delete(&model.Series{}, id).Error
+	})
 }
 
 func (r *SeriesRepo) ListPosts(seriesID uuid.UUID) ([]model.Post, error) {
@@ -134,4 +139,12 @@ func (r *SeriesRepo) SetPosts(seriesID uuid.UUID, postIDs []uuid.UUID) error {
 		}
 		return nil
 	})
+}
+
+func filterSeries(db *gorm.DB, search ...string) *gorm.DB {
+	if len(search) == 0 || strings.TrimSpace(search[0]) == "" {
+		return db
+	}
+	term := strings.NewReplacer("\\", "\\\\", "%", "\\%", "_", "\\_").Replace(strings.TrimSpace(search[0]))
+	return db.Where("series.name ILIKE ? OR series.slug ILIKE ?", "%"+term+"%", "%"+term+"%")
 }

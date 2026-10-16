@@ -48,7 +48,7 @@ func (h *FeedHandler) getSiteConfig() (title, desc, siteURL string) {
 func (h *FeedHandler) RSS(c *gin.Context) {
 	h = h.withContext(c.Request.Context())
 	var posts []model.Post
-	h.db.Where("status = ?", "published").
+	h.db.Where("status = ? AND (password_hash IS NULL OR password_hash = '')", "published").
 		Preload("Category").Preload("Tags").
 		Order("created_at DESC").
 		Limit(50).
@@ -111,7 +111,7 @@ func (h *FeedHandler) RSS(c *gin.Context) {
 	sb.WriteString("</rss>")
 
 	c.Header("Content-Type", "application/rss+xml; charset=utf-8")
-	c.Header("Cache-Control", "public, max-age=3600")
+	c.Header("Cache-Control", "no-store")
 	c.String(http.StatusOK, sb.String())
 }
 

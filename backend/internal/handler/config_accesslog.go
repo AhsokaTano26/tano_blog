@@ -125,9 +125,16 @@ func (h *SiteConfigHandler) Update(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
 		return
 	}
-	role, roleErr := h.repo.Get("sync_role")
-	enabled, enabledErr := h.repo.Get("sync_enabled")
-	if roleErr == nil && enabledErr == nil && role == "standby" && enabled == "true" {
+	settings, err := h.repo.GetByKeys([]string{"sync_role", "sync_enabled"})
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "无法确认服务器同步角色，暂时禁止写入"})
+		return
+	}
+	values := make(map[string]string, len(settings))
+	for _, setting := range settings {
+		values[setting.Key] = setting.Value
+	}
+	if values["sync_role"] == "standby" && values["sync_enabled"] == "true" {
 		for key := range input {
 			if !strings.HasPrefix(key, "sync_") {
 				c.JSON(http.StatusServiceUnavailable, gin.H{"error": "备服务器只允许修改同步配置，请在主服务器修改站点设置"})
@@ -135,6 +142,7 @@ func (h *SiteConfigHandler) Update(c *gin.Context) {
 			}
 		}
 	}
+	var encryptedPrivateKey string
 	if privateKey, ok := input["sync_ssh_private_key"]; ok && strings.TrimSpace(privateKey) != "" {
 		if !strings.Contains(privateKey, "-----BEGIN") || !strings.Contains(privateKey, "PRIVATE KEY-----") {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "SSH 私钥格式无效"})
@@ -145,17 +153,7 @@ func (h *SiteConfigHandler) Update(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-		if err := h.repo.Upsert("sync_ssh_private_key_enc", ciphertext, "secret"); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "保存 SSH 私钥失败"})
-			return
-		}
-		utils.LogInfo("sync SSH private key updated", "admin_id", c.GetString("user_id"))
-	}
-	if input["sync_ssh_private_key_clear"] == "true" {
-		if err := h.repo.Delete("sync_ssh_private_key_enc"); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "清除 SSH 私钥失败"})
-			return
-		}
+		encryptedPrivateKey = ciphertext
 	}
 
 	allowedKeys := map[string]bool{
@@ -181,11 +179,40 @@ func (h *SiteConfigHandler) Update(c *gin.Context) {
 		"sync_bandwidth_kbps": true,
 	}
 
-	for key, value := range input {
-		if !allowedKeys[key] {
-			continue
+	if err := h.db.Transaction(func(tx *gorm.DB) error {
+		repo := repository.NewSiteConfigRepo(tx)
+		if encryptedPrivateKey != "" {
+			if err := repo.Upsert("sync_ssh_private_key_enc", encryptedPrivateKey, "secret"); err != nil {
+				return err
+			}
 		}
+		if input["sync_ssh_private_key_clear"] == "true" {
+			if err := repo.Delete("sync_ssh_private_key_enc"); err != nil {
+				return err
+			}
+		}
+		for key, value := range input {
+			if !allowedKeys[key] {
+				continue
+			}
+			if err := repo.Upsert(key, value, "string"); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
+		utils.LogWarn("failed to update config", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "保存配置失败"})
+		return
+	}
 
+	if encryptedPrivateKey != "" {
+		utils.LogInfo("sync SSH private key updated", "admin_id", c.GetString("user_id"))
+	}
+	if input["sync_ssh_private_key_clear"] == "true" {
+		utils.LogInfo("sync SSH private key cleared", "admin_id", c.GetString("user_id"))
+	}
+	for key := range input {
 		// Audit log for injection/sensitive keys
 		if _, ok := map[string]struct{}{"head_injection": {}, "content_head_injection": {}, "footer_injection": {}}[key]; ok {
 			adminID := c.GetString("user_id")
@@ -193,10 +220,6 @@ func (h *SiteConfigHandler) Update(c *gin.Context) {
 				"key", key,
 				"admin_id", adminID,
 			)
-		}
-
-		if err := h.repo.Upsert(key, value, "string"); err != nil {
-			utils.LogWarn("failed to update config", "key", key, "error", err)
 		}
 	}
 

@@ -4,7 +4,7 @@
 ARG VERSION=dev
 ARG BUILD_TIME=unknown
 
-FROM golang:1.26-alpine AS go-builder
+FROM golang:1.26.9-alpine AS go-builder
 ARG VERSION
 ARG BUILD_TIME
 RUN apk add --no-cache gcc musl-dev
@@ -12,7 +12,7 @@ WORKDIR /build
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download
 COPY backend/ ./
-RUN CGO_ENABLED=0 go build -ldflags="-s -w -X tano_blog/backend/internal/version.Version=${VERSION}" -o /build/server ./cmd/server/main.go
+RUN CGO_ENABLED=0 go build -ldflags="-s -w -X tano_blog/backend/internal/version.Version=${VERSION}" -o /build/server ./cmd/server
 
 # ============================================
 # Stage 2: Build Next.js frontend (standalone)
@@ -40,11 +40,11 @@ RUN cp -r .next/standalone/. /build/standalone/ && \
 # ============================================
 # Stage 3: Production image
 # ============================================
-FROM alpine:3.20
+FROM node:22-alpine
 
 # Install runtime dependencies. rsync and the OpenSSH client are required by
 # the optional standby pull replication feature.
-RUN apk add --no-cache nodejs ca-certificates bash tzdata rsync openssh-client
+RUN apk add --no-cache ca-certificates bash tzdata rsync openssh-client
 
 WORKDIR /app
 
@@ -73,3 +73,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
       wget --no-verbose --tries=1 --spider http://localhost:3000/ || exit 1
 
 ENTRYPOINT ["docker-entrypoint.sh"]
+STOPSIGNAL SIGTERM

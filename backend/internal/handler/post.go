@@ -22,7 +22,11 @@ func parsePostTimestamp(value string) (time.Time, error) {
 		return t.UTC(), nil
 	}
 	// Backward compatibility for older admin clients using datetime-local.
-	return time.ParseInLocation("2006-01-02T15:04", value, time.Local)
+	location, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		location = time.FixedZone("Asia/Shanghai", 8*60*60)
+	}
+	return time.ParseInLocation("2006-01-02T15:04", value, location)
 }
 
 func NewPostHandler(repo *repository.PostRepo, jwtSecret string) *PostHandler {
@@ -502,7 +506,7 @@ func (h *PostHandler) AdminList(c *gin.Context) {
 		pageSize = 20
 	}
 
-	posts, total, err := h.repo.AdminList(page, pageSize, status)
+	posts, total, err := h.repo.AdminList(page, pageSize, status, c.Query("search"))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取文章列表失败"})
 		return
@@ -514,256 +518,6 @@ func (h *PostHandler) AdminList(c *gin.Context) {
 		"page":  page,
 		"size":  pageSize,
 	})
-}
-
-// Create creates a new post
-func (h *PostHandler) Create(c *gin.Context) {
-	h = h.withContext(c.Request.Context())
-	var input struct {
-		Title        string   `json:"title" binding:"required"`
-		Slug         string   `json:"slug" binding:"required"`
-		Content      string   `json:"content"`
-		Excerpt      string   `json:"excerpt"`
-		CoverImage   string   `json:"cover_image"`
-		Status       string   `json:"status"`
-		IsTop        bool     `json:"is_top"`
-		AllowComment bool     `json:"allow_comment"`
-		AuthorName   string   `json:"author_name"`
-		CategoryID   string   `json:"category_id"`
-		TagIDs       []string `json:"tag_ids"`
-		ScheduledAt  string   `json:"scheduled_at"`
-		SeriesID     string   `json:"series_id"`
-		Password     string   `json:"password"`
-		PasswordHint string   `json:"password_hint"`
-		CreatedAt    string   `json:"created_at"`
-	}
-	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
-		return
-	}
-
-	editorID, _ := uuid.Parse(c.GetString("user_id"))
-	post := &model.Post{}
-	// Map input to post model
-	post.Title = input.Title
-	post.Slug = input.Slug
-	post.Content = input.Content
-	post.Excerpt = input.Excerpt
-	post.CoverImage = input.CoverImage
-	post.Status = "draft"
-	if input.Status == "published" {
-		post.Status = "published"
-		now := time.Now()
-		post.PublishedAt = &now
-	}
-	// Handle scheduled publish
-	if input.ScheduledAt != "" && post.Status == "draft" {
-		if t, err := time.Parse("2006-01-02T15:04", input.ScheduledAt); err == nil {
-			post.PublishedAt = &t
-		}
-	}
-	post.IsTop = input.IsTop
-	post.AllowComment = true
-	if !input.AllowComment {
-		post.AllowComment = false
-	}
-	// Author is a free-text field
-	post.AuthorName = input.AuthorName
-	// Editor is always the current user
-	post.EditorID = &editorID
-	if input.CategoryID != "" {
-		if cid, err := uuid.Parse(input.CategoryID); err == nil {
-			post.CategoryID = &cid
-		}
-	}
-
-	// Handle password protection
-	if input.Password != "" {
-		if hash, err := utils.HashPassword(input.Password); err == nil {
-			post.PasswordHash = hash
-		}
-		post.PasswordHint = input.PasswordHint
-	}
-
-	post.ID = uuid.New()
-	if input.CreatedAt != "" {
-		if t, err := time.Parse("2006-01-02T15:04", input.CreatedAt); err == nil {
-			post.CreatedAt = t
-		}
-	}
-
-	if err := h.repo.Create(post); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建文章失败"})
-		return
-	}
-
-	// Set tags
-	if len(input.TagIDs) > 0 {
-		var tagIDs []uuid.UUID
-		for _, tid := range input.TagIDs {
-			if id, err := uuid.Parse(tid); err == nil {
-				tagIDs = append(tagIDs, id)
-			}
-		}
-		if len(tagIDs) > 0 {
-			h.repo.SetTags(post.ID, tagIDs)
-		}
-	}
-
-	c.JSON(http.StatusCreated, gin.H{"post": post})
-}
-
-// Update updates a post
-func (h *PostHandler) Update(c *gin.Context) {
-	h = h.withContext(c.Request.Context())
-	id, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
-		return
-	}
-
-	var input struct {
-		Title        string   `json:"title"`
-		Slug         string   `json:"slug"`
-		Content      string   `json:"content"`
-		Excerpt      string   `json:"excerpt"`
-		CoverImage   string   `json:"cover_image"`
-		Status       string   `json:"status"`
-		IsTop        *bool    `json:"is_top"`
-		AllowComment *bool    `json:"allow_comment"`
-		AuthorName   *string  `json:"author_name"`
-		CategoryID   *string  `json:"category_id"`
-		TagIDs       []string `json:"tag_ids"`
-		ScheduledAt  *string  `json:"scheduled_at"`
-		SeriesID     *string  `json:"series_id"`
-		Password     *string  `json:"password"`
-		PasswordHint *string  `json:"password_hint"`
-		CreatedAt    *string  `json:"created_at"`
-	}
-	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
-		return
-	}
-
-	// Save revision before updating
-	if input.Title != "" || input.Content != "" || input.Excerpt != "" {
-		currentPost, err := h.repo.GetByID(id)
-		if err == nil {
-			editorID, _ := uuid.Parse(c.GetString("user_id"))
-			revision := &model.PostRevision{
-				ID:       uuid.New(),
-				PostID:   id,
-				Title:    currentPost.Title,
-				Content:  currentPost.Content,
-				Excerpt:  currentPost.Excerpt,
-				EditorID: &editorID,
-			}
-			h.repo.SaveRevision(revision)
-		}
-	}
-
-	updates := map[string]interface{}{}
-	if input.Title != "" {
-		updates["title"] = input.Title
-	}
-	if input.Slug != "" {
-		updates["slug"] = input.Slug
-	}
-	if input.Content != "" {
-		updates["content"] = input.Content
-	}
-	if input.Excerpt != "" {
-		updates["excerpt"] = input.Excerpt
-	}
-	if input.CoverImage != "" {
-		updates["cover_image"] = input.CoverImage
-	}
-	if input.Status != "" {
-		updates["status"] = input.Status
-		if input.Status == "published" {
-			now := time.Now()
-			updates["published_at"] = now
-		}
-	}
-	if input.ScheduledAt != nil {
-		if *input.ScheduledAt == "" {
-			updates["published_at"] = nil
-		} else if t, err := time.Parse("2006-01-02T15:04", *input.ScheduledAt); err == nil {
-			updates["published_at"] = t
-		}
-	}
-	if input.IsTop != nil {
-		updates["is_top"] = *input.IsTop
-	}
-	if input.AllowComment != nil {
-		updates["allow_comment"] = *input.AllowComment
-	}
-	if input.AuthorName != nil {
-		updates["author_name"] = *input.AuthorName
-	}
-	if input.CategoryID != nil {
-		if *input.CategoryID == "" {
-			updates["category_id"] = nil
-		} else if cid, err := uuid.Parse(*input.CategoryID); err == nil {
-			updates["category_id"] = cid
-		}
-	}
-
-	// Handle password protection
-	if input.Password != nil {
-		if *input.Password == "" {
-			updates["password_hash"] = nil
-			updates["password_hint"] = ""
-		} else if hash, err := utils.HashPassword(*input.Password); err == nil {
-			updates["password_hash"] = hash
-			if input.PasswordHint != nil {
-				updates["password_hint"] = *input.PasswordHint
-			}
-		}
-	} else if input.PasswordHint != nil {
-		updates["password_hint"] = *input.PasswordHint
-	}
-
-	// Set editor to current user
-	editorID, _ := uuid.Parse(c.GetString("user_id"))
-	if editorID != uuid.Nil {
-		updates["editor_id"] = editorID
-	}
-	if input.CreatedAt != nil {
-		if t, err := parsePostTimestamp(*input.CreatedAt); err == nil {
-			updates["created_at"] = t
-		}
-	}
-
-	// Handle tags separately
-	if len(input.TagIDs) > 0 {
-		var tagUUIDs []uuid.UUID
-		for _, tid := range input.TagIDs {
-			if parsed, err := uuid.Parse(tid); err == nil {
-				tagUUIDs = append(tagUUIDs, parsed)
-			}
-		}
-		if len(tagUUIDs) > 0 {
-			h.repo.SetTags(id, tagUUIDs)
-		}
-	}
-
-	// Handle series (independent of tags)
-	if input.SeriesID != nil {
-		if *input.SeriesID == "" {
-			h.repo.ClearSeries(id)
-		} else if sid, err := uuid.Parse(*input.SeriesID); err == nil {
-			h.repo.SetSeries(id, sid)
-		}
-	}
-
-	if err := h.repo.Update(id, updates); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "更新文章失败"})
-		return
-	}
-
-	post, _ := h.repo.GetByID(id)
-	c.JSON(http.StatusOK, gin.H{"post": post})
 }
 
 // Delete deletes a post
@@ -836,11 +590,7 @@ func (h *PostHandler) UpdateStatus(c *gin.Context) {
 		return
 	}
 
-	updates := map[string]interface{}{"status": input.Status}
-	if input.Status == "published" {
-		now := time.Now()
-		updates["published_at"] = now
-	}
+	updates := repository.PostStatusUpdates(input.Status, time.Now())
 
 	if err := h.repo.Update(id, updates); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "更新状态失败"})
@@ -877,11 +627,7 @@ func (h *PostHandler) BatchUpdateStatus(c *gin.Context) {
 		ids = append(ids, id)
 	}
 
-	updates := map[string]interface{}{"status": input.Status}
-	if input.Status == "published" {
-		now := time.Now()
-		updates["published_at"] = now
-	}
+	updates := repository.PostStatusUpdates(input.Status, time.Now())
 
 	if err := h.repo.BatchUpdate(ids, updates); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "批量更新失败"})
