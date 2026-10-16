@@ -1,10 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { api } from '@/lib/api';
 import { ImageWithFallback } from '@/components/ImageWithFallback';
 import { ImageLightbox } from '@/components/ImageLightbox';
 import { Loading } from '@/components/Loading';
+import { LoadMore } from '@/components/LoadMore';
+import { usePagedItems } from '@/lib/use-paged-items';
+import { mergeById } from '@/lib/pagination';
 
 interface GalleryImage {
   id: string;
@@ -16,18 +19,14 @@ interface GalleryImage {
   height: number;
 }
 
+const fetchImages = (params: Record<string, string>) => api.getGalleryImages(params);
+
 export default function GalleryPage() {
-  const [images, setImages] = useState<GalleryImage[]>([]);
-  const [loading, setLoading] = useState(true);
+  const pagination = usePagedItems<GalleryImage>(fetchImages, 48, mergeById);
+  const { items: images, total, initialLoading } = pagination;
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
-  useEffect(() => {
-    api.getGalleryImages().then(res => {
-      setImages(res.items || []);
-    }).catch(() => {}).finally(() => setLoading(false));
-  }, []);
-
-  if (loading) return <Loading />;
+  if (initialLoading) return <Loading />;
 
   return (
     <main className="page-transition min-h-screen pt-20 pb-12 px-4">
@@ -36,7 +35,7 @@ export default function GalleryPage() {
         <div className="text-center mb-10 animate-fade-in-up">
           <h1 className="text-3xl font-bold mb-2" style={{ color: 'var(--text-primary)' }}>图片馆</h1>
           <p className="text-sm" style={{ color: 'var(--text-info)' }}>
-            共 {images.length} 张图片
+            共 {total} 张图片
           </p>
         </div>
 
@@ -75,6 +74,7 @@ export default function GalleryPage() {
             })}
           </div>
         )}
+        <LoadMore {...pagination} />
       </div>
 
       {/* 灯箱 */}

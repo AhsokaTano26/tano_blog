@@ -79,16 +79,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   useEffect(() => {
     if (!user) return;
-    Promise.all([
-      api.admin.comments.list({ page: '1', page_size: '1', status: 'pending' }).catch(() => ({ total: 0 })),
-      api.admin.links.list().catch(() => ({ items: [] })),
-    ]).then(([commentsRes, linksRes]) => {
-      const pendingLinks = linksRes?.items?.filter((i: any) => i.status === 'pending').length || 0;
-      setPendingCounts({
-        comments: commentsRes?.total || 0,
-        links: pendingLinks,
-      });
-    });
+    api.admin.summary().then(summary => {
+      setPendingCounts({ comments: summary.pending_comments, links: summary.pending_links });
+    }).catch(() => {});
   }, [user]);
 
   useEffect(() => {

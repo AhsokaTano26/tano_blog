@@ -5,6 +5,8 @@ import { api } from '@/lib/api';
 import { useMobile } from '@/lib/useMobile';
 import { Play, Pause, SkipForward, SkipBack, Volume2, VolumeX, ListMusic, Music, ChevronLeft } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { MusicSpectrum, MUSIC_BAR_COUNT } from '@/components/music/MusicSpectrum';
+import { useMusicMotion } from '@/components/music/useMusicMotion';
 
 interface Track {
   title: string;
@@ -27,25 +29,9 @@ interface MusicPageConfig {
   playlists: Playlist[];
 }
 
-const barCount = 128;
-const barHues = Array.from({ length: barCount }).map((_, i) => i * 2.8);
-
-// Logarithmic mapping: 1024 linear FFT bins → 128 visual bars
-function buildLogBinMap(bins: number, bars: number): { start: number; end: number }[] {
-  const map: { start: number; end: number }[] = [];
-  const logMin = Math.log(1);
-  const logMax = Math.log(bins);
-  for (let b = 0; b < bars; b++) {
-    const t = b / bars;
-    const logPos = logMin + t * (logMax - logMin);
-    const center = Math.round(Math.exp(logPos) - 1);
-    const prev = b > 0 ? map[b - 1].end + 1 : 0;
-    const next = b < bars - 1 ? Math.round(Math.exp(logMin + (t + 1 / bars) * (logMax - logMin)) - 1) : bins;
-    map.push({ start: prev, end: Math.max(prev, Math.min(next, bins) - 1) });
-  }
-  return map;
-}
-const logBinMap = buildLogBinMap(1024, barCount);
+const barCount = MUSIC_BAR_COUNT;
+const bgHue = 'var(--music-hue, 225)';
+const hueOffset = (offset: number) => `calc(var(--music-hue, 225) + ${offset})`;
 
 export default function MusicPage() {
   const router = useRouter();
@@ -69,16 +55,16 @@ export default function MusicPage() {
   const [showPlaylistSelector, setShowPlaylistSelector] = useState(false);
   const [currentPlaylistIndex, setCurrentPlaylistIndex] = useState(0);
   const isMobile = useMobile();
-  const [bgHue, setBgHue] = useState(225);
+  const motionEnabled = useMusicMotion();
+  const musicRootRef = useRef<HTMLDivElement>(null);
+  const [playlistPage, setPlaylistPage] = useState(0);
   const [trackTransition, setTrackTransition] = useState(false);
   const prevIndexRef = useRef(currentIndex);
-  const [freqData, setFreqData] = useState<Uint8Array>(new Uint8Array(barCount));
-  const animFrameRef = useRef(0);
+  const [freqData] = useState(() => new Uint8Array(barCount));
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const sourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
-  const smoothedRef = useRef(new Float32Array(barCount).fill(0));
 
   const audioRef = useRef<HTMLAudioElement>(null);
 
@@ -88,13 +74,11 @@ export default function MusicPage() {
 
   // Particle system refs (no re-renders)
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const bgHueRef = useRef(bgHue);
+  const bgHueRef = useRef(225);
   const freqDataRef = useRef(freqData);
   const playingRef = useRef(playing);
 
   // Keep animation refs in sync with state
-  useEffect(() => { bgHueRef.current = bgHue; }, [bgHue]);
-  useEffect(() => { freqDataRef.current = freqData; }, [freqData]);
   useEffect(() => { playingRef.current = playing; }, [playing]);
 
   // Transition refs for particle entrance/exit
@@ -118,22 +102,26 @@ export default function MusicPage() {
   }, [currentIndex]);
 
   // Load config
-  function loadConfig(cb?: () => void) {
-    api.getPublicConfig().then(res => {
-      // Check password protection (first load only)
-      if (passwordGate === null) {
-        if (!!(res.config?.music_password_protected)) {
-          setPasswordGate(true);
-          setLoading(false);
-          return;
-        }
-        setPasswordGate(false);
+  const loadConfig = useCallback(() => {
+    return api.getMusicConfig().then(res => {
+      // Authorized responses include the playlists; a locked response carries
+      // only the protection flag, without exposing music URLs.
+      if (res.config?.music_password_protected && !res.config.music_page_config && !res.config.music_playlist) {
+        setPasswordGate(true);
+        return;
       }
+      setPasswordGate(false);
       try {
         const cfg = JSON.parse(res.config?.music_page_config || '{}');
         if (!cfg.playlists && Array.isArray(cfg.playlist)) {
           cfg.playlists = cfg.playlist.length > 0
             ? [{ id: 'default', name: '默认播放列表', tracks: cfg.playlist }]
+            : [];
+        }
+        if (!cfg.playlists && res.config?.music_playlist) {
+          const legacyTracks = JSON.parse(res.config.music_playlist);
+          cfg.playlists = Array.isArray(legacyTracks) && legacyTracks.length > 0
+            ? [{ id: 'default', name: '默认播放列表', tracks: legacyTracks }]
             : [];
         }
         setConfig({
@@ -149,9 +137,8 @@ export default function MusicPage() {
       setConfig({ title: '音乐馆', subtitle: '', background: '', playlists: [] });
     }).finally(() => {
       setLoading(false);
-      cb?.();
     });
-  }
+  }, []);
 
   async function handleVerifyPassword(password: string) {
     setPasswordError('');
@@ -160,16 +147,16 @@ export default function MusicPage() {
       await api.verifyMusicPassword(password);
       setPasswordGate(false);
       setLoading(true);
-      loadConfig();
-    } catch (e: any) {
-      setPasswordError(typeof e === 'string' ? e : e?.message || '密码错误');
+      await loadConfig();
+    } catch (error) {
+      setPasswordError(error instanceof Error ? error.message : typeof error === 'string' ? error : '密码错误');
     }
     setPasswordVerifying(false);
   }
 
   useEffect(() => {
     loadConfig();
-  }, []);
+  }, [loadConfig]);
 
   // Splash screen timing — wait for config then show splash for 2s
   useEffect(() => {
@@ -181,7 +168,11 @@ export default function MusicPage() {
 
   // Setup Web Audio API analyser (once, on first user interaction)
   const setupAnalyser = useCallback(() => {
-    if (analyserRef.current || !audioRef.current) return;
+    if (!audioRef.current) return;
+    if (analyserRef.current) {
+      void audioContextRef.current?.resume().catch(() => {});
+      return;
+    }
     try {
       const ctx = new AudioContext();
       audioContextRef.current = ctx;
@@ -197,67 +188,40 @@ export default function MusicPage() {
       analyser.connect(gainNode);
       gainNode.connect(ctx.destination);
       sourceNodeRef.current = source;
-    } catch (e) {
+      audioRef.current.volume = 1;
+      void ctx.resume().catch(() => {});
+    } catch {
       // AudioContext unavailable (e.g. already connected, or not supported)
     }
-  }, []);
-
-  // Read frequency data from analyser when playing
-  useEffect(() => {
-    if (!playing || !analyserRef.current) return;
-
-    audioContextRef.current?.resume();
-
-    const update = () => {
-      if (!analyserRef.current) return;
-      const buf = new Uint8Array(analyserRef.current.frequencyBinCount);
-      analyserRef.current.getByteFrequencyData(buf);
-      // Map 1024 linear FFT bins → 128 logarithmic bars
-      const mapped = new Uint8Array(barCount);
-      const smoothed = smoothedRef.current;
-      for (let i = 0; i < barCount; i++) {
-        const { start, end } = logBinMap[i];
-        let sum = 0;
-        for (let j = start; j <= end; j++) sum += buf[j];
-        const avg = sum / (end - start + 1);
-        // One-pole EMA: attack ~0.35, release decays at same rate
-        smoothed[i] = smoothed[i] * 0.65 + avg * 0.35;
-        mapped[i] = Math.round(smoothed[i]);
-      }
-      setFreqData(mapped);
-      animFrameRef.current = requestAnimationFrame(update);
-    };
-    animFrameRef.current = requestAnimationFrame(update);
-
-    return () => cancelAnimationFrame(animFrameRef.current);
-  }, [playing]);
+  }, [volume]);
 
   // Cleanup AudioContext on unmount
   useEffect(() => {
     return () => {
-      cancelAnimationFrame(animFrameRef.current);
       audioContextRef.current?.close();
     };
   }, []);
 
-  // Animated background hue shift
+  // Animate color locally; changing a CSS variable avoids rerendering the
+  // controls, playlist and album art twenty times per second.
   useEffect(() => {
-    if (!loading) {
-      const interval = setInterval(() => {
-        setBgHue(h => (h + 0.3) % 360);
-      }, 50);
-      return () => clearInterval(interval);
-    }
-  }, [loading]);
+    if (loading || !playing || !motionEnabled) return;
+    const interval = setInterval(() => {
+      bgHueRef.current = (bgHueRef.current + 0.3) % 360;
+      musicRootRef.current?.style.setProperty('--music-hue', String(bgHueRef.current));
+    }, 50);
+    return () => clearInterval(interval);
+  }, [loading, playing, motionEnabled]);
 
   // Particle canvas animation with entrance burst & exit explosion
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas || !showParticles || !motionEnabled) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    let animId: number;
+    let animId: number | null = null;
+    let redraw: (() => void) | null = null;
     let w = window.innerWidth, h = window.innerHeight;
     const cx = () => w / 2;
     const cy = () => h / 2;
@@ -284,6 +248,7 @@ export default function MusicPage() {
         window.removeEventListener('mouseleave', onLeave);
         mouse.x = -9999; mouse.y = -9999;
       }
+      if (!playing && !exiting) redraw?.();
     };
     window.addEventListener('resize', resize);
     resize();
@@ -308,8 +273,8 @@ export default function MusicPage() {
       const angle = Math.random() * Math.PI * 2;
       const radius = Math.random() * maxRadius;
       particles.push({
-        x: cx() + Math.cos(angle) * radius,
-        y: cy() + Math.sin(angle) * radius,
+        x: splashDone && !playing ? homeX : cx() + Math.cos(angle) * radius,
+        y: splashDone && !playing ? homeY : cy() + Math.sin(angle) * radius,
         size: Math.random() * 2.5 + 1.5,
         baseSize: 0,
         homeX, homeY,
@@ -327,7 +292,7 @@ export default function MusicPage() {
     for (const p of particles) p.baseSize = p.size;
 
     let time = 0;
-    let prevSplashDone = false;
+    let prevSplashDone = splashDone && !playing;
     let burstStart = -1;
     let exitStart = -1;
     let prevAvgFreq = 0;
@@ -341,17 +306,21 @@ export default function MusicPage() {
 
       const freqs = freqDataRef.current;
       const isPlaying = playingRef.current;
-      const avgFreq = isPlaying
-        ? Array.from(freqs).reduce((a, b) => a + b, 0) / freqs.length / 255
-        : 0;
+      let sum = 0;
+      let bass = 0;
+      let treble = 0;
+      if (isPlaying) {
+        for (let i = 0; i < freqs.length; i++) {
+          const value = freqs[i] / 255;
+          sum += value;
+          if (i < 6) bass = Math.max(bass, value);
+          if (i >= 16) treble = Math.max(treble, value);
+        }
+      }
+      const avgFreq = sum / freqs.length;
       const pulse = 1 + avgFreq * 0.5;
-      // Frequency bands: bass (0-5), mid (6-15), treble (16+)
-      const bass = isPlaying
-        ? Array.from(freqs.slice(0, 6)).reduce((a, b) => Math.max(a, b / 255), 0)
-        : 0;
-      const treble = isPlaying
-        ? Array.from(freqs.slice(16)).reduce((a, b) => Math.max(a, b / 255), 0)
-        : 0;
+      const onset = Math.max(0, avgFreq - prevAvgFreq) * 6;
+      prevAvgFreq = avgFreq;
       time += 1;
 
       // ─── Detect state transitions ───
@@ -404,7 +373,7 @@ export default function MusicPage() {
           const dx = p.x - mouse.x;
           const dy = p.y - mouse.y;
           const dist = Math.sqrt(dx * dx + dy * dy);
-          if (dist < 120) {
+          if (dist > 0 && dist < 120) {
             const force = (120 - dist) / 120 * 1.2;
             p.x += (dx / dist) * force;
             p.y += (dy / dist) * force;
@@ -426,8 +395,6 @@ export default function MusicPage() {
           p.y += p.speedY * speedMul;
           // Bass vibration — low frequencies shake particles in place
           // Rhythm onset — sudden energy spike across all frequencies
-          const onset = isPlaying ? Math.max(0, avgFreq - prevAvgFreq) * 6 : 0;
-          prevAvgFreq = avgFreq;
           const bassShake = (bass + onset) * 4;
           p.x += Math.sin(time * 0.15 + p.noiseOffset) * bassShake;
           p.y += Math.cos(time * 0.15 + p.noiseOffset * 1.3) * bassShake;
@@ -470,17 +437,18 @@ export default function MusicPage() {
         ctx!.fill();
       }
 
-      animId = requestAnimationFrame(animate);
+      if (playing || exiting) animId = requestAnimationFrame(animate);
     };
+    redraw = animate;
     animate();
 
     return () => {
-      cancelAnimationFrame(animId);
+      if (animId !== null) cancelAnimationFrame(animId);
       window.removeEventListener('resize', resize);
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseleave', onLeave);
     };
-  }, []);
+  }, [playing, exiting, splashDone, motionEnabled, showParticles, isMobile]);
 
   // Sync audio src when track changes
   useEffect(() => {
@@ -499,7 +467,7 @@ export default function MusicPage() {
       audioRef.current.play().catch(() => setPlaying(false));
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentIndex, currentTrack?.url]);
+  }, [currentIndex, currentTrack?.url, playing, splashDone]);
 
   useEffect(() => {
     if (gainNodeRef.current) {
@@ -528,15 +496,17 @@ export default function MusicPage() {
 
   const next = useCallback(() => {
     if (!currentTracks.length) return;
+    setupAnalyser();
     setCurrentIndex(i => (i + 1) % currentTracks.length);
     setPlaying(true);
-  }, [currentTracks.length]);
+  }, [currentTracks.length, setupAnalyser]);
 
   const prev = useCallback(() => {
     if (!currentTracks.length) return;
+    setupAnalyser();
     setCurrentIndex(i => (i - 1 + currentTracks.length) % currentTracks.length);
     setPlaying(true);
-  }, [currentTracks.length]);
+  }, [currentTracks.length, setupAnalyser]);
 
   const startSeek = useCallback((e: React.MouseEvent) => {
     if (!audioRef.current || !duration) return;
@@ -590,10 +560,10 @@ export default function MusicPage() {
         backgroundImage: `
           linear-gradient(135deg,
             hsla(${bgHue}, 60%, 8%, 0.75) 0%,
-            hsla(${(bgHue + 30) % 360}, 50%, 12%, 0.70) 25%,
-            hsla(${(bgHue + 60) % 360}, 40%, 10%, 0.75) 50%,
-            hsla(${(bgHue + 90) % 360}, 50%, 14%, 0.70) 75%,
-            hsla(${(bgHue + 120) % 360}, 60%, 8%, 0.75) 100%
+            hsla(${hueOffset(30)}, 50%, 12%, 0.70) 25%,
+            hsla(${hueOffset(60)}, 40%, 10%, 0.75) 50%,
+            hsla(${hueOffset(90)}, 50%, 14%, 0.70) 75%,
+            hsla(${hueOffset(120)}, 60%, 8%, 0.75) 100%
           ),
           url(${JSON.stringify(bgImageUrl)})
         `,
@@ -604,10 +574,10 @@ export default function MusicPage() {
         backgroundImage: `
           linear-gradient(135deg,
             hsl(${bgHue}, 60%, 8%) 0%,
-            hsl(${(bgHue + 30) % 360}, 50%, 12%) 25%,
-            hsl(${(bgHue + 60) % 360}, 40%, 10%) 50%,
-            hsl(${(bgHue + 90) % 360}, 50%, 14%) 75%,
-            hsl(${(bgHue + 120) % 360}, 60%, 8%) 100%
+            hsl(${hueOffset(30)}, 50%, 12%) 25%,
+            hsl(${hueOffset(60)}, 40%, 10%) 50%,
+            hsl(${hueOffset(90)}, 50%, 14%) 75%,
+            hsl(${hueOffset(120)}, 60%, 8%) 100%
           )
         `,
       };
@@ -622,7 +592,7 @@ export default function MusicPage() {
         backgroundImage: `
           linear-gradient(135deg,
             hsla(${bgHue}, 60%, 5%, 0.65) 0%,
-            hsla(${(bgHue + 30) % 360}, 50%, 8%, 0.60) 100%
+            hsla(${hueOffset(30)}, 50%, 8%, 0.60) 100%
           ),
           url(${JSON.stringify(bgUrl)})
         `,
@@ -632,12 +602,21 @@ export default function MusicPage() {
     : { background: `hsla(${bgHue}, 60%, 5%, 0.7)` };
 
   return (
-    <div className="min-h-screen flex flex-col overflow-hidden"
+    <div ref={musicRootRef} data-music-motion={motionEnabled && playing ? "true" : "false"} className="min-h-screen flex flex-col overflow-hidden"
       style={{ ...bgStyle, color: 'var(--text-primary)' }}>
+      <style>{`
+        [data-music-motion="false"] .cd-spinning,
+        [data-music-motion="false"] .animate-pulse { animation-play-state: paused !important; }
+        @media (prefers-reduced-motion: reduce) {
+          [data-music-motion] *, [data-music-motion] *::before, [data-music-motion] *::after {
+            animation: none !important; transition-duration: 0s !important;
+          }
+        }
+      `}</style>
       {/* Particle canvas background */}
       <canvas ref={canvasRef}
         className="fixed inset-0 w-full h-full pointer-events-none transition-opacity duration-500"
-        style={{ zIndex: 199, opacity: showParticles ? 1 : 0 }} />
+        style={{ zIndex: 199, opacity: showParticles && motionEnabled ? 1 : 0 }} />
 
       {/* ─── Password Gate ─── */}
       {passwordGate && (
@@ -686,7 +665,7 @@ export default function MusicPage() {
                 disabled={passwordVerifying}
                 className="w-full px-4 py-3 rounded-xl text-sm font-medium text-white transition-all disabled:opacity-50"
                 style={{
-                  background: `linear-gradient(135deg, hsl(${bgHue}, 80%, 60%), hsl(${(bgHue + 60) % 360}, 80%, 60%))`,
+                  background: `linear-gradient(135deg, hsl(${bgHue}, 80%, 60%), hsl(${hueOffset(60)}, 80%, 60%))`,
                   boxShadow: `0 0 20px hsl(${bgHue}, 80%, 60%, 0.3)`,
                 }}>
                 {passwordVerifying ? '验证中...' : '进入音乐馆'}
@@ -707,7 +686,7 @@ export default function MusicPage() {
                 style={{
                   width: `${120 + i * 80}px`,
                   height: `${120 + i * 80}px`,
-                  border: `1px solid hsla(${(bgHue + i * 30) % 360}, 80%, 60%, ${0.3 - i * 0.06})`,
+                  border: `1px solid hsla(${hueOffset(i * 30)}, 80%, 60%, ${0.3 - i * 0.06})`,
                   animationDelay: `${i * 0.4}s`,
                   animationDuration: '3s',
                   opacity: 0,
@@ -720,7 +699,7 @@ export default function MusicPage() {
             <div className="w-40 h-40 rounded-full animate-spin-slow"
               style={{
                 background: `linear-gradient(135deg, #1a1a2e, #16213e)`,
-                boxShadow: `0 0 80px hsl(${bgHue}, 70%, 50%, 0.3), 0 0 160px hsl(${(bgHue + 60) % 360}, 70%, 50%, 0.15)`,
+                boxShadow: `0 0 80px hsl(${bgHue}, 70%, 50%, 0.3), 0 0 160px hsl(${hueOffset(60)}, 70%, 50%, 0.15)`,
               }}>
               <div className="w-full h-full rounded-full flex items-center justify-center relative"
                 style={{
@@ -728,9 +707,9 @@ export default function MusicPage() {
                     radial-gradient(circle at center,
                       transparent 38%,
                       hsla(${bgHue}, 70%, 50%, 0.15) 38.5%, transparent 39%,
-                      hsla(${(bgHue + 60) % 360}, 60%, 50%, 0.1) 45%, transparent 45.5%,
-                      hsla(${(bgHue + 30) % 360}, 70%, 50%, 0.12) 52%, transparent 52.5%,
-                      hsla(${(bgHue + 90) % 360}, 60%, 50%, 0.08) 60%, transparent 60.5%
+                      hsla(${hueOffset(60)}, 60%, 50%, 0.1) 45%, transparent 45.5%,
+                      hsla(${hueOffset(30)}, 70%, 50%, 0.12) 52%, transparent 52.5%,
+                      hsla(${hueOffset(90)}, 60%, 50%, 0.08) 60%, transparent 60.5%
                     )
                   `,
                 }}>
@@ -767,7 +746,7 @@ export default function MusicPage() {
                 style={{
                   width: `${200 - i * 40}px`,
                   height: `${200 - i * 40}px`,
-                  border: `1px solid hsla(${(bgHue + i * 30) % 360}, 80%, 60%, ${0.2 - i * 0.04})`,
+                  border: `1px solid hsla(${hueOffset(i * 30)}, 80%, 60%, ${0.2 - i * 0.04})`,
                   animation: 'ping 1s ease-out infinite',
                   animationDelay: `${i * 0.15}s`,
                 }} />
@@ -779,7 +758,7 @@ export default function MusicPage() {
             <div className="w-32 h-32 rounded-full animate-spin-slow"
               style={{
                 background: `linear-gradient(135deg, #1a1a2e, #16213e)`,
-                boxShadow: `0 0 60px hsl(${bgHue}, 70%, 50%, 0.25), 0 0 120px hsl(${(bgHue + 60) % 360}, 70%, 50%, 0.1)`,
+                boxShadow: `0 0 60px hsl(${bgHue}, 70%, 50%, 0.25), 0 0 120px hsl(${hueOffset(60)}, 70%, 50%, 0.1)`,
                 animationDuration: '3s',
               }}>
               <div className="w-full h-full rounded-full flex items-center justify-center relative"
@@ -788,8 +767,8 @@ export default function MusicPage() {
                     radial-gradient(circle at center,
                       transparent 38%,
                       hsla(${bgHue}, 70%, 50%, 0.12) 38.5%, transparent 39%,
-                      hsla(${(bgHue + 60) % 360}, 60%, 50%, 0.08) 45%, transparent 45.5%,
-                      hsla(${(bgHue + 30) % 360}, 70%, 50%, 0.1) 52%, transparent 52.5%
+                      hsla(${hueOffset(60)}, 60%, 50%, 0.08) 45%, transparent 45.5%,
+                      hsla(${hueOffset(30)}, 70%, 50%, 0.1) 52%, transparent 52.5%
                     )
                   `,
                 }}>
@@ -884,7 +863,7 @@ export default function MusicPage() {
               }}
             />
             <div className="absolute -inset-4 rounded-full opacity-20 blur-xl"
-              style={{ background: `radial-gradient(circle, hsl(${(bgHue + 60) % 360}, 70%, 60%) 0%, transparent 60%)` }}
+              style={{ background: `radial-gradient(circle, hsl(${hueOffset(60)}, 70%, 60%) 0%, transparent 60%)` }}
             />
 
             <div className={`relative w-56 h-56 sm:w-72 sm:h-72 rounded-full shadow-2xl ${playing ? 'cd-spinning' : 'cd-spinning cd-paused'} ${trackTransition ? 'track-changing' : ''}`}
@@ -914,7 +893,7 @@ export default function MusicPage() {
               ) : (
                 <div className="w-full h-full rounded-full flex items-center justify-center"
                   style={{
-                    background: `linear-gradient(135deg, hsl(${bgHue}, 50%, 20%), hsl(${(bgHue + 60) % 360}, 40%, 15%))`,
+                    background: `linear-gradient(135deg, hsl(${bgHue}, 50%, 20%), hsl(${hueOffset(60)}, 40%, 15%))`,
                     clipPath: 'circle(42% at center)',
                   }}>
                   <Music className="w-16 h-16 opacity-30" style={{ color: '#fff' }} />
@@ -957,7 +936,7 @@ export default function MusicPage() {
                 className="h-full rounded-full absolute left-0 top-0 transition-all duration-200"
                 style={{
                   width: duration > 0 ? `${(currentTime / duration) * 100}%` : '0%',
-                  background: `linear-gradient(90deg, hsl(${bgHue}, 80%, 65%), hsl(${(bgHue + 60) % 360}, 80%, 65%))`,
+                  background: `linear-gradient(90deg, hsl(${bgHue}, 80%, 65%), hsl(${hueOffset(60)}, 80%, 65%))`,
                   boxShadow: `0 0 12px hsl(${bgHue}, 80%, 65%, 0.5)`,
                 }}
               />
@@ -984,7 +963,7 @@ export default function MusicPage() {
             <button onClick={togglePlay}
               className="w-14 h-14 rounded-full flex items-center justify-center transition-all hover:scale-110 active:scale-95 shadow-xl"
               style={{
-                background: `linear-gradient(135deg, hsl(${bgHue}, 80%, 60%), hsl(${(bgHue + 60) % 360}, 80%, 60%))`,
+                background: `linear-gradient(135deg, hsl(${bgHue}, 80%, 60%), hsl(${hueOffset(60)}, 80%, 60%))`,
                 color: '#fff',
                 boxShadow: `0 0 30px hsl(${bgHue}, 80%, 60%, 0.4)`,
               }}>
@@ -1018,27 +997,12 @@ export default function MusicPage() {
             {showParticles ? '粒子已开启' : '粒子已关闭'}
           </button>
 
-          {/* Frequency visualizer bars — log-mapped, EMA-smoothed, compression applied */}
-          <div className={`flex items-end h-14 w-full max-w-[300px] ${isMobile ? 'gap-0' : 'gap-px'}`}>
-            {Array.from({ length: barCount }).map((_, i) => {
-              // Dynamic range compression: ^0.6 brings up quiet signals without clipping peaks
-              const val = Math.pow(freqData[i] / 255, 0.6);
-              const height = playing ? Math.max(3, val * (isMobile ? 80 : 60)) : 3;
-              return (
-                <div key={i} className="flex-1 rounded-full"
-                  style={{
-                    height: `${height}px`,
-                    background: `hsl(${(bgHue + barHues[i]) % 360}, 90%, 70%)`,
-                    opacity: playing ? 0.7 + val * 0.3 : 0.2,
-                    boxShadow: playing ? `0 0 4px hsl(${(bgHue + barHues[i]) % 360}, 90%, 70%)` : 'none',
-                  }} />
-              );
-            })}
-          </div>
+          <MusicSpectrum analyserRef={analyserRef} frequenciesRef={freqDataRef}
+            active={playing && motionEnabled} mobile={isMobile} />
           </div>
 
         {/* Right: Playlist */}
-        <div className={`${showPlaylist ? 'flex' : 'hidden'} md:flex flex-col w-full max-w-sm md:max-w-xs lg:max-w-sm transition-all`}>
+        {(!isMobile || showPlaylist) && <div className={`${showPlaylist ? 'flex' : 'hidden'} md:flex flex-col w-full max-w-sm md:max-w-xs lg:max-w-sm transition-all`}>
           {/* Playlist dropdown */}
           <div className="flex items-center gap-2 mb-3 px-1">
             <ListMusic className="w-4 h-4 text-white/50 flex-shrink-0" />
@@ -1064,11 +1028,12 @@ export default function MusicPage() {
                           setShowPlaylistSelector(false);
                           if (pi === currentPlaylistIndex) return;
                           setCurrentPlaylistIndex(pi);
+                          setPlaylistPage(0);
                           setCurrentIndex(0);
                           setPlaying(false);
                           if (audioRef.current) {
                             audioRef.current.pause();
-                            audioRef.current.src = '';
+                            audioRef.current.currentTime = 0;
                           }
                         }}
                           className="w-full px-3 py-2 text-xs text-left transition-colors hover:bg-white/5 flex items-center justify-between"
@@ -1091,7 +1056,9 @@ export default function MusicPage() {
             <span className="text-xs text-white/30">{currentTracks.length} 首</span>
           </div>
           <div className="flex-1 overflow-y-auto space-y-1 max-h-[50vh] md:max-h-[60vh] pr-1 music-scrollbar">
-            {currentTracks.map((track, i) => (
+            {currentTracks.slice(playlistPage * 50, (playlistPage + 1) * 50).map((track, offset) => {
+              const i = playlistPage * 50 + offset;
+              return (
               <button key={i} onClick={() => playTrack(i)}
                 className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm transition-all group"
                 style={{
@@ -1100,7 +1067,7 @@ export default function MusicPage() {
                   border: i === currentIndex ? '1px solid rgba(255,255,255,0.08)' : '1px solid transparent',
                 }}>
                 {track.cover ? (
-                  <img src={track.cover} alt=""
+                  <img src={track.cover} alt="" loading="lazy" decoding="async" width={40} height={40}
                     className="w-10 h-10 rounded-lg object-cover flex-shrink-0" />
                 ) : (
                   <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 bg-white/5">
@@ -1124,12 +1091,16 @@ export default function MusicPage() {
                   <Play className="w-4 h-4 flex-shrink-0 text-white/30 opacity-0 group-hover:opacity-100 transition-opacity" />
                 )}
               </button>
-            ))}
+            ); })}
           </div>
-        </div>
-
-
-
+          {currentTracks.length > 50 && (
+            <div className="flex items-center justify-between gap-2 px-4 py-3 text-xs text-white/60">
+              <button disabled={playlistPage === 0} onClick={() => setPlaylistPage(page => page - 1)} className="disabled:opacity-30">上一页</button>
+              <span>{playlistPage + 1} / {Math.ceil(currentTracks.length / 50)}</span>
+              <button disabled={(playlistPage + 1) * 50 >= currentTracks.length} onClick={() => setPlaylistPage(page => page + 1)} className="disabled:opacity-30">下一页</button>
+            </div>
+          )}
+        </div>}
       </div>
 
         {/* Audio element */}

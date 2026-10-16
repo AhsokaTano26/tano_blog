@@ -39,6 +39,7 @@ func (h *PostHandler) hasPostAccess(c *gin.Context, post *model.Post) bool {
 
 // ListPublic returns published posts with pagination
 func (h *PostHandler) ListPublic(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
 	category := c.Query("category")
@@ -60,33 +61,35 @@ func (h *PostHandler) ListPublic(c *gin.Context) {
 
 	// Map posts to a simpler response format
 	type PostItem struct {
-		ID           uuid.UUID                `json:"id"`
-		Title        string                   `json:"title"`
-		Slug         string                   `json:"slug"`
-		Excerpt      string                   `json:"excerpt"`
-		CoverImage   string                   `json:"cover_image"`
-		ViewCount    int64                    `json:"view_count"`
-		CommentCount int64                    `json:"comment_count"`
-		PublishedAt  *string                  `json:"published_at"`
-		CreatedAt    string                   `json:"created_at"`
-		AuthorName   string                   `json:"author_name"`
-		Author       map[string]interface{}   `json:"author,omitempty"`
-		Category     map[string]interface{}   `json:"category,omitempty"`
-		Tags         []map[string]interface{} `json:"tags,omitempty"`
-		Series       []map[string]interface{} `json:"series,omitempty"`
+		ID                uuid.UUID                `json:"id"`
+		Title             string                   `json:"title"`
+		Slug              string                   `json:"slug"`
+		Excerpt           string                   `json:"excerpt"`
+		CoverImage        string                   `json:"cover_image"`
+		CoverThumbnailURL string                   `json:"cover_thumbnail_url,omitempty"`
+		ViewCount         int64                    `json:"view_count"`
+		CommentCount      int64                    `json:"comment_count"`
+		PublishedAt       *string                  `json:"published_at"`
+		CreatedAt         string                   `json:"created_at"`
+		AuthorName        string                   `json:"author_name"`
+		Author            map[string]interface{}   `json:"author,omitempty"`
+		Category          map[string]interface{}   `json:"category,omitempty"`
+		Tags              []map[string]interface{} `json:"tags,omitempty"`
+		Series            []map[string]interface{} `json:"series,omitempty"`
 	}
 
 	items := make([]PostItem, 0, len(posts))
 	for _, p := range posts {
 		item := PostItem{
-			ID:           p.ID,
-			Title:        p.Title,
-			Slug:         p.Slug,
-			Excerpt:      p.Excerpt,
-			CoverImage:   p.CoverImage,
-			ViewCount:    p.ViewCount,
-			CommentCount: p.CommentCount,
-			AuthorName:   p.AuthorName,
+			ID:                p.ID,
+			Title:             p.Title,
+			Slug:              p.Slug,
+			Excerpt:           p.Excerpt,
+			CoverImage:        p.CoverImage,
+			CoverThumbnailURL: p.CoverThumbnailURL,
+			ViewCount:         p.ViewCount,
+			CommentCount:      p.CommentCount,
+			AuthorName:        p.AuthorName,
 		}
 		item.CreatedAt = p.CreatedAt.UTC().Format(time.RFC3339)
 		if p.PublishedAt != nil {
@@ -134,6 +137,7 @@ func (h *PostHandler) ListPublic(c *gin.Context) {
 
 // GetBySlug returns a single post by slug
 func (h *PostHandler) GetBySlug(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	slug := c.Param("slug")
 	post, err := h.repo.GetBySlug(slug)
 	if err != nil {
@@ -167,16 +171,45 @@ func (h *PostHandler) GetBySlug(c *gin.Context) {
 		return
 	}
 
-	// Increment view count
-	h.repo.IncrementView(post.ID)
+	response := gin.H{"post": post}
+	if c.GetHeader("X-Render-Request") != "1" {
+		if err := h.repo.IncrementView(post.ID); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "记录阅读失败"})
+			return
+		}
+		reactions, _ := h.repo.GetReactions([]uuid.UUID{post.ID})
+		user, _ := h.repo.GetUserReactions([]uuid.UUID{post.ID}, c.ClientIP())
+		response["reactions"] = reactions[post.ID.String()]
+		response["user_emojis"] = user[post.ID.String()]
+	}
+	c.JSON(http.StatusOK, response)
+}
 
-	c.JSON(http.StatusOK, gin.H{
-		"post": post,
-	})
+// RecordView runs after SSR hydration so counters and reactions use the browser
+// request's identity. SSR and metadata reads never count as visits.
+func (h *PostHandler) RecordView(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
+	post, err := h.repo.GetAccessBySlug(c.Param("slug"))
+	if err != nil || post.Status != "published" && c.GetString("role") != "admin" {
+		c.JSON(http.StatusNotFound, gin.H{"error": "文章不存在"})
+		return
+	}
+	if !h.hasPostAccess(c, post) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "请先验证文章密码"})
+		return
+	}
+	if err := h.repo.IncrementView(post.ID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "记录阅读失败"})
+		return
+	}
+	reactions, _ := h.repo.GetReactions([]uuid.UUID{post.ID})
+	user, _ := h.repo.GetUserReactions([]uuid.UUID{post.ID}, c.ClientIP())
+	c.JSON(http.StatusOK, gin.H{"reactions": reactions[post.ID.String()], "user_emojis": user[post.ID.String()]})
 }
 
 // VerifyPassword verifies post password and sets access cookie
 func (h *PostHandler) VerifyPassword(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	slug := c.Param("slug")
 	post, err := h.repo.GetBySlug(slug)
 	if err != nil {
@@ -221,6 +254,7 @@ func (h *PostHandler) VerifyPassword(c *gin.Context) {
 
 // GetByPreviewToken returns a draft post by preview token
 func (h *PostHandler) GetByPreviewToken(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	token := c.Query("token")
 	if token == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "缺少预览令牌"})
@@ -238,6 +272,7 @@ func (h *PostHandler) GetByPreviewToken(c *gin.Context) {
 
 // GeneratePreviewToken generates a preview token for a draft post
 func (h *PostHandler) GeneratePreviewToken(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
@@ -255,6 +290,7 @@ func (h *PostHandler) GeneratePreviewToken(c *gin.Context) {
 
 // TopPosts returns top/pinned posts
 func (h *PostHandler) TopPosts(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	posts, err := h.repo.TopPosts()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取置顶文章失败"})
@@ -265,6 +301,7 @@ func (h *PostHandler) TopPosts(c *gin.Context) {
 
 // TopViewed returns most viewed posts
 func (h *PostHandler) TopViewed(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	limit := 10
 	posts, err := h.repo.TopViewed(limit)
 	if err != nil {
@@ -276,6 +313,7 @@ func (h *PostHandler) TopViewed(c *gin.Context) {
 
 // CalendarPostsPublic returns only published posts for the calendar view
 func (h *PostHandler) CalendarPostsPublic(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	year := c.Query("year")
 	month := c.Query("month")
 	if year == "" {
@@ -316,6 +354,7 @@ func (h *PostHandler) CalendarPostsPublic(c *gin.Context) {
 }
 
 func (h *PostHandler) ToggleReaction(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	slug := c.Param("slug")
 	post, err := h.repo.GetBySlug(slug)
 	if err != nil {
@@ -355,6 +394,7 @@ func (h *PostHandler) ToggleReaction(c *gin.Context) {
 }
 
 func (h *PostHandler) AdjacentPosts(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	slug := c.Param("slug")
 	prev, next := h.repo.AdjacentPosts(slug)
 
@@ -378,6 +418,7 @@ func (h *PostHandler) AdjacentPosts(c *gin.Context) {
 }
 
 func (h *PostHandler) RelatedPosts(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	slug := c.Param("slug")
 	posts, err := h.repo.RelatedPosts(slug, 6)
 	if err != nil {
@@ -392,16 +433,19 @@ func (h *PostHandler) RelatedPosts(c *gin.Context) {
 
 // Archive returns posts grouped by year/month
 func (h *PostHandler) Archive(c *gin.Context) {
-	items, err := h.repo.Archive()
+	h = h.withContext(c.Request.Context())
+	page, size := pagination(c, 50, 100)
+	items, total, err := h.repo.Archive(page, size)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取归档失败"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"items": items})
+	c.JSON(http.StatusOK, gin.H{"items": items, "total": total, "page": page, "size": size})
 }
 
 // AdminGet returns a single post by ID for admin
 func (h *PostHandler) AdminGet(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
@@ -438,12 +482,15 @@ func (h *PostHandler) AdminGet(c *gin.Context) {
 			"password_hint": post.PasswordHint,
 			"category":      post.Category,
 			"author":        post.Author,
+			"tags":          post.Tags,
+			"series":        post.Series,
 		},
 	})
 }
 
 // AdminList returns all posts (including drafts) for admin
 func (h *PostHandler) AdminList(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
 	status := c.Query("status")
@@ -471,6 +518,7 @@ func (h *PostHandler) AdminList(c *gin.Context) {
 
 // Create creates a new post
 func (h *PostHandler) Create(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	var input struct {
 		Title        string   `json:"title" binding:"required"`
 		Slug         string   `json:"slug" binding:"required"`
@@ -567,6 +615,7 @@ func (h *PostHandler) Create(c *gin.Context) {
 
 // Update updates a post
 func (h *PostHandler) Update(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
@@ -719,6 +768,7 @@ func (h *PostHandler) Update(c *gin.Context) {
 
 // Delete deletes a post
 func (h *PostHandler) Delete(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
@@ -735,6 +785,7 @@ func (h *PostHandler) Delete(c *gin.Context) {
 
 // BatchDelete deletes multiple posts
 func (h *PostHandler) BatchDelete(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	var input struct {
 		IDs []string `json:"ids" binding:"required"`
 	}
@@ -765,6 +816,7 @@ func (h *PostHandler) BatchDelete(c *gin.Context) {
 
 // UpdateStatus updates post status (publish/draft)
 func (h *PostHandler) UpdateStatus(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
@@ -800,6 +852,7 @@ func (h *PostHandler) UpdateStatus(c *gin.Context) {
 
 // BatchUpdateStatus batch updates post statuses
 func (h *PostHandler) BatchUpdateStatus(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	var input struct {
 		IDs    []string `json:"ids" binding:"required"`
 		Status string   `json:"status" binding:"required"`
@@ -840,6 +893,7 @@ func (h *PostHandler) BatchUpdateStatus(c *gin.Context) {
 
 // ToggleTop toggles the top/pinned status
 func (h *PostHandler) ToggleTop(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
@@ -864,6 +918,7 @@ func (h *PostHandler) ToggleTop(c *gin.Context) {
 
 // ListRevisions returns revision history for a post
 func (h *PostHandler) ListRevisions(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
@@ -881,6 +936,7 @@ func (h *PostHandler) ListRevisions(c *gin.Context) {
 
 // RestoreRevision restores a post to a specific revision
 func (h *PostHandler) RestoreRevision(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	revID, err := uuid.Parse(c.Param("revId"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
@@ -930,6 +986,7 @@ func (h *PostHandler) RestoreRevision(c *gin.Context) {
 
 // CalendarPosts returns posts grouped by date for the calendar view
 func (h *PostHandler) CalendarPosts(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	year := c.Query("year")
 	month := c.Query("month")
 	if year == "" {
@@ -973,6 +1030,7 @@ func (h *PostHandler) CalendarPosts(c *gin.Context) {
 
 // Export exports all posts as JSON for backup
 func (h *PostHandler) Export(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	posts, err := h.repo.ExportAll()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "导出失败"})

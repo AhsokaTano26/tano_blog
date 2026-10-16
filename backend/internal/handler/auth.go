@@ -38,6 +38,7 @@ type TOTPVerifyRequest struct {
 }
 
 func (h *AuthHandler) Login(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	var req LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "请输入用户名和密码"})
@@ -105,6 +106,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 }
 
 func (h *AuthHandler) LoginWithTOTP(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	var req struct {
 		TOTPToken  string `json:"totp_token" binding:"required"`
 		Code       string `json:"code" binding:"required"`
@@ -174,6 +176,7 @@ func (h *AuthHandler) LoginWithTOTP(c *gin.Context) {
 }
 
 func (h *AuthHandler) Logout(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	// Increment token_version to invalidate all existing JWTs
 	userID := c.GetString("user_id")
 	if uid, err := uuid.Parse(userID); err == nil {
@@ -188,6 +191,7 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 }
 
 func (h *AuthHandler) Me(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	userID := c.GetString("user_id")
 	uid, err := uuid.Parse(userID)
 	if err != nil {
@@ -215,6 +219,7 @@ func (h *AuthHandler) Me(c *gin.Context) {
 }
 
 func (h *AuthHandler) UpdateProfile(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	userID := c.GetString("user_id")
 	uid, err := uuid.Parse(userID)
 	if err != nil {
@@ -289,6 +294,7 @@ func (h *AuthHandler) UpdateProfile(c *gin.Context) {
 }
 
 func (h *AuthHandler) ChangePassword(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	userID := c.GetString("user_id")
 	uid, err := uuid.Parse(userID)
 	if err != nil {
@@ -353,6 +359,7 @@ func (h *AuthHandler) ChangePassword(c *gin.Context) {
 }
 
 func (h *AuthHandler) TOTPSetup(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	userID := c.GetString("user_id")
 	uid, err := uuid.Parse(userID)
 	if err != nil {
@@ -385,6 +392,7 @@ func (h *AuthHandler) TOTPSetup(c *gin.Context) {
 }
 
 func (h *AuthHandler) TOTPVerify(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	userID := c.GetString("user_id")
 	uid, err := uuid.Parse(userID)
 	if err != nil {
@@ -413,6 +421,7 @@ func (h *AuthHandler) TOTPVerify(c *gin.Context) {
 }
 
 func (h *AuthHandler) TOTPDisable(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	userID := c.GetString("user_id")
 	uid, err := uuid.Parse(userID)
 	if err != nil {
@@ -458,6 +467,7 @@ func (h *AuthHandler) TOTPDisable(c *gin.Context) {
 }
 
 func (h *AuthHandler) PasskeyRegisterOptions(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	userID := c.GetString("user_id")
 	uid, err := uuid.Parse(userID)
 	if err != nil {
@@ -475,6 +485,7 @@ func (h *AuthHandler) PasskeyRegisterOptions(c *gin.Context) {
 }
 
 func (h *AuthHandler) PasskeyRegisterVerify(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	userID := c.GetString("user_id")
 	uid, err := uuid.Parse(userID)
 	if err != nil {
@@ -498,6 +509,7 @@ func (h *AuthHandler) PasskeyRegisterVerify(c *gin.Context) {
 }
 
 func (h *AuthHandler) PasskeyLoginOptions(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	options, err := utils.BeginPasskeyLogin(h.db)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建登录选项失败"})
@@ -507,6 +519,7 @@ func (h *AuthHandler) PasskeyLoginOptions(c *gin.Context) {
 }
 
 func (h *AuthHandler) PasskeyLoginVerify(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	rawBody, err := c.GetRawData()
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "读取请求数据失败"})
@@ -549,6 +562,7 @@ func (h *AuthHandler) PasskeyLoginVerify(c *gin.Context) {
 }
 
 func (h *AuthHandler) ListPasskeys(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	userID := c.GetString("user_id")
 	uid, err := uuid.Parse(userID)
 	if err != nil {
@@ -562,12 +576,14 @@ func (h *AuthHandler) ListPasskeys(c *gin.Context) {
 }
 
 func (h *AuthHandler) ListUsers(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	var users []model.User
 	h.db.Select("id, username, display_name, avatar_url").Find(&users)
 	c.JSON(http.StatusOK, gin.H{"items": users})
 }
 
 func (h *AuthHandler) DeletePasskey(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	userID := c.GetString("user_id")
 	uid, err := uuid.Parse(userID)
 	if err != nil {
@@ -589,6 +605,7 @@ func (h *AuthHandler) DeletePasskey(c *gin.Context) {
 }
 
 func (h *AuthHandler) RenamePasskey(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	userID := c.GetString("user_id")
 	uid, err := uuid.Parse(userID)
 	if err != nil {
@@ -618,6 +635,7 @@ func (h *AuthHandler) RenamePasskey(c *gin.Context) {
 }
 
 func (h *AuthHandler) ForgotPassword(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	var input struct {
 		Email string `json:"email" binding:"required"`
 	}
@@ -670,7 +688,7 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 	h.db.Where("role = ?", "admin").Find(&adminUsers)
 	for _, adminUser := range adminUsers {
 		notifContent := fmt.Sprintf("用户 %s 申请了密码重置（邮箱: %s）", user.Username, user.Email)
-		go func(content string) {
+		func(content string) {
 			notifRepo := repository.NewNotificationRepo(h.db)
 			notifRepo.Create(&model.Notification{
 				UserID:  adminUser.ID,
@@ -688,6 +706,7 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 }
 
 func (h *AuthHandler) ResetPassword(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	var input struct {
 		Token       string `json:"token" binding:"required"`
 		NewPassword string `json:"new_password" binding:"required"`
@@ -766,7 +785,7 @@ func (h *AuthHandler) sendLoginNotify(c *gin.Context, user model.User) {
 	var adminUsers []model.User
 	h.db.Where("role = ?", "admin").Find(&adminUsers)
 	for _, adminUser := range adminUsers {
-		go func() {
+		func() {
 			notifRepo := repository.NewNotificationRepo(h.db)
 			notifRepo.Create(&model.Notification{
 				UserID:  adminUser.ID,

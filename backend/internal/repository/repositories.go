@@ -37,14 +37,14 @@ func (r *AccessLogRepo) List(page, pageSize int, filters map[string]string) ([]m
 	query := r.db.Model(&model.AccessLog{})
 
 	if path, ok := filters["path"]; ok && path != "" {
-		escaped := strings.ReplaceAll(strings.ReplaceAll(path, "%", "\\%"), "_", "\\_")
+		escaped := strings.NewReplacer("\\", "\\\\", "%", "\\%", "_", "\\_").Replace(path)
 		query = query.Where("path LIKE ?", "%"+escaped+"%")
 	}
 	if method, ok := filters["method"]; ok && method != "" {
 		query = query.Where("method = ?", method)
 	}
 	if ip, ok := filters["ip"]; ok && ip != "" {
-		escaped := strings.ReplaceAll(strings.ReplaceAll(ip, "%", "\\%"), "_", "\\_")
+		escaped := strings.NewReplacer("\\", "\\\\", "%", "\\%", "_", "\\_").Replace(ip)
 		query = query.Where("ip_address LIKE ?", "%"+escaped+"%")
 	}
 	if status, ok := filters["status_code"]; ok && status != "" {
@@ -54,11 +54,35 @@ func (r *AccessLogRepo) List(page, pageSize int, filters map[string]string) ([]m
 		query = query.Where("created_at >= ?", start)
 	}
 	if end, ok := filters["end"]; ok && end != "" {
-		query = query.Where("created_at <= ?", end)
+		query = query.Where("created_at < ?", end)
 	}
 
-	query.Count(&total)
-	err := query.Order("created_at DESC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&logs).Error
+	if raw := filters["cursor"]; raw != "" {
+		cursor, err := decodeLogCursor(raw)
+		if err != nil {
+			return nil, 0, err
+		}
+		err = query.Where("(created_at,id) < (?,?)", cursor.At, cursor.ID).Order("created_at DESC,id DESC").Limit(pageSize).Find(&logs).Error
+		return logs, cursor.Total, err
+	}
+	// Count without a window aggregate: PostgreSQL can use a parallel index-only
+	// scan and need not materialize every match before returning a small page.
+	if err := query.Session(&gorm.Session{}).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	offset := (page - 1) * pageSize
+	if total == 0 || int64(offset) >= total {
+		return []model.AccessLog{}, total, nil
+	}
+	// Keep deep-page traversal narrow; only requested IDs load log payloads.
+	var ids []uuid.UUID
+	if err := query.Session(&gorm.Session{}).Order("created_at DESC,id DESC").Offset(offset).Limit(pageSize).Pluck("id", &ids).Error; err != nil {
+		return nil, 0, err
+	}
+	if len(ids) == 0 {
+		return []model.AccessLog{}, total, nil
+	}
+	err := r.db.Where("id IN ?", ids).Order("created_at DESC,id DESC").Find(&logs).Error
 	return logs, total, err
 }
 
@@ -191,7 +215,7 @@ type TimeRangeStats struct {
 	UniqueIPs     int64        `json:"unique_ips"`
 	TotalErrors   int64        `json:"total_errors"`
 	AvgResponseMs float64      `json:"avg_response_ms"`
-	DailyCounts   []DailyCount `json:"daily_counts"`
+	DailyCounts   []DailyCount `json:"daily_counts" gorm:"-"`
 }
 
 func (r *AccessLogRepo) StatsTimeRange(start, end string) (*TimeRangeStats, error) {
@@ -243,7 +267,7 @@ func (r *PostRepo) ListPublic(page, pageSize int, category, tag, search string) 
 	var posts []model.Post
 	var total int64
 	query := r.db.Model(&model.Post{}).Where("status = ?", "published").
-		Preload("Category").Preload("Tags").Preload("Author").Preload("Series")
+		Preload("Category").Preload("Tags").Preload("Author", publicAuthorColumns).Preload("Series")
 
 	if category != "" {
 		query = query.Joins("JOIN categories ON categories.id = posts.category_id").
@@ -255,14 +279,41 @@ func (r *PostRepo) ListPublic(page, pageSize int, category, tag, search string) 
 			Where("tags.slug = ?", tag)
 	}
 	if search != "" {
-		escaped := strings.ReplaceAll(strings.ReplaceAll(search, "%", "\\%"), "_", "\\_")
+		escaped := strings.NewReplacer("\\", "\\\\", "%", "\\%", "_", "\\_").Replace(search)
 		query = query.Where("title ILIKE ? OR content ILIKE ?", "%"+escaped+"%", "%"+escaped+"%")
 	}
 
-	query.Count(&total)
-	// Keep every article list in creation-time order. Titles provide a stable,
-	// human-readable order when multiple posts share the same timestamp.
-	err := query.Order("created_at DESC, title ASC, id ASC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&posts).Error
+	// Evaluate expensive substring matches once, including their exact count.
+	var err error
+	if search != "" {
+		type match struct {
+			ID    uuid.UUID
+			Total int64
+		}
+		var matches []match
+		err = query.Session(&gorm.Session{}).Select("posts.id, COUNT(*) OVER() AS total").
+			Order("posts.created_at DESC, posts.title ASC, posts.id ASC").Offset((page - 1) * pageSize).Limit(pageSize).Scan(&matches).Error
+		if err != nil {
+			return nil, 0, err
+		}
+		if len(matches) == 0 {
+			err = query.Session(&gorm.Session{}).Count(&total).Error
+			return []model.Post{}, total, err
+		}
+		total = matches[0].Total
+		ids := make([]uuid.UUID, len(matches))
+		for i, m := range matches {
+			ids[i] = m.ID
+		}
+		err = r.db.Select(PostSummaryColumns).Where("posts.id IN ?", ids).
+			Preload("Category").Preload("Tags").Preload("Author", publicAuthorColumns).Preload("Series").
+			Order("posts.created_at DESC, posts.title ASC, posts.id ASC").Find(&posts).Error
+	} else {
+		if err = query.Session(&gorm.Session{}).Count(&total).Error; err != nil {
+			return nil, 0, err
+		}
+		err = query.Select(PostSummaryColumns).Order("posts.created_at DESC, posts.title ASC, posts.id ASC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&posts).Error
+	}
 	if err != nil {
 		return posts, total, err
 	}
@@ -291,12 +342,13 @@ func (r *PostRepo) ListPublic(page, pageSize int, category, tag, search string) 
 		}
 	}
 
+	fillCoverThumbnails(r.db, posts)
 	return posts, total, nil
 }
 
 func (r *PostRepo) GetBySlug(slug string) (*model.Post, error) {
 	var post model.Post
-	err := r.db.Where("slug = ?", slug).Preload("Category").Preload("Tags").Preload("Author").Preload("Series").First(&post).Error
+	err := r.db.Where("slug = ?", slug).Preload("Category").Preload("Tags").Preload("Author", publicAuthorColumns).Preload("Series").First(&post).Error
 	if err != nil {
 		return nil, err
 	}
@@ -308,7 +360,7 @@ func (r *PostRepo) IncrementView(id uuid.UUID) error {
 		UpdateColumn("view_count", gorm.Expr("view_count + 1")).Error
 }
 
-func (r *PostRepo) Archive() ([]map[string]interface{}, error) {
+func (r *PostRepo) Archive(page, size int) ([]map[string]interface{}, int64, error) {
 	type ArchivePost struct {
 		ID          uuid.UUID  `json:"id"`
 		Title       string     `json:"title"`
@@ -319,14 +371,18 @@ func (r *PostRepo) Archive() ([]map[string]interface{}, error) {
 		Month       int        `json:"-"`
 	}
 
+	var total int64
+	if err := r.db.Model(&model.Post{}).Where("status = ? AND published_at IS NOT NULL", "published").Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
 	var posts []ArchivePost
 	err := r.db.Model(&model.Post{}).
 		Select("id, title, slug, published_at, created_at, excerpt, EXTRACT(YEAR FROM created_at)::int as year, EXTRACT(MONTH FROM created_at)::int as month").
 		Where("status = ? AND published_at IS NOT NULL", "published").
-		Order("created_at DESC").
+		Order("created_at DESC, id ASC").Offset((page - 1) * size).Limit(size).
 		Find(&posts).Error
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	// Group by year/month
@@ -352,21 +408,23 @@ func (r *PostRepo) Archive() ([]map[string]interface{}, error) {
 	for _, key := range keys {
 		result = append(result, *groups[key])
 	}
-	return result, nil
+	return result, total, nil
 }
 
 func (r *PostRepo) TopPosts() ([]model.Post, error) {
 	var posts []model.Post
 	err := r.db.Where("status = ? AND is_top = ?", "published", true).
 		Preload("Category").Preload("Tags").
-		Order("created_at DESC").Limit(5).Find(&posts).Error
+		Order("created_at DESC").Limit(5).Select(PostSummaryColumns).Find(&posts).Error
+	fillCoverThumbnails(r.db, posts)
 	return posts, err
 }
 
 func (r *PostRepo) TopViewed(limit int) ([]model.Post, error) {
 	var posts []model.Post
 	err := r.db.Where("status = ?", "published").
-		Order("view_count DESC").Limit(limit).Find(&posts).Error
+		Order("view_count DESC").Limit(limit).Select(PostSummaryColumns).Find(&posts).Error
+	fillCoverThumbnails(r.db, posts)
 	return posts, err
 }
 
@@ -414,26 +472,33 @@ func (r *PostRepo) RelatedPosts(slug string, limit int) ([]model.Post, error) {
 		Order("COUNT(post_tags.tag_id) DESC, posts.created_at DESC").
 		Limit(limit).
 		Preload("Category").Preload("Tags").
-		Find(&posts).Error
+		Select(PostSummaryColumns).Find(&posts).Error
 
+	fillCoverThumbnails(r.db, posts)
 	return posts, err
 }
 
 func (r *PostRepo) AdminList(page, pageSize int, status string) ([]model.Post, int64, error) {
 	var posts []model.Post
 	var total int64
-	query := r.db.Model(&model.Post{}).Preload("Category").Preload("Tags").Preload("Author").Preload("Editor")
+	query := r.db.Model(&model.Post{}).Preload("Category").Preload("Tags").Preload("Author", publicAuthorColumns).Preload("Editor", publicAuthorColumns)
 
 	if status != "" {
 		query = query.Where("status = ?", status)
 	}
 
-	query.Count(&total)
-	err := query.Order("created_at DESC, title ASC, id ASC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&posts).Error
+	if err := query.Session(&gorm.Session{}).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	err := query.Order("created_at DESC, title ASC, id ASC").Offset((page - 1) * pageSize).Limit(pageSize).Select(PostSummaryColumns).Find(&posts).Error
+	fillCoverThumbnails(r.db, posts)
 	return posts, total, err
 }
 
 func (r *PostRepo) Create(post *model.Post) error {
+	if post.PreviewToken == "" {
+		post.PreviewToken = uuid.NewString()
+	}
 	return r.db.Create(post).Error
 }
 
@@ -462,7 +527,13 @@ func (r *PostRepo) Delete(id uuid.UUID) error {
 
 func (r *PostRepo) GetByID(id uuid.UUID) (*model.Post, error) {
 	var post model.Post
-	err := r.db.Preload("Category").Preload("Tags").Preload("Author").Preload("Editor").First(&post, id).Error
+	err := r.db.Preload("Category").Preload("Tags").Preload("Series").Preload("Author").Preload("Editor").First(&post, id).Error
+	return &post, err
+}
+
+func (r *PostRepo) GetAccessBySlug(slug string) (*model.Post, error) {
+	var post model.Post
+	err := r.db.Select("id,status,password_hash").Where("slug = ?", slug).First(&post).Error
 	return &post, err
 }
 
@@ -498,7 +569,7 @@ func (r *PostRepo) SaveRevision(revision *model.PostRevision) error {
 func (r *PostRepo) ListRevisions(postID uuid.UUID) ([]model.PostRevision, error) {
 	var revisions []model.PostRevision
 	err := r.db.Where("post_id = ?", postID).Preload("Editor").
-		Order("created_at DESC").Limit(50).Find(&revisions).Error
+		Order("created_at DESC").Select("id, post_id, title, LEFT(content,100) AS content, excerpt, editor_id, created_at").Limit(50).Find(&revisions).Error
 	return revisions, err
 }
 
@@ -712,7 +783,7 @@ func (r *CommentRepo) ListByPost(postID uuid.UUID, sort string) ([]model.Comment
 func (r *CommentRepo) AdminList(page, pageSize int, status string) ([]model.Comment, int64, error) {
 	var comments []model.Comment
 	var total int64
-	query := r.db.Model(&model.Comment{}).Preload("Post")
+	query := r.db.Model(&model.Comment{}).Preload("Post", func(db *gorm.DB) *gorm.DB { return db.Select("id, title, slug") })
 
 	if status != "" {
 		query = query.Where("status = ?", status)
@@ -858,8 +929,8 @@ func (r *MediaRepo) List(page, pageSize int, tagID string, search string, mediaT
 		return nil, 0, err
 	}
 
-	err := query.Preload("Tags").
-		Order("created_at DESC").
+	err := query.Select("media.*, EXISTS(SELECT 1 FROM gallery_images WHERE gallery_images.url=media.url) AS in_gallery").Preload("Tags").
+		Order("media.created_at DESC, media.id ASC").
 		Offset((page - 1) * pageSize).
 		Limit(pageSize).
 		Find(&media).Error
@@ -1022,6 +1093,12 @@ type IPBanRepo struct {
 
 func NewIPBanRepo(db *gorm.DB) *IPBanRepo {
 	return &IPBanRepo{db: db}
+}
+
+func (r *IPBanRepo) HasActive() (bool, error) {
+	var exists bool
+	err := r.db.Raw("SELECT EXISTS(SELECT 1 FROM ip_bans WHERE expires_at IS NULL OR expires_at > NOW())").Scan(&exists).Error
+	return exists, err
 }
 
 func (r *IPBanRepo) Create(ban *model.IPBan) error {

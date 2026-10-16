@@ -51,6 +51,7 @@ func (h *CommentHandler) requirePostAccess(c *gin.Context, post *model.Post) boo
 }
 
 func (h *CommentHandler) ListByPost(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	slug := c.Param("slug")
 	post, err := h.lookupPostBySlug(slug)
 	if err != nil {
@@ -61,7 +62,17 @@ func (h *CommentHandler) ListByPost(c *gin.Context) {
 		return
 	}
 
-	comments, err := h.repo.ListByPost(post.ID, c.DefaultQuery("sort", "oldest"))
+	page, size := pagination(c, 20, 50)
+	var parent *uuid.UUID
+	if raw := c.Query("parent_id"); raw != "" {
+		id, err := uuid.Parse(raw)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "无效回复ID"})
+			return
+		}
+		parent = &id
+	}
+	comments, total, err := h.repo.ListByPostPage(post.ID, c.DefaultQuery("sort", "oldest"), parent, page, size)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取评论失败"})
 		return
@@ -87,36 +98,38 @@ func (h *CommentHandler) ListByPost(c *gin.Context) {
 	userReactions, _ := h.repo.GetUserReactions(allCommentIDs, ipAddress)
 
 	type publicComment struct {
-		ID         uuid.UUID       `json:"id"`
-		PostID     uuid.UUID       `json:"post_id"`
-		ParentID   *uuid.UUID      `json:"parent_id"`
-		Nickname   string          `json:"nickname"`
-		Website    string          `json:"website"`
-		Content    string          `json:"content"`
-		Status     string          `json:"status"`
-		Country    string          `json:"country"`
-		City       string          `json:"city"`
-		CreatedAt  string          `json:"created_at"`
-		Children   []publicComment `json:"children,omitempty"`
-		Reactions  map[string]int  `json:"reactions"`
-		UserEmojis []string        `json:"user_emojis,omitempty"`
+		ChildrenTotal int64           `json:"children_total"`
+		ID            uuid.UUID       `json:"id"`
+		PostID        uuid.UUID       `json:"post_id"`
+		ParentID      *uuid.UUID      `json:"parent_id"`
+		Nickname      string          `json:"nickname"`
+		Website       string          `json:"website"`
+		Content       string          `json:"content"`
+		Status        string          `json:"status"`
+		Country       string          `json:"country"`
+		City          string          `json:"city"`
+		CreatedAt     string          `json:"created_at"`
+		Children      []publicComment `json:"children,omitempty"`
+		Reactions     map[string]int  `json:"reactions"`
+		UserEmojis    []string        `json:"user_emojis,omitempty"`
 	}
 
 	var convert func(c model.Comment) publicComment
 	convert = func(c model.Comment) publicComment {
 		pc := publicComment{
-			ID:         c.ID,
-			PostID:     c.PostID,
-			ParentID:   c.ParentID,
-			Nickname:   c.Nickname,
-			Website:    c.Website,
-			Content:    c.Content,
-			Status:     c.Status,
-			Country:    c.Country,
-			City:       c.City,
-			CreatedAt:  c.CreatedAt.UTC().Format(time.RFC3339),
-			Reactions:  reactions[c.ID.String()],
-			UserEmojis: userReactions[c.ID.String()],
+			ChildrenTotal: c.ChildrenTotal,
+			ID:            c.ID,
+			PostID:        c.PostID,
+			ParentID:      c.ParentID,
+			Nickname:      c.Nickname,
+			Website:       c.Website,
+			Content:       c.Content,
+			Status:        c.Status,
+			Country:       c.Country,
+			City:          c.City,
+			CreatedAt:     c.CreatedAt.UTC().Format(time.RFC3339),
+			Reactions:     reactions[c.ID.String()],
+			UserEmojis:    userReactions[c.ID.String()],
 		}
 		if pc.Reactions == nil {
 			pc.Reactions = map[string]int{}
@@ -135,9 +148,10 @@ func (h *CommentHandler) ListByPost(c *gin.Context) {
 		result[i] = convert(c)
 	}
 
-	c.JSON(http.StatusOK, gin.H{"items": result})
+	c.JSON(http.StatusOK, gin.H{"items": result, "total": total, "page": page, "size": size})
 }
 func (h *CommentHandler) Create(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	slug := c.Param("slug")
 	post, err := h.lookupPostBySlug(slug)
 	if err != nil {
@@ -278,7 +292,9 @@ func (h *CommentHandler) Create(c *gin.Context) {
 			Content: truncateStr(comment.Content, 100),
 			Link:    "/admin/comments",
 		}
-		go notifRepo.Create(notif)
+		if err := notifRepo.Create(notif); err != nil {
+			utils.LogWarn("notification write failed", "error", err)
+		}
 	}
 
 	// Reply notification for parent commenter
@@ -291,13 +307,16 @@ func (h *CommentHandler) Create(c *gin.Context) {
 			Content: truncateStr(comment.Content, 100),
 			Link:    fmt.Sprintf("/posts/%s#comment-%s", post.Slug, comment.ID),
 		}
-		go notifRepo.Create(notif)
+		if err := notifRepo.Create(notif); err != nil {
+			utils.LogWarn("notification write failed", "error", err)
+		}
 	}
 
 	c.JSON(http.StatusCreated, gin.H{"comment": comment})
 }
 
 func (h *CommentHandler) AdminList(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
 	status := c.Query("status")
@@ -324,6 +343,7 @@ func (h *CommentHandler) AdminList(c *gin.Context) {
 }
 
 func (h *CommentHandler) UpdateStatus(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
@@ -373,6 +393,7 @@ func (h *CommentHandler) UpdateStatus(c *gin.Context) {
 }
 
 func (h *CommentHandler) BatchUpdateStatus(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	var input struct {
 		IDs    []string `json:"ids" binding:"required"`
 		Status string   `json:"status" binding:"required"`
@@ -398,6 +419,7 @@ func (h *CommentHandler) BatchUpdateStatus(c *gin.Context) {
 }
 
 func (h *CommentHandler) Delete(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
@@ -413,6 +435,7 @@ func (h *CommentHandler) Delete(c *gin.Context) {
 }
 
 func (h *CommentHandler) ToggleReaction(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	post, err := h.lookupPostBySlug(c.Param("slug"))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "文章不存在"})
@@ -464,6 +487,7 @@ func (h *CommentHandler) ToggleReaction(c *gin.Context) {
 }
 
 func (h *CommentHandler) ExportCSV(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	status := c.Query("status")
 	items, _, err := h.repo.AdminList(1, 10000, status)
 	if err != nil {
@@ -495,6 +519,7 @@ func (h *CommentHandler) ExportCSV(c *gin.Context) {
 }
 
 func (h *CommentHandler) AdminUpdate(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
@@ -526,6 +551,7 @@ func (h *CommentHandler) AdminUpdate(c *gin.Context) {
 }
 
 func (h *CommentHandler) ListRevisions(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})

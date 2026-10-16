@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { api } from '@/lib/api';
-import { Download, Upload, Trash2, Plus, Link, FolderOpen, AlertTriangle, HardDrive, ServerCog, Play, RefreshCw, Save } from 'lucide-react';
+import { Download, Upload, Trash2, Plus, Link, FolderOpen, AlertTriangle, HardDrive, ServerCog, Play, RefreshCw, Save, Square } from 'lucide-react';
 import { Loading } from '@/components/Loading';
 import { useConfirm, Select } from '@/components/ConfirmDialog';
 
@@ -40,6 +40,37 @@ export default function AdminBackup() {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [message, setMessage] = useState('');
+  const [backupProgress, setBackupProgress] = useState<{ running: boolean; phase: string; table: string; rows: number; bytes: number } | null>(null);
+  const [cancelling, setCancelling] = useState(false);
+
+  useEffect(() => {
+    let disposed = false;
+    let timer: ReturnType<typeof setTimeout>;
+    async function poll() {
+      try {
+        const status = await api.admin.backups.status();
+        if (!disposed) setBackupProgress(status);
+      } catch {
+        // The operation request reports failures; a transient polling error can retry.
+      }
+      if (!disposed) timer = setTimeout(poll, 1500);
+    }
+    void poll();
+    return () => { disposed = true; clearTimeout(timer); };
+  }, []);
+
+  async function cancelBackup() {
+    setCancelling(true);
+    try {
+      await api.admin.backups.cancel();
+      setMessage('已请求取消，正在清理临时文件或回滚事务');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : '取消任务失败');
+    } finally {
+      setCancelling(false);
+    }
+  }
+
 
   // Restore states
   const [restoreFile, setRestoreFile] = useState<File | null>(null);
@@ -175,6 +206,7 @@ export default function AdminBackup() {
     setRestoring(false);
   }
 
+  const phaseLabels: Record<string, string> = { snapshot: '准备同步快照', export: '导出数据库', hash: '校验上传文件', uploads: '打包上传文件', upload: '接收备份文件', download: '下载备份文件', validate: '验证备份数据', restore: '恢复数据库', finalize: '完成恢复' };
   const inputClass = "w-full px-3 py-2.5 rounded-lg text-sm outline-none";
   const inputStyle = { border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' };
 
@@ -188,6 +220,21 @@ export default function AdminBackup() {
         <div className="mb-4 px-4 py-2.5 rounded-lg text-sm flex items-center gap-2 glass-card"
           style={{ color: message.includes('失败') ? 'hsl(0, 60%, 55%)' : 'hsl(142, 60%, 50%)' }}>
           {message}
+        </div>
+      )}
+
+      {backupProgress?.running && (
+        <div role="status" aria-live="polite" className="mb-4 rounded-xl px-4 py-3 glass-card flex flex-wrap items-center justify-between gap-3">
+          <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+            <p style={{ color: 'var(--text-primary)' }}>
+              {phaseLabels[backupProgress.phase] || '处理中'}
+              {backupProgress.table && ` · ${backupProgress.table}`}
+            </p>
+            <p className="text-xs mt-1">已处理 {backupProgress.rows.toLocaleString()} 条记录 · {formatSize(backupProgress.bytes)}</p>
+          </div>
+          <button onClick={cancelBackup} disabled={cancelling || backupProgress.phase === 'finalize'} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm btn-glass disabled:opacity-50" style={{ color: 'var(--text-primary)' }}>
+            <Square className="w-3.5 h-3.5" />{cancelling ? '正在取消...' : '取消任务'}
+          </button>
         </div>
       )}
 
@@ -218,7 +265,7 @@ export default function AdminBackup() {
                     备份文件保存在服务器本地，超过 7 天自动删除
                   </p>
                 </div>
-                <button onClick={handleCreate} disabled={creating}
+                <button onClick={handleCreate} disabled={creating || restoring || backupProgress?.running}
                   className="flex items-center gap-1.5 px-5 py-2.5 rounded-lg text-sm font-medium text-white disabled:opacity-50 transition-colors"
                   style={{ background: 'var(--primary)' }}>
                   <Plus className="w-4 h-4" />
@@ -361,7 +408,7 @@ export default function AdminBackup() {
                     className="flex-1 text-sm file:mr-3 file:py-2 file:px-4 file:rounded-lg file:text-sm file:font-medium file:cursor-pointer file:border-none file:text-white"
                     style={{ color: 'var(--text-secondary)' }}
                     ref={fileInputRef} />
-                  <button onClick={handleRestoreUpload} disabled={!restoreFile || restoring}
+                  <button onClick={handleRestoreUpload} disabled={!restoreFile || restoring || creating || backupProgress?.running}
                     className="flex items-center gap-1.5 px-5 py-2.5 rounded-lg text-sm font-medium text-white disabled:opacity-50 transition-colors flex-shrink-0"
                     style={{ background: 'hsl(0, 60%, 55%)' }}>
                     <Upload className="w-4 h-4" />
@@ -382,7 +429,7 @@ export default function AdminBackup() {
                   <input type="url" value={restoreUrl} onChange={e => setRestoreUrl(e.target.value)}
                     placeholder="https://example.com/backup.zip"
                     className={inputClass} style={inputStyle} />
-                  <button onClick={handleRestoreUrl} disabled={!restoreUrl.trim() || restoring}
+                  <button onClick={handleRestoreUrl} disabled={!restoreUrl.trim() || restoring || creating || backupProgress?.running}
                     className="flex items-center gap-1.5 px-5 py-2.5 rounded-lg text-sm font-medium text-white disabled:opacity-50 transition-colors flex-shrink-0"
                     style={{ background: 'hsl(0, 60%, 55%)' }}>
                     <Download className="w-4 h-4" />
@@ -407,7 +454,7 @@ export default function AdminBackup() {
                         ...backups.map(b => ({ value: b.filename, label: `${b.filename} (${formatSize(b.size)})` })),
                       ]} />
                   </div>
-                  <button onClick={handleRestoreLocal} disabled={!restoreFilename || restoring}
+                  <button onClick={handleRestoreLocal} disabled={!restoreFilename || restoring || creating || backupProgress?.running}
                     className="flex items-center gap-1.5 px-5 py-2.5 rounded-lg text-sm font-medium text-white disabled:opacity-50 transition-colors flex-shrink-0"
                     style={{ background: 'hsl(0, 60%, 55%)' }}>
                     <FolderOpen className="w-4 h-4" />

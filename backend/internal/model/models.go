@@ -8,21 +8,21 @@ import (
 )
 
 type User struct {
-	ID           uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
-	Username     string    `gorm:"uniqueIndex;size:50;not null" json:"username"`
-	Email        string    `gorm:"uniqueIndex;size:255;not null" json:"email"`
-	PasswordHash string    `gorm:"size:255;not null" json:"-"`
-	DisplayName  string    `gorm:"size:100" json:"display_name"`
-	AvatarURL    string    `gorm:"size:500" json:"avatar_url"`
-	Bio          string    `gorm:"type:text" json:"bio"`
-	TOTPSecret   string    `gorm:"size:100" json:"-"`
-	TOTPEnabled  bool      `gorm:"default:false" json:"totp_enabled"`
-	ResetToken   string    `gorm:"size:500" json:"-"`
-	TokenVersion int       `gorm:"default:0" json:"-"`
-	Role                string    `gorm:"size:20;default:user" json:"role"`
-	MustChangePassword  bool      `gorm:"default:false" json:"-"`
-	CreatedAt           time.Time `json:"created_at"`
-	UpdatedAt           time.Time `json:"updated_at"`
+	ID                 uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	Username           string    `gorm:"uniqueIndex;size:50;not null" json:"username"`
+	Email              string    `gorm:"uniqueIndex;size:255;not null" json:"email"`
+	PasswordHash       string    `gorm:"size:255;not null" json:"-"`
+	DisplayName        string    `gorm:"size:100" json:"display_name"`
+	AvatarURL          string    `gorm:"size:500" json:"avatar_url"`
+	Bio                string    `gorm:"type:text" json:"bio"`
+	TOTPSecret         string    `gorm:"size:100" json:"-"`
+	TOTPEnabled        bool      `gorm:"default:false" json:"totp_enabled"`
+	ResetToken         string    `gorm:"size:500" json:"-"`
+	TokenVersion       int       `gorm:"default:0" json:"-"`
+	Role               string    `gorm:"size:20;default:user" json:"role"`
+	MustChangePassword bool      `gorm:"default:false" json:"-"`
+	CreatedAt          time.Time `json:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at"`
 }
 
 type Passkey struct {
@@ -59,33 +59,34 @@ type Tag struct {
 }
 
 type Post struct {
-	ID           uuid.UUID  `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
-	Title        string     `gorm:"size:500;not null" json:"title"`
-	Slug         string     `gorm:"uniqueIndex;size:500;not null" json:"slug"`
-	Content      string     `gorm:"type:text;not null" json:"content"`
-	Excerpt      string     `gorm:"size:1000" json:"excerpt"`
-	CoverImage   string     `gorm:"size:500" json:"cover_image"`
-	Status       string     `gorm:"size:20;default:draft;index" json:"status"`
-	IsTop        bool       `gorm:"default:false" json:"is_top"`
-	AllowComment bool       `gorm:"default:true" json:"allow_comment"`
-	ViewCount    int64      `gorm:"default:0" json:"view_count"`
-	CategoryID   *uuid.UUID `gorm:"type:uuid;index" json:"category_id"`
-	AuthorID     *uuid.UUID `gorm:"type:uuid;index" json:"author_id"`
-	AuthorName   string     `gorm:"size:100" json:"author_name"`
-	EditorID     *uuid.UUID `gorm:"type:uuid;index" json:"editor_id"`
-	PreviewToken string     `gorm:"size:64;uniqueIndex" json:"-"`
-	PasswordHash string     `gorm:"size:255" json:"-"`
-	PasswordHint string     `gorm:"size:200" json:"password_hint,omitempty"`
-	PublishedAt  *time.Time `json:"published_at"`
-	CreatedAt    time.Time  `json:"created_at"`
-	UpdatedAt    time.Time  `json:"updated_at"`
-	Category     *Category  `gorm:"foreignKey:CategoryID" json:"category"`
-	Author       *User      `gorm:"foreignKey:AuthorID" json:"author,omitempty"`
-	Editor       *User      `gorm:"foreignKey:EditorID" json:"editor,omitempty"`
-	Tags         []Tag      `gorm:"many2many:post_tags;" json:"tags"`
-	Series       []Series   `gorm:"many2many:post_series;" json:"series,omitempty"`
-	Comments     []Comment  `gorm:"foreignKey:PostID" json:"-"`
-	CommentCount int64      `gorm:"-" json:"comment_count"`
+	ID                uuid.UUID  `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	Title             string     `gorm:"size:500;not null" json:"title"`
+	Slug              string     `gorm:"uniqueIndex;size:500;not null" json:"slug"`
+	Content           string     `gorm:"type:text;not null" json:"content,omitempty"`
+	Excerpt           string     `gorm:"size:1000" json:"excerpt"`
+	CoverImage        string     `gorm:"size:500" json:"cover_image"`
+	CoverThumbnailURL string     `gorm:"->;-:migration" json:"cover_thumbnail_url,omitempty"`
+	Status            string     `gorm:"size:20;default:draft;index" json:"status"`
+	IsTop             bool       `gorm:"default:false" json:"is_top"`
+	AllowComment      bool       `gorm:"default:true" json:"allow_comment"`
+	ViewCount         int64      `gorm:"default:0" json:"view_count"`
+	CategoryID        *uuid.UUID `gorm:"type:uuid;index" json:"category_id"`
+	AuthorID          *uuid.UUID `gorm:"type:uuid;index" json:"author_id"`
+	AuthorName        string     `gorm:"size:100" json:"author_name"`
+	EditorID          *uuid.UUID `gorm:"type:uuid;index" json:"editor_id"`
+	PreviewToken      string     `gorm:"size:64;uniqueIndex:idx_posts_preview_token_active,where:preview_token <> ''" json:"-"`
+	PasswordHash      string     `gorm:"size:255" json:"-"`
+	PasswordHint      string     `gorm:"size:200" json:"password_hint,omitempty"`
+	PublishedAt       *time.Time `json:"published_at"`
+	CreatedAt         time.Time  `json:"created_at"`
+	UpdatedAt         time.Time  `json:"updated_at"`
+	Category          *Category  `gorm:"foreignKey:CategoryID" json:"category"`
+	Author            *User      `gorm:"foreignKey:AuthorID" json:"author,omitempty"`
+	Editor            *User      `gorm:"foreignKey:EditorID" json:"editor,omitempty"`
+	Tags              []Tag      `gorm:"many2many:post_tags;" json:"tags"`
+	Series            []Series   `gorm:"many2many:post_series;" json:"series,omitempty"`
+	Comments          []Comment  `gorm:"foreignKey:PostID" json:"-"`
+	CommentCount      int64      `gorm:"-" json:"comment_count"`
 }
 
 type PostTag struct {
@@ -98,25 +99,26 @@ func (PostTag) TableName() string {
 }
 
 type Comment struct {
-	ID          uuid.UUID  `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
-	PostID      uuid.UUID  `gorm:"type:uuid;index;not null" json:"post_id"`
-	ParentID    *uuid.UUID `gorm:"type:uuid;index" json:"parent_id"`
-	Nickname    string     `gorm:"size:100;not null" json:"nickname"`
-	Email       string     `gorm:"size:255" json:"email"`
-	Website     string     `gorm:"size:500" json:"website"`
-	Content     string     `gorm:"type:text;not null" json:"content"`
-	Status      string     `gorm:"size:20;default:pending;index" json:"status"`
-	IPAddress   string     `gorm:"size:45" json:"ip_address,omitempty"`
-	UserAgent   string     `gorm:"size:1000" json:"user_agent,omitempty"`
-	Fingerprint string     `gorm:"size:255" json:"-"`
-	Country     string     `gorm:"size:100" json:"country"`
-	City        string     `gorm:"size:100" json:"city"`
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
-	EditedCount int        `gorm:"default:0" json:"edited_count,omitempty"`
-	EditedAt    *time.Time `json:"edited_at,omitempty"`
-	Post        Post       `gorm:"foreignKey:PostID" json:"-"`
-	Children    []Comment  `gorm:"foreignKey:ParentID" json:"children,omitempty"`
+	ID            uuid.UUID  `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	PostID        uuid.UUID  `gorm:"type:uuid;index;not null" json:"post_id"`
+	ParentID      *uuid.UUID `gorm:"type:uuid;index" json:"parent_id"`
+	Nickname      string     `gorm:"size:100;not null" json:"nickname"`
+	Email         string     `gorm:"size:255" json:"email"`
+	Website       string     `gorm:"size:500" json:"website"`
+	Content       string     `gorm:"type:text;not null" json:"content"`
+	Status        string     `gorm:"size:20;default:pending;index" json:"status"`
+	IPAddress     string     `gorm:"size:45" json:"ip_address,omitempty"`
+	UserAgent     string     `gorm:"size:1000" json:"user_agent,omitempty"`
+	Fingerprint   string     `gorm:"size:255" json:"-"`
+	Country       string     `gorm:"size:100" json:"country"`
+	City          string     `gorm:"size:100" json:"city"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+	EditedCount   int        `gorm:"default:0" json:"edited_count,omitempty"`
+	EditedAt      *time.Time `json:"edited_at,omitempty"`
+	Post          Post       `gorm:"foreignKey:PostID" json:"-"`
+	Children      []Comment  `gorm:"foreignKey:ParentID" json:"children,omitempty"`
+	ChildrenTotal int64      `gorm:"->;-:migration" json:"children_total"`
 }
 
 type CommentRevision struct {
@@ -140,6 +142,7 @@ type Media struct {
 	Size         int64      `json:"size"`
 	URL          string     `gorm:"size:1000;not null" json:"url"`
 	ThumbnailURL string     `gorm:"size:1000" json:"thumbnail_url"`
+	InGallery    bool       `gorm:"->;-:migration" json:"in_gallery"`
 	AltText      string     `gorm:"size:500" json:"alt_text"`
 	Title        string     `gorm:"size:500" json:"title"`
 	Artist       string     `gorm:"size:500" json:"artist"`
@@ -182,26 +185,26 @@ type AccessLog struct {
 }
 
 type PostRevision struct {
-	ID        uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
-	PostID    uuid.UUID `gorm:"type:uuid;index;not null" json:"post_id"`
-	Title     string    `gorm:"size:500;not null" json:"title"`
-	Content   string    `gorm:"type:text;not null" json:"content"`
-	Excerpt   string    `gorm:"size:1000" json:"excerpt"`
+	ID        uuid.UUID  `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	PostID    uuid.UUID  `gorm:"type:uuid;index;not null" json:"post_id"`
+	Title     string     `gorm:"size:500;not null" json:"title"`
+	Content   string     `gorm:"type:text;not null" json:"content"`
+	Excerpt   string     `gorm:"size:1000" json:"excerpt"`
 	EditorID  *uuid.UUID `gorm:"type:uuid" json:"editor_id"`
 	CreatedAt time.Time  `json:"created_at"`
 	Editor    *User      `gorm:"foreignKey:EditorID" json:"editor,omitempty"`
 }
 
 type Series struct {
-	ID          uuid.UUID  `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
-	Name        string     `gorm:"size:200;not null" json:"name"`
-	Slug        string     `gorm:"uniqueIndex;size:200;not null" json:"slug"`
-	Description string     `gorm:"type:text" json:"description"`
-	CoverImage  string     `gorm:"size:500" json:"cover_image"`
-	SortOrder   int        `gorm:"default:0" json:"sort_order"`
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
-	Posts       []Post     `gorm:"many2many:post_series;" json:"posts,omitempty"`
+	ID          uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	Name        string    `gorm:"size:200;not null" json:"name"`
+	Slug        string    `gorm:"uniqueIndex;size:200;not null" json:"slug"`
+	Description string    `gorm:"type:text" json:"description"`
+	CoverImage  string    `gorm:"size:500" json:"cover_image"`
+	SortOrder   int       `gorm:"default:0" json:"sort_order"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+	Posts       []Post    `gorm:"many2many:post_series;" json:"posts,omitempty"`
 }
 
 type PostSeries struct {
@@ -275,7 +278,7 @@ type FriendLink struct {
 }
 
 func AutoMigrate(db *gorm.DB) error {
-	return db.AutoMigrate(
+	if err := db.AutoMigrate(
 		&User{},
 		&Passkey{},
 		&Category{},
@@ -298,5 +301,11 @@ func AutoMigrate(db *gorm.DB) error {
 		&IPBan{},
 		&Notification{},
 		&GalleryImage{},
-	)
+	); err != nil {
+		return err
+	}
+	// AutoMigrate creates the new partial unique index first. Only then remove
+	// the legacy index, which incorrectly allowed just one empty preview token.
+	// Existing nonempty tokens remain unique throughout the migration.
+	return db.Exec("DROP INDEX IF EXISTS idx_posts_preview_token").Error
 }

@@ -63,10 +63,12 @@ type ReorderItem struct {
 }
 
 func (r *GalleryRepo) Reorder(items []ReorderItem) error {
-	for _, item := range items {
-		if err := r.db.Model(&model.GalleryImage{}).Where("id = ?", item.ID).Update("sort_order", item.SortOrder).Error; err != nil {
-			return err
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		for _, item := range items {
+			if err := tx.Model(&model.GalleryImage{}).Where("id = ?", item.ID).Update("sort_order", item.SortOrder).Error; err != nil {
+				return err
+			}
 		}
-	}
-	return nil
+		return nil
+	})
 }

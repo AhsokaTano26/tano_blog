@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -29,75 +30,160 @@ func NewMediaHandler(repo *repository.MediaRepo, galleryRepo *repository.Gallery
 	return &MediaHandler{repo: repo, galleryRepo: galleryRepo, cfg: cfg}
 }
 
-func (h *MediaHandler) Upload(c *gin.Context) {
-	file, err := c.FormFile("file")
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "请选择文件"})
-		return
+const uploadMetadataLimit int64 = 64 << 10
+
+type streamedMedia struct {
+	Filename, StoredName, Path, Kind, TagIDs string
+	Size                                     int64
+}
+
+type uploadContextReader struct {
+	ctx    context.Context
+	reader io.Reader
+}
+
+func (r uploadContextReader) Read(p []byte) (int, error) {
+	if err := r.ctx.Err(); err != nil {
+		return 0, err
 	}
+	return r.reader.Read(p)
+}
 
-	// Determine type-specific size limit before validation
-	ext := strings.ToLower(filepath.Ext(file.Filename))
-	imageExts := map[string]bool{".jpg": true, ".jpeg": true, ".png": true, ".gif": true, ".webp": true, ".ico": true, ".bmp": true, ".svg": true}
-	audioExts := map[string]bool{".mp3": true, ".wav": true, ".flac": true, ".aac": true, ".m4a": true, ".ogg": true}
-	videoExts := map[string]bool{".mp4": true, ".webm": true, ".mov": true, ".avi": true, ".mkv": true}
+func uploadLimitMB(configured, fallback int64) int64 {
+	if configured <= 0 {
+		return fallback
+	}
+	return min(configured, 2048)
+}
 
-	var maxBytes int64
-	var limitName string
-	switch {
-	case imageExts[ext]:
-		maxBytes = h.cfg.MaxImageMB * 1024 * 1024
-		limitName = fmt.Sprintf("%dMB", h.cfg.MaxImageMB)
-	case audioExts[ext]:
-		maxBytes = h.cfg.MaxAudioMB * 1024 * 1024
-		limitName = fmt.Sprintf("%dMB", h.cfg.MaxAudioMB)
-	case videoExts[ext]:
-		maxBytes = h.cfg.MaxVideoMB * 1024 * 1024
-		limitName = fmt.Sprintf("%dMB", h.cfg.MaxVideoMB)
+func mediaUploadType(ext string, cfg *config.UploadConfig) (string, int64) {
+	switch ext {
+	case ".jpg", ".jpeg", ".png", ".gif", ".webp", ".ico", ".bmp", ".svg":
+		return "image", uploadLimitMB(cfg.MaxImageMB, 50) << 20
+	case ".mp3", ".wav", ".flac", ".aac", ".m4a", ".ogg":
+		return "audio", uploadLimitMB(cfg.MaxAudioMB, 200) << 20
+	case ".mp4", ".webm", ".mov", ".avi", ".mkv":
+		return "video", uploadLimitMB(cfg.MaxVideoMB, 2048) << 20
+	case ".pdf", ".doc", ".docx", ".zip", ".tar", ".gz", ".txt", ".md", ".json", ".xml":
+		return "file", uploadLimitMB(cfg.MaxImageMB, 50) << 20
 	default:
-		maxBytes = h.cfg.MaxImageMB * 1024 * 1024
-		limitName = fmt.Sprintf("%dMB", h.cfg.MaxImageMB)
+		return "", 0
 	}
-	if file.Size > maxBytes {
-		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("文件大小超过限制（最大%s）", limitName)})
-		return
-	}
+}
 
-	allowedExts := map[string]bool{
-		".jpg": true, ".jpeg": true, ".png": true, ".gif": true,
-		".webp": true, ".ico": true, ".bmp": true, ".svg": true,
-		".pdf": true, ".doc": true, ".docx": true,
-		".mp3": true, ".wav": true, ".flac": true, ".aac": true, ".m4a": true, ".ogg": true,
-		".mp4": true, ".webm": true, ".mov": true, ".avi": true, ".mkv": true,
-		".zip": true, ".tar": true, ".gz": true,
-		".txt": true, ".md": true, ".json": true, ".xml": true,
+// Read parts in order. Never close/drain a rejected part: that would consume the
+// very upload we are rejecting. Only one bounded disk copy is retained.
+func streamMediaUpload(c *gin.Context, cfg *config.UploadConfig) (*streamedMedia, int, error) {
+	maxMB := max(uploadLimitMB(cfg.MaxImageMB, 50), uploadLimitMB(cfg.MaxAudioMB, 200), uploadLimitMB(cfg.MaxVideoMB, 2048))
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, (maxMB<<20)+(1<<20))
+	reader, err := c.Request.MultipartReader()
+	if err != nil {
+		return nil, http.StatusBadRequest, fmt.Errorf("请选择文件")
 	}
-	if !allowedExts[ext] {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "不支持的文件类型: " + ext})
-		return
+	result := &streamedMedia{}
+	keep := false
+	defer func() {
+		if !keep && result.Path != "" {
+			_ = os.Remove(result.Path)
+		}
+	}()
+	var fieldBytes, headerBytes int64
+	seenTags := false
+	for parts := 0; ; parts++ {
+		if err := c.Request.Context().Err(); err != nil {
+			return nil, http.StatusRequestTimeout, err
+		}
+		part, err := reader.NextPart()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, http.StatusBadRequest, fmt.Errorf("上传表单不完整: %w", err)
+		}
+		if parts >= 32 {
+			return nil, http.StatusBadRequest, fmt.Errorf("上传表单字段过多")
+		}
+		for key, values := range part.Header {
+			headerBytes += int64(len(key))
+			for _, value := range values {
+				headerBytes += int64(len(value))
+			}
+		}
+		if headerBytes > uploadMetadataLimit {
+			return nil, http.StatusBadRequest, fmt.Errorf("上传表单头过大")
+		}
+		if part.FileName() == "" {
+			value, err := io.ReadAll(io.LimitReader(uploadContextReader{c.Request.Context(), part}, uploadMetadataLimit-fieldBytes+1))
+			fieldBytes += int64(len(value))
+			if err != nil || fieldBytes > uploadMetadataLimit {
+				return nil, http.StatusBadRequest, fmt.Errorf("上传表单字段过大或已中断")
+			}
+			if part.FormName() == "tag_ids" && !seenTags {
+				result.TagIDs = string(value)
+				seenTags = true
+			}
+			continue
+		}
+		if part.FormName() != "file" || result.Path != "" {
+			return nil, http.StatusBadRequest, fmt.Errorf("每次只能上传一个文件")
+		}
+		ext := strings.ToLower(filepath.Ext(part.FileName()))
+		kind, limit := mediaUploadType(ext, cfg)
+		if kind == "" {
+			return nil, http.StatusBadRequest, fmt.Errorf("不支持的文件类型: %s", ext)
+		}
+		if err := os.MkdirAll(cfg.Dir, 0755); err != nil {
+			return nil, http.StatusInternalServerError, fmt.Errorf("创建上传目录失败")
+		}
+		file, err := os.CreateTemp(cfg.Dir, ".upload-*")
+		if err != nil {
+			return nil, http.StatusInternalServerError, fmt.Errorf("创建上传文件失败")
+		}
+		result.Path = file.Name()
+		result.Filename, result.StoredName, result.Kind = part.FileName(), uuid.New().String()+ext, kind
+		result.Size, err = io.Copy(file, io.LimitReader(uploadContextReader{c.Request.Context(), part}, limit+1))
+		closeErr := file.Close()
+		if err != nil {
+			return nil, http.StatusBadRequest, fmt.Errorf("上传已中断: %w", err)
+		}
+		if result.Size > limit {
+			return nil, http.StatusBadRequest, fmt.Errorf("文件大小超过限制（最大%dMB）", limit>>20)
+		}
+		if closeErr != nil {
+			return nil, http.StatusInternalServerError, fmt.Errorf("保存文件失败")
+		}
 	}
+	if result.Path == "" {
+		return nil, http.StatusBadRequest, fmt.Errorf("请选择文件")
+	}
+	if err := c.Request.Context().Err(); err != nil {
+		return nil, http.StatusRequestTimeout, err
+	}
+	keep = true
+	return result, http.StatusOK, nil
+}
 
-	filename := uuid.New().String() + ext
-	uploadDir := h.cfg.Dir
-	if err := os.MkdirAll(uploadDir, 0755); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建上传目录失败"})
+func (h *MediaHandler) Upload(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
+	file, status, err := streamMediaUpload(c, h.cfg)
+	if err != nil {
+		c.JSON(status, gin.H{"error": err.Error()})
 		return
 	}
-
-	filePath := filepath.Join(uploadDir, filename)
-	if err := c.SaveUploadedFile(file, filePath); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "保存文件失败"})
-		return
-	}
+	filename, uploadDir, filePath := file.StoredName, h.cfg.Dir, file.Path
 	keepFile := false
+	var thumbnailURL string
 	defer func() {
 		if !keepFile {
 			_ = os.Remove(filePath)
+			if thumbnailURL != "" {
+				_ = os.Remove(filepath.Join(uploadDir, filepath.Base(thumbnailURL)))
+			}
 		}
 	}()
 
 	// Detect MIME type from file content
-	f, err := file.Open()
+	f, err := os.Open(filePath)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "读取文件失败"})
 		return
@@ -112,19 +198,33 @@ func (h *MediaHandler) Upload(c *gin.Context) {
 	audioMimes := []string{"audio/"}
 	videoMimes := []string{"video/"}
 	switch {
-	case imageExts[ext] && !hasAnyPrefix(mimeType, imageMimes...):
+	case file.Kind == "image" && !hasAnyPrefix(mimeType, imageMimes...):
 		c.JSON(http.StatusBadRequest, gin.H{"error": "文件内容与扩展名不匹配，请检查文件"})
 		return
-	case audioExts[ext] && !hasAnyPrefix(mimeType, audioMimes...):
+	case file.Kind == "audio" && !hasAnyPrefix(mimeType, audioMimes...):
 		c.JSON(http.StatusBadRequest, gin.H{"error": "文件内容与扩展名不匹配，请检查文件"})
 		return
-	case videoExts[ext] && !hasAnyPrefix(mimeType, videoMimes...):
+	case file.Kind == "video" && !hasAnyPrefix(mimeType, videoMimes...):
 		c.JSON(http.StatusBadRequest, gin.H{"error": "文件内容与扩展名不匹配，请检查文件"})
 		return
 	}
 
+	if err := c.Request.Context().Err(); err != nil {
+		c.JSON(http.StatusRequestTimeout, gin.H{"error": "上传已取消"})
+		return
+	}
+	if err := os.Chmod(filePath, 0644); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "保存文件失败"})
+		return
+	}
+	finalPath := filepath.Join(uploadDir, filename)
+	if err := os.Rename(filePath, finalPath); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "保存文件失败"})
+		return
+	}
+	filePath = finalPath
+
 	// Extract embedded album art and metadata from audio files
-	var thumbnailURL string
 	var audioTitle, audioArtist, audioAlbum string
 	if strings.HasPrefix(mimeType, "image/") {
 		thumbnailURL, err = utils.GenerateImageThumbnail(filePath)
@@ -133,7 +233,7 @@ func (h *MediaHandler) Upload(c *gin.Context) {
 		}
 	}
 	if strings.HasPrefix(mimeType, "audio/") {
-		thumbnailURL, _ = extractAudioCover(filePath, uploadDir, filename)
+		thumbnailURL = safeExtractAudioCover(filePath, uploadDir, filename)
 		audioTitle, audioArtist, audioAlbum = extractAudioMetadata(filePath)
 	}
 
@@ -161,7 +261,7 @@ func (h *MediaHandler) Upload(c *gin.Context) {
 	keepFile = true
 
 	// Associate tags if provided
-	if tagIDsStr := c.PostForm("tag_ids"); tagIDsStr != "" {
+	if tagIDsStr := file.TagIDs; tagIDsStr != "" {
 		var tagIDs []uuid.UUID
 		for _, s := range strings.Split(tagIDsStr, ",") {
 			if id, err := uuid.Parse(strings.TrimSpace(s)); err == nil {
@@ -171,7 +271,9 @@ func (h *MediaHandler) Upload(c *gin.Context) {
 		if len(tagIDs) > 0 {
 			h.repo.UpdateTags(media.ID, tagIDs)
 		}
-		media, _ = h.repo.GetByID(media.ID)
+		if tagged, err := h.repo.GetByID(media.ID); err == nil {
+			media = tagged
+		}
 	}
 
 	// 图片上传时自动加入图片馆
@@ -190,6 +292,7 @@ func (h *MediaHandler) Upload(c *gin.Context) {
 }
 
 func (h *MediaHandler) GetMediaInfo(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	url := c.Query("url")
 	if url == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "缺少 url 参数"})
@@ -204,6 +307,7 @@ func (h *MediaHandler) GetMediaInfo(c *gin.Context) {
 }
 
 func (h *MediaHandler) List(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
 	tagID := c.Query("tag")
@@ -264,6 +368,7 @@ func (h *MediaHandler) BackfillImageThumbnails(ctx context.Context) error {
 }
 
 func (h *MediaHandler) Delete(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
@@ -294,6 +399,7 @@ func (h *MediaHandler) Delete(c *gin.Context) {
 }
 
 func (h *MediaHandler) UpdateMediaTags(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
@@ -325,6 +431,7 @@ func (h *MediaHandler) UpdateMediaTags(c *gin.Context) {
 }
 
 func (h *MediaHandler) ListTags(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	tags, err := h.repo.ListTags()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取标签列表失败"})
@@ -334,6 +441,7 @@ func (h *MediaHandler) ListTags(c *gin.Context) {
 }
 
 func (h *MediaHandler) CreateTag(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	var req struct {
 		Name string `json:"name" binding:"required"`
 	}
@@ -361,6 +469,7 @@ func (h *MediaHandler) CreateTag(c *gin.Context) {
 }
 
 func (h *MediaHandler) DeleteTag(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
@@ -375,6 +484,7 @@ func (h *MediaHandler) DeleteTag(c *gin.Context) {
 }
 
 func (h *MediaHandler) BatchDelete(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	var input struct {
 		IDs []string `json:"ids"`
 	}
@@ -418,6 +528,7 @@ func (h *MediaHandler) BatchDelete(c *gin.Context) {
 }
 
 func (h *MediaHandler) BatchUpdateTags(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	var input struct {
 		IDs    []string `json:"ids"`
 		TagIDs []string `json:"tag_ids"`
@@ -486,6 +597,7 @@ func extractAudioCover(filePath, uploadDir, filename string) (string, error) {
 	thumbFilename := strings.TrimSuffix(filename, filepath.Ext(filename)) + "_thumb." + pic.Ext
 	thumbPath := filepath.Join(uploadDir, thumbFilename)
 	if err := os.WriteFile(thumbPath, pic.Data, 0644); err != nil {
+		_ = os.Remove(thumbPath)
 		return "", err
 	}
 
@@ -509,6 +621,7 @@ func extractAudioMetadata(filePath string) (title, artist, album string) {
 }
 
 func (h *MediaHandler) UpdateMetadata(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})

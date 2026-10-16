@@ -19,7 +19,9 @@ func NewGalleryHandler(repo *repository.GalleryRepo) *GalleryHandler {
 
 // List — 公开和管理端通用
 func (h *GalleryHandler) List(c *gin.Context) {
-	items, err := h.repo.List()
+	h = h.withContext(c.Request.Context())
+	page, size := pagination(c, 48, 100)
+	items, total, err := h.repo.ListPage(page, size)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取图片列表失败"})
 		return
@@ -27,11 +29,12 @@ func (h *GalleryHandler) List(c *gin.Context) {
 	if items == nil {
 		items = []model.GalleryImage{}
 	}
-	c.JSON(http.StatusOK, gin.H{"items": items})
+	c.JSON(http.StatusOK, gin.H{"items": items, "total": total, "page": page, "size": size})
 }
 
 // Create — 管理端新增
 func (h *GalleryHandler) Create(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	var input struct {
 		URL         string `json:"url" binding:"required"`
 		Title       string `json:"title"`
@@ -44,15 +47,6 @@ func (h *GalleryHandler) Create(c *gin.Context) {
 		return
 	}
 
-	// 获取当前最大 sort_order
-	items, _ := h.repo.List()
-	maxOrder := 0
-	for _, item := range items {
-		if item.SortOrder > maxOrder {
-			maxOrder = item.SortOrder
-		}
-	}
-
 	img := &model.GalleryImage{
 		ID:          uuid.New(),
 		URL:         input.URL,
@@ -60,7 +54,6 @@ func (h *GalleryHandler) Create(c *gin.Context) {
 		Description: input.Description,
 		Width:       input.Width,
 		Height:      input.Height,
-		SortOrder:   maxOrder + 1,
 	}
 	if err := h.repo.Create(img); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建失败"})
@@ -71,6 +64,7 @@ func (h *GalleryHandler) Create(c *gin.Context) {
 
 // Update — 管理端更新
 func (h *GalleryHandler) Update(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
@@ -97,11 +91,11 @@ func (h *GalleryHandler) Update(c *gin.Context) {
 	updates["title"] = input.Title
 	updates["description"] = input.Description
 	if input.Width != nil {
-			updates["width"] = *input.Width
-		}
+		updates["width"] = *input.Width
+	}
 	if input.Height != nil {
-			updates["height"] = *input.Height
-		}
+		updates["height"] = *input.Height
+	}
 	if input.SortOrder != nil {
 		updates["sort_order"] = *input.SortOrder
 	}
@@ -115,6 +109,7 @@ func (h *GalleryHandler) Update(c *gin.Context) {
 
 // Delete — 管理端删除
 func (h *GalleryHandler) Delete(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
@@ -129,6 +124,7 @@ func (h *GalleryHandler) Delete(c *gin.Context) {
 
 // ToggleByURL — 通过 URL 开关图片馆状态（前端附件用）
 func (h *GalleryHandler) ToggleByURL(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	var input struct {
 		URL   string `json:"url" binding:"required"`
 		Title string `json:"title"`
@@ -150,18 +146,10 @@ func (h *GalleryHandler) ToggleByURL(c *gin.Context) {
 	}
 
 	// 不在馆中 → 加入
-	items, _ := h.repo.List()
-	maxOrder := 0
-	for _, item := range items {
-		if item.SortOrder > maxOrder {
-			maxOrder = item.SortOrder
-		}
-	}
 	img := &model.GalleryImage{
-		ID:        uuid.New(),
-		URL:       input.URL,
-		Title:     input.Title,
-		SortOrder: maxOrder + 1,
+		ID:    uuid.New(),
+		URL:   input.URL,
+		Title: input.Title,
 	}
 	if err := h.repo.Create(img); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "操作失败"})
@@ -172,6 +160,7 @@ func (h *GalleryHandler) ToggleByURL(c *gin.Context) {
 
 // Reorder — 批量更新排序
 func (h *GalleryHandler) Reorder(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	var input struct {
 		Items []repository.ReorderItem `json:"items" binding:"required"`
 	}

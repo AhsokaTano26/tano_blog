@@ -23,6 +23,7 @@ func NewAIHandler(aiService *service.AIService, db *gorm.DB) *AIHandler {
 // GenerateExcerpt generates an AI excerpt for a post.
 // POST /api/v1/admin/posts/:id/generate-excerpt
 func (h *AIHandler) GenerateExcerpt(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	postID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})

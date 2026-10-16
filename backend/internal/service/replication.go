@@ -1,8 +1,11 @@
 package service
 
 import (
+	"archive/zip"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -34,6 +37,8 @@ type ReplicationService struct {
 	backupDir             string
 	uploadDir             string
 	createSnapshot        func() (string, error)
+	snapshotCreator       func(context.Context, func()) (string, error)
+	snapshotRestorer      func(context.Context, string) error
 	restoreSnapshot       func(string) error
 	verifySnapshotUploads func(string, string) error
 	syncKeyEncryptionKey  string
@@ -78,6 +83,59 @@ func NewReplicationService(repo *repository.SiteConfigRepo, backupDir, uploadDir
 	return &ReplicationService{repo: repo, backupDir: backupDir, uploadDir: uploadDir, createSnapshot: createSnapshot, restoreSnapshot: restoreSnapshot, verifySnapshotUploads: verifySnapshotUploads, syncKeyEncryptionKey: syncKeyEncryptionKey}
 }
 
+// SetSnapshotCreator is configured at startup. The callback releases writers
+// once both the MVCC snapshot and immutable upload file set have been captured.
+func (s *ReplicationService) SetSnapshotCreator(create func(context.Context, func()) (string, error)) {
+	s.snapshotCreator = create
+}
+func (s *ReplicationService) SetSnapshotRestorer(restore func(context.Context, string) error) {
+	s.snapshotRestorer = restore
+}
+
+func (s *ReplicationService) createPrimarySnapshot(ctx context.Context) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	release, err := s.AcquireBackupGate(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer release()
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	if s.snapshotCreator != nil {
+		return s.snapshotCreator(ctx, release)
+	}
+	return s.createSnapshot()
+}
+
+// AcquireBackupGate bounds the capture interval and lets a cancelled backup
+// stop waiting for an in-flight upload or restore without retaining a goroutine.
+func (s *ReplicationService) AcquireBackupGate(ctx context.Context) (func(), error) {
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if s.writeGate.TryLock() {
+			var once sync.Once
+			release := func() { once.Do(s.writeGate.Unlock) }
+			if err := ctx.Err(); err != nil {
+				release()
+				return nil, err
+			}
+			return release, nil
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-ticker.C:
+		}
+	}
+}
+
 // AcquireWriteLease 让业务写请求与主服务器创建快照互斥，确保数据库和媒体清单处于同一时点。
 func (s *ReplicationService) AcquireWriteLease() func() {
 	s.writeGate.RLock()
@@ -115,9 +173,7 @@ func (s *ReplicationService) RunNow(ctx context.Context) error {
 	_ = s.repo.Upsert(syncAttemptedAtKey, time.Now().UTC().Format(time.RFC3339), "string")
 
 	if settings.role == "primary" {
-		s.writeGate.Lock()
-		name, err := s.createSnapshot()
-		s.writeGate.Unlock()
+		name, err := s.createPrimarySnapshot(ctx)
 		if err != nil {
 			return s.finish("failed", "创建同步快照失败: "+err.Error(), "")
 		}
@@ -190,10 +246,14 @@ func (s *ReplicationService) pullAndApply(ctx context.Context, settings syncSett
 	if err := os.MkdirAll(stage, 0750); err != nil {
 		return err
 	}
-	if err := s.rsync(ctx, settings, settings.remoteUploads, stage, true); err != nil {
+	snapshotPath := filepath.Join(incoming, snapshot)
+	remoteUploads, err := snapshotUploadDirectory(snapshotPath, settings.remoteUploads)
+	if err != nil {
+		return fmt.Errorf("读取快照上传目录失败: %w", err)
+	}
+	if err := s.rsync(ctx, settings, remoteUploads, stage, true); err != nil {
 		return fmt.Errorf("拉取上传文件失败: %w", err)
 	}
-	snapshotPath := filepath.Join(incoming, snapshot)
 	if err := s.verifySnapshotUploads(snapshotPath, stage); err != nil {
 		return fmt.Errorf("校验上传文件失败: %w", err)
 	}
@@ -204,7 +264,13 @@ func (s *ReplicationService) pullAndApply(ctx context.Context, settings syncSett
 	if err != nil {
 		return fmt.Errorf("切换上传文件失败: %w", err)
 	}
-	if err := s.restoreSnapshot(snapshotPath); err != nil {
+	restore := func() error {
+		if s.snapshotRestorer != nil {
+			return s.snapshotRestorer(ctx, snapshotPath)
+		}
+		return s.restoreSnapshot(snapshotPath)
+	}
+	if err := restore(); err != nil {
 		_ = rollbackSwap()
 		_ = s.repo.Delete(syncApplyStateKey)
 		return fmt.Errorf("应用数据库快照失败: %w", err)
@@ -285,7 +351,7 @@ func (s *ReplicationService) rsync(ctx context.Context, settings syncSettings, r
 	}
 	// --append-verify 负责断点续传和完整性校验；它与 --delay-updates
 	// 互斥。上传目录会在传输完成后由 swapDirectories 原子切换。
-	args := []string{"-az", "--partial", "--append-verify", "--protect-args", "--timeout=60", "-e", ssh}
+	args := []string{"-az", "--partial", "--append-verify", "--protect-args", "--timeout=60", "--exclude=.sync-snapshots/", "-e", ssh}
 	if settings.bandwidthKBps > 0 {
 		args = append(args, "--bwlimit="+strconv.Itoa(settings.bandwidthKBps))
 	}
@@ -368,6 +434,56 @@ func latestSnapshot(dir string) (string, error) {
 	}
 	sort.Strings(snapshots)
 	return snapshots[len(snapshots)-1], nil
+}
+
+// New snapshots transfer their pinned uploads; legacy archives keep the original
+// remote-directory behavior and are still verified against their hash manifest.
+func snapshotUploadDirectory(snapshotPath, remoteUploads string) (string, error) {
+	archive, err := zip.OpenReader(snapshotPath)
+	if err != nil {
+		return "", err
+	}
+	defer archive.Close()
+	directory := ""
+	found := false
+	for _, entry := range archive.File {
+		if filepath.Base(entry.Name) != "snapshot-uploads.json" {
+			continue
+		}
+		if found {
+			return "", fmt.Errorf("重复的快照上传目录")
+		}
+		found = true
+		if entry.UncompressedSize64 > 4096 {
+			return "", fmt.Errorf("快照上传目录记录过大")
+		}
+		reader, err := entry.Open()
+		if err != nil {
+			return "", err
+		}
+		var marker struct {
+			Directory string `json:"directory"`
+		}
+		decoder := json.NewDecoder(io.LimitReader(reader, 4097))
+		err = decoder.Decode(&marker)
+		var extra interface{}
+		if err == nil && decoder.Decode(&extra) != io.EOF {
+			err = fmt.Errorf("快照上传目录记录包含尾随数据")
+		}
+		reader.Close()
+		if err != nil {
+			return "", err
+		}
+		expected := strings.TrimSuffix(filepath.Base(snapshotPath), ".zip")
+		if marker.Directory != expected || !strings.HasPrefix(marker.Directory, "sync-") || strings.ContainsAny(marker.Directory, "/\\") || strings.Contains(marker.Directory, "..") {
+			return "", fmt.Errorf("快照上传目录无效")
+		}
+		directory = marker.Directory
+	}
+	if !found {
+		return remoteUploads, nil
+	}
+	return strings.TrimRight(remoteUploads, "/") + "/.sync-snapshots/" + directory, nil
 }
 
 func safeRemoteDir(path string) bool {

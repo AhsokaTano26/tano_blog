@@ -2,11 +2,13 @@ package handler
 
 import (
 	"archive/zip"
+	"bufio"
 	"context"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -14,9 +16,9 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -52,19 +54,26 @@ var restoreSafeColumns = map[string][]string{
 	"notifications":     {"id", "user_id", "type", "title", "content", "link", "is_read", "created_at"},
 }
 
-// safeColumnName ensures a column name contains only safe characters
-var safeColumnRe = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
-
 type BackupHandler struct {
-	db        *gorm.DB
-	uploadDir string
-	backupDir string
+	db                *gorm.DB
+	uploadDir         string
+	backupDir         string
+	operationMu       sync.Mutex
+	operation         BackupProgress
+	cancelOperation   context.CancelFunc
+	acquireBackupGate func(context.Context) (func(), error)
 }
 
 func NewBackupHandler(db *gorm.DB, uploadDir, backupDir string) *BackupHandler {
 	h := &BackupHandler{db: db, uploadDir: uploadDir, backupDir: backupDir}
 	os.MkdirAll(backupDir, 0755)
 	return h
+}
+
+// SetBackupGate is configured at startup to coordinate ordinary backups with
+// the same business-write gate used by replication snapshots.
+func (h *BackupHandler) SetBackupGate(acquire func(context.Context) (func(), error)) {
+	h.acquireBackupGate = acquire
 }
 
 // backupData is the serializable backup format for all tables
@@ -101,163 +110,452 @@ const (
 	maxRestoreArchiveSize  = int64(500 * 1024 * 1024)
 	maxRestoreExpandedSize = uint64(2 * 1024 * 1024 * 1024)
 	maxRestoreEntrySize    = uint64(500 * 1024 * 1024)
-	maxRestoreDataJSONSize = int64(256 * 1024 * 1024)
+	maxRestoreDataJSONSize = int64(maxRestoreExpandedSize)
+	maxRestoreManifestSize = int64(64 * 1024 * 1024)
+	restoreBatchSize       = 200
 )
 
-// generateBackup writes a backup directly to disk so uploaded media is never
-// accumulated in process memory.
-func (h *BackupHandler) generateBackup(path string, includeUploads, includeSyncManifest bool) error {
-	data := backupData{
-		Version:   "1.1",
-		CreatedAt: time.Now().UTC().Format(time.RFC3339),
-		Data:      make(map[string][]map[string]interface{}),
-	}
+// BackupProgress describes the one active backup or restore operation. Rows are
+// cumulative within a phase; bytes are ZIP output bytes or validated JSON bytes.
+type BackupProgress struct {
+	Running bool   `json:"running"`
+	Phase   string `json:"phase"`
+	Table   string `json:"table"`
+	Rows    int64  `json:"rows"`
+	Bytes   int64  `json:"bytes"`
+	Error   string `json:"error,omitempty"`
+}
 
-	tx := h.db.Begin(&sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
+func (h *BackupHandler) beginOperation(parent context.Context, phase string) (context.Context, func(error), bool) {
+	h.operationMu.Lock()
+	defer h.operationMu.Unlock()
+	if h.operation.Running {
+		return nil, nil, false
+	}
+	ctx, cancel := context.WithCancel(parent)
+	h.cancelOperation = cancel
+	h.operation = BackupProgress{Running: true, Phase: phase}
+	return ctx, func(err error) {
+		cancel()
+		h.operationMu.Lock()
+		defer h.operationMu.Unlock()
+		h.operation.Running = false
+		h.cancelOperation = nil
+		h.operation.Table = ""
+		h.operation.Phase = "completed"
+		if errors.Is(err, context.Canceled) {
+			h.operation.Phase = "cancelled"
+		} else if err != nil {
+			h.operation.Phase = "failed"
+			h.operation.Error = "操作失败"
+		}
+	}, true
+}
+
+func (h *BackupHandler) routeOperation(c *gin.Context, phase string) (context.Context, func(), bool) {
+	ctx, finish, ok := h.beginOperation(c.Request.Context(), phase)
+	if !ok {
+		c.JSON(http.StatusConflict, gin.H{"error": "已有备份或恢复任务正在运行"})
+		return nil, nil, false
+	}
+	return ctx, func() {
+		err := ctx.Err()
+		h.operationMu.Lock()
+		finalizing := h.operation.Phase == "finalize"
+		h.operationMu.Unlock()
+		if finalizing && c.Writer.Status() < 400 {
+			err = nil
+		}
+		if err == nil && c.Writer.Status() >= 400 {
+			err = fmt.Errorf("操作失败")
+		}
+		finish(err)
+	}, true
+}
+
+func (h *BackupHandler) progress(phase, table string, rows, bytes int64) {
+	h.operationMu.Lock()
+	defer h.operationMu.Unlock()
+	if phase != "" && h.operation.Phase != phase {
+		h.operation.Rows = 0
+		h.operation.Table = ""
+		h.operation.Bytes = 0
+		h.operation.Phase = phase
+	}
+	if table != "" {
+		h.operation.Table = table
+	}
+	h.operation.Rows += rows
+	h.operation.Bytes += bytes
+}
+
+func (h *BackupHandler) BackupStatus(c *gin.Context) {
+	h.operationMu.Lock()
+	status := h.operation
+	h.operationMu.Unlock()
+	c.JSON(http.StatusOK, status)
+}
+
+func (h *BackupHandler) CancelBackup(c *gin.Context) {
+	h.operationMu.Lock()
+	if h.cancelOperation == nil {
+		running := h.operation.Running
+		h.operationMu.Unlock()
+		message := "没有正在运行的任务"
+		if running {
+			message = "正在完成恢复，无法取消"
+		}
+		c.JSON(http.StatusConflict, gin.H{"error": message})
+		return
+	}
+	h.cancelOperation()
+	h.operationMu.Unlock()
+	c.JSON(http.StatusAccepted, gin.H{"message": "已请求取消任务"})
+}
+
+// Cancellation is available while the transaction can still roll back. Once
+// commit starts, finish file replacement even if the client disconnects.
+func (h *BackupHandler) beginRestoreCommit(ctx context.Context) error {
+	h.operationMu.Lock()
+	defer h.operationMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	h.cancelOperation = nil
+	h.operation.Phase = "finalize"
+	h.operation.Table = ""
+	return nil
+}
+
+type contextReader struct {
+	ctx    context.Context
+	reader io.Reader
+}
+
+func (r contextReader) Read(p []byte) (int, error) {
+	if err := r.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return r.reader.Read(p)
+}
+
+type backupWriter struct {
+	ctx    context.Context
+	writer io.Writer
+	count  int64
+	report func(int64)
+}
+
+func (w *backupWriter) Write(p []byte) (int, error) {
+	if err := w.ctx.Err(); err != nil {
+		return 0, err
+	}
+	if w.count+int64(len(p)) > maxRestoreArchiveSize {
+		return 0, fmt.Errorf("备份 ZIP 超过 500MB 限制")
+	}
+	n, err := w.writer.Write(p)
+	w.count += int64(n)
+	w.report(int64(n))
+	return n, err
+}
+
+// The same expanded-size limits apply on export and import, including JSON
+// punctuation and manifests, so a generated archive can always pass validation.
+type expandedBackupWriter struct {
+	writer      io.Writer
+	total       *int64
+	size, limit int64
+}
+
+func (w *expandedBackupWriter) Write(p []byte) (int, error) {
+	if w.size+int64(len(p)) > w.limit || *w.total+int64(len(p)) > int64(maxRestoreExpandedSize) {
+		return 0, fmt.Errorf("备份解压后大小超过恢复限制")
+	}
+	n, err := w.writer.Write(p)
+	w.size += int64(n)
+	*w.total += int64(n)
+	return n, err
+}
+
+// generateBackup retains the 1.1 format while keeping only one database row in memory.
+func (h *BackupHandler) generateBackup(path string, includeUploads, includeSyncManifest bool) error {
+	return h.generateBackupContext(context.Background(), path, includeUploads, includeSyncManifest, nil)
+}
+
+func (h *BackupHandler) generateBackupContext(ctx context.Context, path string, includeUploads, includeSyncManifest bool, releaseWrites func()) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if includeUploads && releaseWrites == nil && h.acquireBackupGate != nil {
+		release, err := h.acquireBackupGate(ctx)
+		if err != nil {
+			return err
+		}
+		var once sync.Once
+		releaseWrites = func() { once.Do(release) }
+		defer releaseWrites()
+	}
+	tx := h.db.WithContext(ctx).Begin(&sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
 	if tx.Error != nil {
-		return fmt.Errorf("开始一致性备份事务失败: %v", tx.Error)
+		return fmt.Errorf("开始一致性备份事务失败: %w", tx.Error)
 	}
 	defer tx.Rollback()
-
-	for _, table := range backupTables {
-		rows := make([]map[string]interface{}, 0)
-		if err := tx.Table(table).Find(&rows).Error; err != nil {
-			return fmt.Errorf("导出 %s 失败: %v", table, err)
+	// BEGIN alone does not acquire a PostgreSQL MVCC snapshot. Pin it while the
+	// application write lease is still exclusive, before linking upload inodes.
+	if err := tx.Exec("SELECT txid_current_snapshot()").Error; err != nil {
+		return err
+	}
+	uploadDir := h.uploadDir
+	frozenDir := ""
+	snapshotName := ""
+	complete := false
+	if includeSyncManifest || includeUploads {
+		snapshotName = strings.TrimSuffix(strings.TrimSuffix(strings.TrimPrefix(filepath.Base(path), "."), ".tmp"), ".zip")
+		var err error
+		frozenDir, err = h.freezeUploads(ctx, snapshotName)
+		if err != nil {
+			return err
 		}
-		data.Data[table] = rows
+		uploadDir = frozenDir
+		defer func() {
+			if !complete || !includeSyncManifest {
+				_ = os.RemoveAll(frozenDir)
+			}
+		}()
 	}
-	if err := tx.Commit().Error; err != nil {
-		return fmt.Errorf("完成一致性备份事务失败: %v", err)
+	if releaseWrites != nil {
+		releaseWrites()
 	}
-
 	out, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 	if err != nil {
-		return fmt.Errorf("创建备份文件失败: %v", err)
+		return fmt.Errorf("创建备份文件失败: %w", err)
 	}
-	complete := false
 	defer func() {
 		_ = out.Close()
 		if !complete {
 			_ = os.Remove(path)
 		}
 	}()
-
-	zw := zip.NewWriter(out)
-	prefix := fmt.Sprintf("backup-%s", time.Now().UTC().Format("2006-01-02"))
-
-	jsonBytes, err := json.MarshalIndent(data, "", "  ")
+	h.progress("export", "", 0, 0)
+	output := &backupWriter{ctx: ctx, writer: out, report: func(n int64) { h.progress("", "", 0, n) }}
+	zw := zip.NewWriter(output)
+	prefix := "backup-" + time.Now().UTC().Format("2006-01-02")
+	entry, err := zw.Create(prefix + "/data.json")
 	if err != nil {
-		return fmt.Errorf("序列化失败: %v", err)
+		return err
 	}
-	f, err := zw.Create(prefix + "/data.json")
-	if err != nil {
-		return fmt.Errorf("创建 zip 条目失败: %v", err)
+	var expanded int64
+	jsonWriter := bufio.NewWriterSize(&expandedBackupWriter{writer: entry, total: &expanded, limit: maxRestoreDataJSONSize}, 64*1024)
+	if _, err = fmt.Fprintf(jsonWriter, `{"version":"1.1","created_at":%q,"data":{`, time.Now().UTC().Format(time.RFC3339)); err != nil {
+		return err
 	}
-	if _, err := f.Write(jsonBytes); err != nil {
-		return fmt.Errorf("写入 data.json 失败: %v", err)
+	for i, table := range backupTables {
+		h.progress("export", table, 0, 0)
+		if i > 0 {
+			if _, err = jsonWriter.WriteString(","); err != nil {
+				return err
+			}
+		}
+		if _, err = fmt.Fprintf(jsonWriter, "%q:[", table); err != nil {
+			return err
+		}
+		_, err := h.streamTable(ctx, tx, table, jsonWriter, maxRestoreDataJSONSize)
+		if err != nil {
+			return err
+		}
+		if _, err = jsonWriter.WriteString("]"); err != nil {
+			return err
+		}
+	}
+	if _, err = jsonWriter.WriteString("}}"); err != nil {
+		return err
+	}
+	if err = jsonWriter.Flush(); err != nil {
+		return err
+	}
+	if err = tx.Commit().Error; err != nil {
+		return fmt.Errorf("完成一致性备份事务失败: %w", err)
 	}
 	if includeSyncManifest {
-		manifest, err := h.buildSyncUploadManifest()
-		if err != nil {
-			return fmt.Errorf("生成上传文件清单失败: %w", err)
-		}
-		manifestBytes, err := json.Marshal(manifest)
+		h.progress("hash", "", 0, 0)
+		manifest, err := buildSyncUploadManifestContext(ctx, uploadDir)
 		if err != nil {
 			return err
 		}
-		manifestFile, err := zw.Create(prefix + "/uploads-manifest.json")
+		f, err := zw.Create(prefix + "/uploads-manifest.json")
 		if err != nil {
 			return err
 		}
-		if _, err := manifestFile.Write(manifestBytes); err != nil {
+		if err = json.NewEncoder(&expandedBackupWriter{writer: f, total: &expanded, limit: maxRestoreManifestSize}).Encode(manifest); err != nil {
+			return err
+		}
+		f, err = zw.Create(prefix + "/snapshot-uploads.json")
+		if err != nil {
+			return err
+		}
+		if err = json.NewEncoder(&expandedBackupWriter{writer: f, total: &expanded, limit: 4096}).Encode(map[string]string{"directory": snapshotName}); err != nil {
 			return err
 		}
 	}
-
-	if !includeUploads {
-		if err := zw.Close(); err != nil {
-			return fmt.Errorf("完成 ZIP 失败: %v", err)
-		}
-		if err := out.Close(); err != nil {
-			return fmt.Errorf("保存 ZIP 失败: %v", err)
-		}
-		complete = true
-		return nil
-	}
-
-	// Add uploads/ files
-	uploadDir := h.uploadDir
-	if !filepath.IsAbs(uploadDir) {
-		uploadDir, _ = filepath.Abs(uploadDir)
-	}
-	err = filepath.Walk(uploadDir, func(path string, info os.FileInfo, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if info.IsDir() {
-			return nil
-		}
-		rel, err := filepath.Rel(uploadDir, path)
+	if includeUploads {
+		h.progress("uploads", "", 0, 0)
+		err = walkUploadFiles(ctx, uploadDir, func(path, rel string, info os.FileInfo) error {
+			if uint64(info.Size()) > maxRestoreEntrySize || expanded+info.Size() > int64(maxRestoreExpandedSize) {
+				return fmt.Errorf("备份解压后大小超过恢复限制")
+			}
+			f, err := zw.Create(prefix + "/uploads/" + filepath.ToSlash(rel))
+			if err != nil {
+				return err
+			}
+			src, err := os.Open(path)
+			if err != nil {
+				return err
+			}
+			_, copyErr := io.Copy(&expandedBackupWriter{writer: f, total: &expanded, limit: int64(maxRestoreEntrySize)}, contextReader{ctx, src})
+			closeErr := src.Close()
+			if copyErr != nil {
+				return copyErr
+			}
+			return closeErr
+		})
 		if err != nil {
-			return err
+			return fmt.Errorf("打包上传文件失败: %w", err)
 		}
-		f, err := zw.Create(prefix + "/uploads/" + rel)
-		if err != nil {
-			return err
-		}
-		src, err := os.Open(path)
-		if err != nil {
-			return err
-		}
-		_, copyErr := io.Copy(f, src)
-		closeErr := src.Close()
-		if copyErr != nil {
-			return copyErr
-		}
-		return closeErr
-	})
-	if err != nil && !os.IsNotExist(err) {
-		_ = zw.Close()
-		return fmt.Errorf("打包上传文件失败: %v", err)
 	}
-
-	if err := zw.Close(); err != nil {
-		return fmt.Errorf("完成 ZIP 失败: %v", err)
+	if err = zw.Close(); err != nil {
+		return err
 	}
-	if err := out.Close(); err != nil {
-		return fmt.Errorf("保存 ZIP 失败: %v", err)
+	if err = out.Close(); err != nil {
+		return err
 	}
 	complete = true
 	return nil
 }
 
-func (h *BackupHandler) buildSyncUploadManifest() ([]syncUploadFile, error) {
-	uploadDir := h.uploadDir
-	if !filepath.IsAbs(uploadDir) {
-		uploadDir, _ = filepath.Abs(uploadDir)
+func (h *BackupHandler) streamTable(ctx context.Context, tx *gorm.DB, table string, w io.Writer, remaining int64) (int64, error) {
+	rows, err := tx.Table(table).Rows()
+	if err != nil {
+		return 0, fmt.Errorf("导出 %s 失败: %w", table, err)
 	}
-	manifest := make([]syncUploadFile, 0)
+	defer rows.Close()
+	columns, err := rows.Columns()
+	if err != nil {
+		return 0, err
+	}
+	types, err := rows.ColumnTypes()
+	if err != nil {
+		return 0, err
+	}
+	var size int64
+	first := true
+	for rows.Next() {
+		if err := ctx.Err(); err != nil {
+			return size, err
+		}
+		values := make([]interface{}, len(columns))
+		dest := make([]interface{}, len(columns))
+		for i := range values {
+			dest[i] = &values[i]
+		}
+		if err := rows.Scan(dest...); err != nil {
+			return size, err
+		}
+		row := make(map[string]interface{}, len(columns))
+		for i, col := range columns {
+			v := values[i]
+			if b, ok := v.([]byte); ok && types[i].DatabaseTypeName() != "BYTEA" {
+				v = string(b)
+			}
+			row[col] = v
+		}
+		data, err := json.Marshal(row)
+		if err != nil {
+			return size, err
+		}
+		size += int64(len(data)) + 1
+		if size > remaining {
+			return size, fmt.Errorf("备份数据超过 2GB 恢复限制")
+		}
+		if !first {
+			if _, err = w.Write([]byte(",")); err != nil {
+				return size, err
+			}
+		}
+		first = false
+		if _, err = w.Write(data); err != nil {
+			return size, err
+		}
+		h.progress("", table, 1, 0)
+	}
+	return size, rows.Err()
+}
+
+func walkUploadFiles(ctx context.Context, uploadDir string, visit func(string, string, os.FileInfo) error) error {
 	err := filepath.Walk(uploadDir, func(path string, info os.FileInfo, walkErr error) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if walkErr != nil {
 			return walkErr
 		}
 		if info.IsDir() {
+			if path != uploadDir && info.Name() == ".sync-snapshots" {
+				return filepath.SkipDir
+			}
 			return nil
 		}
-		if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+		if !info.Mode().IsRegular() {
 			return fmt.Errorf("上传目录包含不支持的文件类型: %s", path)
 		}
 		rel, err := filepath.Rel(uploadDir, path)
 		if err != nil {
 			return err
 		}
-		file, err := os.Open(path)
+		return visit(path, rel, info)
+	})
+	var pathErr *os.PathError
+	if errors.As(err, &pathErr) && os.IsNotExist(err) && filepath.Clean(pathErr.Path) == filepath.Clean(uploadDir) {
+		return nil
+	}
+	return err
+}
+
+func (h *BackupHandler) freezeUploads(ctx context.Context, name string) (string, error) {
+	root := filepath.Join(h.uploadDir, ".sync-snapshots")
+	if err := os.MkdirAll(root, 0750); err != nil {
+		return "", err
+	}
+	frozen := filepath.Join(root, name)
+	if err := os.Mkdir(frozen, 0750); err != nil {
+		return "", err
+	}
+	err := walkUploadFiles(ctx, h.uploadDir, func(path, rel string, _ os.FileInfo) error {
+		target := filepath.Join(frozen, rel)
+		if err := os.MkdirAll(filepath.Dir(target), 0750); err != nil {
+			return err
+		}
+		return os.Link(path, target)
+	})
+	if err != nil {
+		_ = os.RemoveAll(frozen)
+		return "", err
+	}
+	return frozen, nil
+}
+
+func (h *BackupHandler) buildSyncUploadManifest() ([]syncUploadFile, error) {
+	return buildSyncUploadManifestContext(context.Background(), h.uploadDir)
+}
+func buildSyncUploadManifestContext(ctx context.Context, uploadDir string) ([]syncUploadFile, error) {
+	manifest := make([]syncUploadFile, 0)
+	err := walkUploadFiles(ctx, uploadDir, func(path, rel string, info os.FileInfo) error {
+		f, err := os.Open(path)
 		if err != nil {
 			return err
 		}
 		hash := sha256.New()
-		_, copyErr := io.Copy(hash, file)
-		closeErr := file.Close()
+		_, copyErr := io.Copy(hash, contextReader{ctx, f})
+		closeErr := f.Close()
 		if copyErr != nil {
 			return copyErr
 		}
@@ -267,11 +565,7 @@ func (h *BackupHandler) buildSyncUploadManifest() ([]syncUploadFile, error) {
 		manifest = append(manifest, syncUploadFile{Path: filepath.ToSlash(rel), Size: info.Size(), SHA256: fmt.Sprintf("%x", hash.Sum(nil))})
 		return nil
 	})
-	if err != nil && !os.IsNotExist(err) {
-		return nil, err
-	}
-	sort.Slice(manifest, func(i, j int) bool { return manifest[i].Path < manifest[j].Path })
-	return manifest, nil
+	return manifest, err
 }
 
 // restoreFromZip parses and restores data from a zip reader
@@ -280,139 +574,345 @@ func (h *BackupHandler) restoreFromZip(zr *zip.Reader) error {
 }
 
 func (h *BackupHandler) restoreFromZipWithLocalSyncConfigs(zr *zip.Reader, localSyncConfigs []model.SiteConfig) error {
+	return h.restoreFromZipContext(context.Background(), zr, localSyncConfigs)
+}
+
+// Validate and spool each table before touching the live database. Spooling also
+// handles legacy JSON whose object keys are alphabetical rather than FK order.
+func (h *BackupHandler) restoreFromZipContext(ctx context.Context, zr *zip.Reader, localSyncConfigs []model.SiteConfig) error {
 	if err := validateRestoreArchive(zr); err != nil {
 		return err
 	}
-	var input backupData
-	dataFiles := 0
+	var dataFile *zip.File
 	for _, f := range zr.File {
-		if filepath.Base(f.Name) != "data.json" {
-			continue
-		}
-		dataFiles++
-		if dataFiles > 1 {
-			return fmt.Errorf("备份文件包含多个 data.json")
-		}
-		rc, err := f.Open()
-		if err != nil {
-			return fmt.Errorf("读取 data.json 失败: %v", err)
-		}
-		jsonBytes, err := io.ReadAll(io.LimitReader(rc, maxRestoreDataJSONSize+1))
-		rc.Close()
-		if err != nil || int64(len(jsonBytes)) > maxRestoreDataJSONSize {
-			return fmt.Errorf("data.json 过大或读取失败")
-		}
-		if err := json.Unmarshal(jsonBytes, &input); err != nil {
-			return fmt.Errorf("解析 data.json 失败: %v", err)
-		}
-	}
-	if input.Version == "" {
-		return fmt.Errorf("无效的备份文件")
-	}
-
-	// Validate all expected tables exist in backup data before truncating
-	for _, table := range backupTables {
-		if _, ok := input.Data[table]; !ok {
-			return fmt.Errorf("备份文件缺少数据表: %s", table)
-		}
-	}
-	if len(localSyncConfigs) > 0 {
-		filtered := make([]map[string]interface{}, 0, len(input.Data["site_configs"])+len(localSyncConfigs))
-		for _, row := range input.Data["site_configs"] {
-			key, _ := row["key"].(string)
-			if !strings.HasPrefix(key, "sync_") {
-				filtered = append(filtered, row)
+		if filepath.Base(f.Name) == "data.json" {
+			if dataFile != nil {
+				return fmt.Errorf("备份文件包含多个 data.json")
 			}
+			dataFile = f
 		}
-		for _, cfg := range localSyncConfigs {
-			filtered = append(filtered, map[string]interface{}{
-				"id": cfg.ID, "key": cfg.Key, "value": cfg.Value, "type": cfg.Type,
-				"created_at": cfg.CreatedAt, "updated_at": cfg.UpdatedAt,
-			})
-		}
-		input.Data["site_configs"] = filtered
 	}
-
-	tx := h.db.Begin()
+	if dataFile == nil {
+		return fmt.Errorf("备份文件缺少 data.json")
+	}
+	spool, err := os.MkdirTemp(h.backupDir, ".restore-data-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(spool)
+	rc, err := dataFile.Open()
+	if err != nil {
+		return err
+	}
+	h.progress("validate", "", 0, 0)
+	err = h.spoolRestoreData(ctx, rc, spool)
+	closeErr := rc.Close()
+	if err != nil {
+		return err
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	if err = ctx.Err(); err != nil {
+		return err
+	}
+	tx := h.db.WithContext(ctx).Begin()
 	if tx.Error != nil {
-		return fmt.Errorf("开始恢复事务失败: %v", tx.Error)
+		return tx.Error
 	}
-
-	// Truncate all tables
-	for _, t := range truncateOrder {
-		if err := tx.Exec(fmt.Sprintf("TRUNCATE TABLE %s CASCADE", t)).Error; err != nil {
-			tx.Rollback()
-			return fmt.Errorf("清空表 %s 失败: %v", t, err)
+	defer tx.Rollback()
+	for _, table := range truncateOrder {
+		if err = tx.Exec("TRUNCATE TABLE " + table + " CASCADE").Error; err != nil {
+			return fmt.Errorf("清空表 %s 失败: %w", table, err)
 		}
 	}
-
-	// Insert data in dependency order
+	h.progress("restore", "", 0, 0)
 	for _, table := range backupTables {
-		rows, ok := input.Data[table]
-		if !ok || len(rows) == 0 {
-			continue
+		h.progress("restore", table, 0, 0)
+		file, err := os.Open(filepath.Join(spool, table))
+		if err != nil {
+			return err
 		}
-		for _, row := range rows {
-			// Version 1.0 did not export WebAuthn credential material. Those
-			// records cannot be used, but must not prevent the rest from restoring.
+		decoder := json.NewDecoder(contextReader{ctx, file})
+		decoder.UseNumber()
+		batch := make([]map[string]interface{}, 0, restoreBatchSize)
+		columns := ""
+		batchBytes := int64(0)
+		flush := func() error {
+			if len(batch) == 0 {
+				return nil
+			}
+			if err := tx.Table(table).Create(&batch).Error; err != nil {
+				return fmt.Errorf("恢复 %s 失败: %w", table, err)
+			}
+			h.progress("", table, int64(len(batch)), batchBytes)
+			batch = batch[:0]
+			batchBytes = 0
+			return nil
+		}
+		for {
+			var row map[string]interface{}
+			offset := decoder.InputOffset()
+			err = decoder.Decode(&row)
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				file.Close()
+				return err
+			}
+			if table == "site_configs" && localSyncConfigs != nil {
+				key, _ := row["key"].(string)
+				if strings.HasPrefix(key, "sync_") {
+					continue
+				}
+			}
 			if table == "passkeys" && (row["credential_id"] == nil || row["public_key"] == nil) {
 				continue
 			}
-			cols := make([]string, 0, len(row))
-			vals := make([]interface{}, 0, len(row))
-			for k, v := range row {
-				if !safeColumnRe.MatchString(k) {
-					continue // skip unsafe column names
+			cleaned := make(map[string]interface{}, len(row))
+			names := make([]string, 0, len(row))
+			for _, col := range restoreSafeColumns[table] {
+				if value, ok := row[col]; ok {
+					cleaned[col] = normalizeRestoreValue(table, col, value)
+					names = append(names, col)
 				}
-				// Skip columns not in the allowlist for this table
-				if safeCols, ok := restoreSafeColumns[table]; ok {
-					allowed := false
-					for _, col := range safeCols {
-						if col == k {
-							allowed = true
-							break
-						}
-					}
-					if !allowed {
-						continue
-					}
+			}
+			// Comment parents may occur in any later batch. Insert all comments
+			// without edges, then restore their parent links with the FK still enabled.
+			if table == "comments" && cleaned["parent_id"] != nil {
+				if cleaned["id"] == nil {
+					file.Close()
+					return fmt.Errorf("恢复评论父关系失败: 缺少评论ID")
 				}
-				cols = append(cols, k)
-				vals = append(vals, normalizeRestoreValue(table, k, v))
+				cleaned["parent_id"] = nil
 			}
-			placeholders := make([]string, len(cols))
-			for i := range placeholders {
-				placeholders[i] = "?"
-			}
-			if len(cols) == 0 {
-				tx.Rollback()
+			if len(cleaned) == 0 {
+				file.Close()
 				return fmt.Errorf("恢复 %s 失败: 记录不包含可恢复字段", table)
 			}
-			sql := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", table,
-				strings.Join(cols, ","), strings.Join(placeholders, ","))
-			if err := tx.Exec(sql, vals...).Error; err != nil {
-				tx.Rollback()
-				return fmt.Errorf("恢复 %s 失败: %v", table, err)
+			key := strings.Join(names, ",")
+			if len(batch) > 0 && (key != columns || len(batch) >= restoreBatchSize || batchBytes >= 4*1024*1024) {
+				if err = flush(); err != nil {
+					file.Close()
+					return err
+				}
+			}
+			columns = key
+			batch = append(batch, cleaned)
+			batchBytes += decoder.InputOffset() - offset
+		}
+		file.Close()
+		if err = flush(); err != nil {
+			return err
+		}
+		if table == "comments" {
+			if err = h.restoreCommentParents(ctx, tx, filepath.Join(spool, table)); err != nil {
+				return err
+			}
+		}
+		if table == "site_configs" && len(localSyncConfigs) > 0 {
+			if err = tx.Create(&localSyncConfigs).Error; err != nil {
+				return err
 			}
 		}
 	}
-
-	// Restored bearer/reset tokens must never become valid again.
-	if err := tx.Exec("UPDATE users SET token_version = token_version + 1, reset_token = ''").Error; err != nil {
-		tx.Rollback()
-		return fmt.Errorf("使旧会话失效失败: %v", err)
+	if err = tx.Exec("UPDATE users SET token_version = token_version + 1, reset_token = ''").Error; err != nil {
+		return fmt.Errorf("使旧会话失效失败: %w", err)
 	}
-
-	if err := tx.Commit().Error; err != nil {
-		return fmt.Errorf("提交事务失败: %v", err)
+	if err = h.beginRestoreCommit(ctx); err != nil {
+		return err
+	}
+	if err = tx.Commit().Error; err != nil {
+		return fmt.Errorf("提交事务失败: %w", err)
 	}
 	return nil
+}
+
+// Re-read the validated table spool to apply self-references in bounded batches.
+// All parent rows now exist; malformed or missing parents still fail the active
+// restore transaction and roll back both inserts and previously applied edges.
+func (h *BackupHandler) restoreCommentParents(ctx context.Context, tx *gorm.DB, path string) error {
+	file, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	decoder := json.NewDecoder(contextReader{ctx, file})
+	placeholders := make([]string, 0, restoreBatchSize)
+	values := make([]interface{}, 0, restoreBatchSize*2)
+	flush := func() error {
+		if len(placeholders) == 0 {
+			return nil
+		}
+		query := "UPDATE comments AS comments SET parent_id=links.parent_id FROM (VALUES " + strings.Join(placeholders, ",") + ") AS links(id,parent_id) WHERE comments.id=links.id"
+		if err := tx.Exec(query, values...).Error; err != nil {
+			return fmt.Errorf("恢复评论父关系失败: %w", err)
+		}
+		placeholders = placeholders[:0]
+		values = values[:0]
+		return nil
+	}
+	for {
+		var row struct {
+			ID       string  `json:"id"`
+			ParentID *string `json:"parent_id"`
+		}
+		err = decoder.Decode(&row)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
+		if row.ParentID == nil {
+			continue
+		}
+		if row.ID == "" {
+			return fmt.Errorf("恢复评论父关系失败: 缺少评论ID")
+		}
+		placeholders = append(placeholders, "(?::uuid,?::uuid)")
+		values = append(values, row.ID, *row.ParentID)
+		if len(placeholders) >= restoreBatchSize {
+			if err = flush(); err != nil {
+				return err
+			}
+		}
+	}
+	return flush()
+}
+
+func expectJSONToken(decoder *json.Decoder, expected json.Delim) error {
+	token, err := decoder.Token()
+	if err != nil {
+		return err
+	}
+	if token != expected {
+		return fmt.Errorf("无效的备份 JSON，预期 %s", string(expected))
+	}
+	return nil
+}
+
+func (h *BackupHandler) spoolRestoreData(ctx context.Context, r io.Reader, dir string) error {
+	decoder := json.NewDecoder(contextReader{ctx, io.LimitReader(r, maxRestoreDataJSONSize+1)})
+	decoder.UseNumber()
+	if err := expectJSONToken(decoder, '{'); err != nil {
+		return err
+	}
+	fields := map[string]bool{}
+	tables := map[string]bool{}
+	version := ""
+	var lastOffset int64
+	for decoder.More() {
+		token, err := decoder.Token()
+		if err != nil {
+			return err
+		}
+		key, ok := token.(string)
+		if !ok || fields[key] {
+			return fmt.Errorf("重复或无效的备份字段")
+		}
+		fields[key] = true
+		switch key {
+		case "version":
+			if err = decoder.Decode(&version); err != nil {
+				return err
+			}
+		case "created_at":
+			var value string
+			if err = decoder.Decode(&value); err != nil {
+				return err
+			}
+		case "data":
+			if err = expectJSONToken(decoder, '{'); err != nil {
+				return err
+			}
+			for decoder.More() {
+				token, err = decoder.Token()
+				if err != nil {
+					return err
+				}
+				table, ok := token.(string)
+				if !ok || restoreSafeColumns[table] == nil || tables[table] {
+					return fmt.Errorf("未知或重复的数据表: %v", token)
+				}
+				tables[table] = true
+				if err = expectJSONToken(decoder, '['); err != nil {
+					return err
+				}
+				file, err := os.OpenFile(filepath.Join(dir, table), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+				if err != nil {
+					return err
+				}
+				buffer := bufio.NewWriterSize(file, 64*1024)
+				encoder := json.NewEncoder(buffer)
+				for decoder.More() {
+					var row map[string]interface{}
+					if err = decoder.Decode(&row); err != nil {
+						file.Close()
+						return err
+					}
+					if len(row) == 0 {
+						file.Close()
+						return fmt.Errorf("数据表 %s 包含空记录", table)
+					}
+					if decoder.InputOffset() > maxRestoreDataJSONSize {
+						file.Close()
+						return fmt.Errorf("data.json 过大")
+					}
+					if err = encoder.Encode(row); err != nil {
+						file.Close()
+						return err
+					}
+					offset := decoder.InputOffset()
+					h.progress("validate", table, 1, offset-lastOffset)
+					lastOffset = offset
+				}
+				flushErr := buffer.Flush()
+				closeErr := file.Close()
+				if flushErr != nil {
+					return flushErr
+				}
+				if closeErr != nil {
+					return closeErr
+				}
+				if err = expectJSONToken(decoder, ']'); err != nil {
+					return err
+				}
+			}
+			if err = expectJSONToken(decoder, '}'); err != nil {
+				return err
+			}
+		default:
+			return fmt.Errorf("未知的备份字段: %s", key)
+		}
+	}
+	if err := expectJSONToken(decoder, '}'); err != nil {
+		return err
+	}
+	var trailing interface{}
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		return fmt.Errorf("备份 JSON 包含尾随数据: %v", err)
+	}
+	if version != "1.0" && version != "1.1" {
+		return fmt.Errorf("不支持的备份版本: %s", version)
+	}
+	for _, table := range backupTables {
+		if !tables[table] {
+			return fmt.Errorf("备份文件缺少数据表: %s", table)
+		}
+	}
+	return ctx.Err()
 }
 
 func validateRestoreArchive(zr *zip.Reader) error {
 	var total uint64
 	for _, f := range zr.File {
-		if f.UncompressedSize64 > maxRestoreEntrySize {
+		limit := maxRestoreEntrySize
+		if filepath.Base(f.Name) == "data.json" {
+			limit = uint64(maxRestoreDataJSONSize)
+		}
+		if f.UncompressedSize64 > limit {
 			return fmt.Errorf("ZIP 条目过大: %s", f.Name)
 		}
 		if total > maxRestoreExpandedSize-f.UncompressedSize64 {
@@ -424,6 +924,9 @@ func validateRestoreArchive(zr *zip.Reader) error {
 }
 
 func normalizeRestoreValue(table, column string, value interface{}) interface{} {
+	if number, ok := value.(json.Number); ok {
+		return number.String()
+	}
 	if table == "passkeys" && column == "public_key" {
 		if encoded, ok := value.(string); ok {
 			if decoded, err := base64.StdEncoding.DecodeString(encoded); err == nil {
@@ -447,6 +950,10 @@ func (h *BackupHandler) extractUploads(zr *zip.Reader) []string {
 			continue
 		}
 		rel := parts[1]
+		if strings.Contains(filepath.ToSlash(rel), ".sync-snapshots/") {
+			fileErrors = append(fileErrors, rel)
+			continue
+		}
 		if f.Mode()&os.ModeSymlink != 0 {
 			fileErrors = append(fileErrors, rel)
 			continue
@@ -470,17 +977,26 @@ func (h *BackupHandler) extractUploads(zr *zip.Reader) []string {
 			fileErrors = append(fileErrors, rel)
 			continue
 		}
-		out, err := os.Create(targetPath)
+		out, err := os.CreateTemp(filepath.Dir(targetPath), ".restore-*")
 		if err != nil {
 			rc.Close()
 			fileErrors = append(fileErrors, rel)
 			continue
 		}
-		if _, err := io.CopyN(out, rc, int64(f.UncompressedSize64)); err != nil {
+
+		_, copyErr := io.CopyN(out, rc, int64(f.UncompressedSize64))
+		closeErr := out.Close()
+		rc.Close()
+		if copyErr == nil && closeErr == nil {
+			copyErr = os.Chmod(out.Name(), 0644)
+		}
+		if copyErr == nil && closeErr == nil {
+			copyErr = os.Rename(out.Name(), targetPath)
+		}
+		if copyErr != nil || closeErr != nil {
 			fileErrors = append(fileErrors, rel)
 		}
-		rc.Close()
-		out.Close()
+		_ = os.Remove(out.Name())
 	}
 	return fileErrors
 }
@@ -489,10 +1005,24 @@ func (h *BackupHandler) extractUploads(zr *zip.Reader) []string {
 
 // CreateBackup generates a backup and saves it to the backups directory
 func (h *BackupHandler) CreateBackup(c *gin.Context) {
+	ctx, finish, ok := h.routeOperation(c, "export")
+	if !ok {
+		return
+	}
+	defer finish()
 	filename := fmt.Sprintf("backup-%s.zip", time.Now().UTC().Format("2006-01-02T150405.000000000"))
 	path := filepath.Join(h.backupDir, filename)
-	err := h.generateBackup(path, true, false)
+	temporaryPath := filepath.Join(h.backupDir, "."+filename+".tmp")
+	defer os.Remove(temporaryPath)
+	err := h.generateBackupContext(ctx, temporaryPath, true, false, nil)
+	if err == nil {
+		err = os.Rename(temporaryPath, path)
+	}
 	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			c.JSON(http.StatusConflict, gin.H{"error": "操作已取消"})
+			return
+		}
 		utils.LogError("操作失败", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "操作失败"})
 		return
@@ -504,16 +1034,33 @@ func (h *BackupHandler) CreateBackup(c *gin.Context) {
 // CreateSyncSnapshot 创建仅含数据库的跨机同步快照。
 // 媒体文件由 rsync 单独同步，以便按文件续传并减少重复传输。
 func (h *BackupHandler) CreateSyncSnapshot() (string, error) {
+	return h.CreateSyncSnapshotContext(context.Background(), nil)
+}
+
+func (h *BackupHandler) CreateSyncSnapshotContext(ctx context.Context, releaseWrites func()) (name string, resultErr error) {
+	ctx, finish, ok := h.beginOperation(ctx, "snapshot")
+	if !ok {
+		return "", fmt.Errorf("已有备份或恢复任务正在运行")
+	}
+	defer func() { finish(resultErr) }()
 	syncDir := filepath.Join(h.backupDir, "sync")
 	if err := os.MkdirAll(syncDir, 0700); err != nil {
 		return "", fmt.Errorf("创建同步目录失败: %w", err)
 	}
 	filename := fmt.Sprintf("sync-%s.zip", time.Now().UTC().Format("2006-01-02T150405.000000000"))
 	temporaryPath := filepath.Join(syncDir, "."+filename+".tmp")
-	if err := h.generateBackup(temporaryPath, false, true); err != nil {
+	if err := h.generateBackupContext(ctx, temporaryPath, false, true, releaseWrites); err != nil {
 		return "", err
 	}
 	finalPath := filepath.Join(syncDir, filename)
+	published := false
+	defer func() {
+		if !published {
+			_ = os.Remove(temporaryPath)
+			_ = os.Remove(finalPath)
+			_ = os.RemoveAll(filepath.Join(h.uploadDir, ".sync-snapshots", strings.TrimSuffix(filename, ".zip")))
+		}
+	}()
 	if err := os.Rename(temporaryPath, finalPath); err != nil {
 		_ = os.Remove(temporaryPath)
 		return "", fmt.Errorf("发布同步快照失败: %w", err)
@@ -523,8 +1070,19 @@ func (h *BackupHandler) CreateSyncSnapshot() (string, error) {
 	if err := os.Chmod(finalPath, 0640); err != nil {
 		return "", fmt.Errorf("设置同步快照权限失败: %w", err)
 	}
+	published = true
 	if err := removeOldSyncSnapshots(syncDir, filename); err != nil {
 		return "", fmt.Errorf("清理旧同步快照失败: %w", err)
+	}
+	if entries, err := os.ReadDir(filepath.Join(h.uploadDir, ".sync-snapshots")); err == nil {
+		current := strings.TrimSuffix(filename, ".zip")
+		for _, entry := range entries {
+			if entry.IsDir() && strings.HasPrefix(entry.Name(), "sync-") && entry.Name() != current {
+				if err := os.RemoveAll(filepath.Join(h.uploadDir, ".sync-snapshots", entry.Name())); err != nil {
+					return "", err
+				}
+			}
+		}
 	}
 	return filename, nil
 }
@@ -553,9 +1111,9 @@ func (h *BackupHandler) VerifySyncSnapshotUploads(snapshotPath, uploadDir string
 		if err != nil {
 			return err
 		}
-		data, readErr := io.ReadAll(io.LimitReader(rc, maxRestoreDataJSONSize+1))
+		data, readErr := io.ReadAll(io.LimitReader(rc, maxRestoreManifestSize+1))
 		rc.Close()
-		if readErr != nil || int64(len(data)) > maxRestoreDataJSONSize {
+		if readErr != nil || int64(len(data)) > maxRestoreManifestSize {
 			return fmt.Errorf("读取上传文件清单失败")
 		}
 		if err := json.Unmarshal(data, &manifest); err != nil {
@@ -612,10 +1170,19 @@ func removeOldSyncSnapshots(syncDir, currentFilename string) error {
 
 // RestoreSyncSnapshot 应用已校验的数据库同步快照，并保留备机本地的同步配置。
 func (h *BackupHandler) RestoreSyncSnapshot(path string) error {
+	return h.RestoreSyncSnapshotContext(context.Background(), path)
+}
+
+func (h *BackupHandler) RestoreSyncSnapshotContext(ctx context.Context, path string) (resultErr error) {
+	ctx, finish, ok := h.beginOperation(ctx, "validate")
+	if !ok {
+		return fmt.Errorf("已有备份或恢复任务正在运行")
+	}
+	defer func() { finish(resultErr) }()
 	// 同步角色、任务计划、SSH 目标和加密私钥只属于本机。它们会直接写入
 	// 同一次恢复事务，避免提交快照后再单独恢复配置造成中间不一致。
-	var localConfigs []model.SiteConfig
-	if err := h.db.Where("key LIKE ?", "sync_%").Find(&localConfigs).Error; err != nil {
+	localConfigs := make([]model.SiteConfig, 0)
+	if err := h.db.WithContext(ctx).Where("key LIKE ?", "sync_%").Find(&localConfigs).Error; err != nil {
 		return fmt.Errorf("读取本机同步配置失败: %w", err)
 	}
 	for i := range localConfigs {
@@ -639,7 +1206,7 @@ func (h *BackupHandler) RestoreSyncSnapshot(path string) error {
 	if err != nil {
 		return err
 	}
-	return h.restoreFromZipWithLocalSyncConfigs(zr, localConfigs)
+	return h.restoreFromZipContext(ctx, zr, localConfigs)
 }
 
 // ListBackups returns all backup files in the backups directory
@@ -767,6 +1334,9 @@ func (h *BackupHandler) ClearAllData(c *gin.Context) {
 	}
 	if entries, err := os.ReadDir(uploadDir); err == nil {
 		for _, entry := range entries {
+			if entry.Name() == ".sync-snapshots" {
+				continue
+			}
 			os.RemoveAll(filepath.Join(uploadDir, entry.Name()))
 		}
 	}
@@ -776,6 +1346,11 @@ func (h *BackupHandler) ClearAllData(c *gin.Context) {
 
 // RestoreUpload handles uploaded zip file restore
 func (h *BackupHandler) RestoreUpload(c *gin.Context) {
+	ctx, finish, ok := h.routeOperation(c, "upload")
+	if !ok {
+		return
+	}
+	defer finish()
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxRestoreArchiveSize+(1<<20))
 	file, header, err := c.Request.FormFile("file")
 	if err != nil {
@@ -797,7 +1372,7 @@ func (h *BackupHandler) RestoreUpload(c *gin.Context) {
 	tmpName := tmp.Name()
 	defer os.Remove(tmpName)
 	defer tmp.Close()
-	size, err := io.Copy(tmp, io.LimitReader(file, maxRestoreArchiveSize+1))
+	size, err := io.Copy(tmp, io.LimitReader(contextReader{ctx, file}, maxRestoreArchiveSize+1))
 	if err != nil || size > maxRestoreArchiveSize {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "备份文件过大或读取失败"})
 		return
@@ -809,7 +1384,11 @@ func (h *BackupHandler) RestoreUpload(c *gin.Context) {
 		return
 	}
 
-	if err := h.restoreFromZip(zr); err != nil {
+	if err := h.restoreFromZipContext(ctx, zr, nil); err != nil {
+		if errors.Is(err, context.Canceled) {
+			c.JSON(http.StatusConflict, gin.H{"error": "操作已取消"})
+			return
+		}
 		utils.LogError("操作失败", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "操作失败"})
 		return
@@ -825,6 +1404,11 @@ func (h *BackupHandler) RestoreUpload(c *gin.Context) {
 
 // RestoreURL downloads a zip from URL and restores
 func (h *BackupHandler) RestoreURL(c *gin.Context) {
+	ctx, finish, ok := h.routeOperation(c, "download")
+	if !ok {
+		return
+	}
+	defer finish()
 	var input struct {
 		URL string `json:"url" binding:"required"`
 	}
@@ -882,7 +1466,12 @@ func (h *BackupHandler) RestoreURL(c *gin.Context) {
 		Timeout:   10 * time.Minute,
 		Transport: transport,
 	}
-	resp, err := client.Get(input.URL)
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, input.URL, nil)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的下载地址"})
+		return
+	}
+	resp, err := client.Do(request)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "下载失败"})
 		return
@@ -905,7 +1494,7 @@ func (h *BackupHandler) RestoreURL(c *gin.Context) {
 	tmpName := tmp.Name()
 	defer os.Remove(tmpName)
 	defer tmp.Close()
-	size, err := io.Copy(tmp, io.LimitReader(resp.Body, maxRestoreArchiveSize+1))
+	size, err := io.Copy(tmp, io.LimitReader(contextReader{ctx, resp.Body}, maxRestoreArchiveSize+1))
 	if err != nil || size > maxRestoreArchiveSize {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "下载文件过大或读取失败"})
 		return
@@ -917,7 +1506,11 @@ func (h *BackupHandler) RestoreURL(c *gin.Context) {
 		return
 	}
 
-	if err := h.restoreFromZip(zr); err != nil {
+	if err := h.restoreFromZipContext(ctx, zr, nil); err != nil {
+		if errors.Is(err, context.Canceled) {
+			c.JSON(http.StatusConflict, gin.H{"error": "操作已取消"})
+			return
+		}
 		utils.LogError("操作失败", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "操作失败"})
 		return
@@ -933,6 +1526,11 @@ func (h *BackupHandler) RestoreURL(c *gin.Context) {
 
 // RestoreLocal restores from a local backup file
 func (h *BackupHandler) RestoreLocal(c *gin.Context) {
+	ctx, finish, ok := h.routeOperation(c, "validate")
+	if !ok {
+		return
+	}
+	defer finish()
 	var input struct {
 		Filename string `json:"filename" binding:"required"`
 	}
@@ -971,7 +1569,11 @@ func (h *BackupHandler) RestoreLocal(c *gin.Context) {
 		return
 	}
 
-	if err := h.restoreFromZip(zr); err != nil {
+	if err := h.restoreFromZipContext(ctx, zr, nil); err != nil {
+		if errors.Is(err, context.Canceled) {
+			c.JSON(http.StatusConflict, gin.H{"error": "操作已取消"})
+			return
+		}
 		utils.LogError("操作失败", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "操作失败"})
 		return

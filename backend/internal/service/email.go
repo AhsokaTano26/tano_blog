@@ -100,11 +100,12 @@ func (p *SMTPProvider) Send(from, to, subject, html string) error {
 
 func (p *SMTPProvider) sendTLS(addr, from, to string, msg []byte) error {
 	tlsConfig := &tls.Config{ServerName: p.host}
-	conn, err := tls.Dial("tcp", addr, tlsConfig)
+	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: 15 * time.Second}, "tcp", addr, tlsConfig)
 	if err != nil {
 		return fmt.Errorf("TLS dial: %w", err)
 	}
 	defer conn.Close()
+	_ = conn.SetDeadline(time.Now().Add(15 * time.Second))
 
 	client, err := smtp.NewClient(conn, p.host)
 	if err != nil {
@@ -133,7 +134,49 @@ func (p *SMTPProvider) sendTLS(addr, from, to string, msg []byte) error {
 }
 
 func (p *SMTPProvider) sendSTARTTLS(addr string, auth smtp.Auth, from, to string, msg []byte) error {
-	return smtp.SendMail(addr, auth, from, []string{to}, msg)
+	conn, err := net.DialTimeout("tcp", addr, 15*time.Second)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	if err := conn.SetDeadline(time.Now().Add(15 * time.Second)); err != nil {
+		return err
+	}
+	client, err := smtp.NewClient(conn, p.host)
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+	if err := client.Hello("localhost"); err != nil {
+		return err
+	}
+	if ok, _ := client.Extension("STARTTLS"); ok {
+		if err := client.StartTLS(&tls.Config{ServerName: p.host, MinVersion: tls.VersionTLS12}); err != nil {
+			return err
+		}
+	}
+	if auth != nil {
+		if err := client.Auth(auth); err != nil {
+			return err
+		}
+	}
+	if err := client.Mail(from); err != nil {
+		return err
+	}
+	if err := client.Rcpt(to); err != nil {
+		return err
+	}
+	writer, err := client.Data()
+	if err != nil {
+		return err
+	}
+	if _, err := writer.Write(msg); err != nil {
+		return err
+	}
+	if err := writer.Close(); err != nil {
+		return err
+	}
+	return client.Quit()
 }
 
 func buildMIMEMessage(from, to, subject, html string) []byte {

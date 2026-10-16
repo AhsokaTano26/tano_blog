@@ -42,20 +42,17 @@ func NewSiteConfigHandler(db *gorm.DB, emailService *service.EmailService, jwtSe
 
 // GetPublic returns public site config values (no auth required)
 func (h *SiteConfigHandler) GetPublic(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	publicKeys := []string{
 		"site_title", "site_description", "site_url",
 		"footer_text", "comment_enabled", "default_theme",
 		"accent_color", "head_injection", "content_head_injection", "footer_injection",
 		"profile_avatar", "profile_name", "profile_bio", "profile_contacts",
-		"site_favicon", "about_content",
-		"turnstile_enabled", "turnstile_sitekey",
+		"site_favicon", "music_password",
+		"turnstile_enabled", "turnstile_sitekey", "turnstile_modules",
 	}
-
-	musicPwd, _ := h.repo.Get("music_password")
-	musicProtected := musicPwd != ""
-	musicCookie, _ := c.Cookie("music_access")
-	if !musicProtected || utils.VerifyResourceToken(musicCookie, utils.ResourceMusic, "library", h.jwtSecret) {
-		publicKeys = append(publicKeys, "music_playlist", "music_page_config")
+	if strings.HasSuffix(c.Request.URL.Path, "/about") {
+		publicKeys = append(publicKeys, "about_content")
 	}
 
 	configs, err := h.repo.GetByKeys(publicKeys)
@@ -65,19 +62,45 @@ func (h *SiteConfigHandler) GetPublic(c *gin.Context) {
 	}
 
 	result := make(map[string]interface{})
+	result["music_password_protected"] = false
 	for _, cfg := range configs {
-		if cfg.Key == "sync_ssh_private_key_enc" {
+		if cfg.Key == "music_password" {
+			result["music_password_protected"] = cfg.Value != ""
 			continue
 		}
 		result[cfg.Key] = cfg.Value
 	}
 
-	result["music_password_protected"] = musicProtected
+	c.JSON(http.StatusOK, gin.H{"config": result})
+}
 
+// Music configuration depends on a resource cookie and must never enter a
+// shared public configuration cache.
+func (h *SiteConfigHandler) GetMusic(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
+	c.Header("Cache-Control", "private, no-store")
+	c.Header("Vary", "Cookie")
+	configs, err := h.repo.GetByKeys([]string{"music_password", "music_playlist", "music_page_config"})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取配置失败"})
+		return
+	}
+	values := make(map[string]string)
+	for _, cfg := range configs {
+		values[cfg.Key] = cfg.Value
+	}
+	protected := values["music_password"] != ""
+	result := gin.H{"music_password_protected": protected}
+	cookie, _ := c.Cookie("music_access")
+	if !protected || utils.VerifyResourceToken(cookie, utils.ResourceMusic, "library", h.jwtSecret) {
+		result["music_playlist"] = values["music_playlist"]
+		result["music_page_config"] = values["music_page_config"]
+	}
 	c.JSON(http.StatusOK, gin.H{"config": result})
 }
 
 func (h *SiteConfigHandler) Get(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	configs, err := h.repo.GetAll()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取配置失败"})
@@ -96,6 +119,7 @@ func (h *SiteConfigHandler) Get(c *gin.Context) {
 }
 
 func (h *SiteConfigHandler) Update(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	var input map[string]string
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
@@ -180,6 +204,7 @@ func (h *SiteConfigHandler) Update(c *gin.Context) {
 }
 
 func (h *SiteConfigHandler) TestEmail(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	if h.emailService == nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "邮件服务未初始化"})
 		return
@@ -204,6 +229,7 @@ func (h *SiteConfigHandler) TestEmail(c *gin.Context) {
 // CheckVersion fetches the latest release tag from Docker Hub (used to avoid browser CORS).
 // If version query param is provided, also returns the changelog (commits) for that version.
 func (h *SiteConfigHandler) CheckVersion(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	reqVersion := c.Query("version")
 
 	client := &http.Client{Timeout: 10 * time.Second}
@@ -315,24 +341,24 @@ func parseSemver(v string) []int {
 }
 
 type AccessLogHandler struct {
-	repo *repository.AccessLogRepo
+	cache *analyticsCache
+	repo  *repository.AccessLogRepo
 }
 
 func NewAccessLogHandler(db *gorm.DB) *AccessLogHandler {
 	return &AccessLogHandler{
-		repo: repository.NewAccessLogRepo(db),
+		repo:  repository.NewAccessLogRepo(db),
+		cache: &analyticsCache{entries: map[string]analyticsEntry{}},
 	}
 }
 
 func (h *AccessLogHandler) List(c *gin.Context) {
-	page := parseInt(c.Query("page"), 1)
-	pageSize := parseInt(c.Query("page_size"), 20)
-
-	if page < 1 {
-		page = 1
-	}
-	if pageSize < 1 || pageSize > 100 {
-		pageSize = 20
+	h = h.withContext(c.Request.Context())
+	page, pageSize := pagination(c, 20, 100)
+	start, end, rangeErr := repository.AnalyticsRange(strings.Split(c.Query("start"), "T")[0], strings.Split(c.Query("end"), "T")[0], time.Now())
+	if rangeErr != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "日期范围无效（最多366天）"})
+		return
 	}
 
 	filters := map[string]string{
@@ -340,8 +366,9 @@ func (h *AccessLogHandler) List(c *gin.Context) {
 		"method":      c.Query("method"),
 		"ip":          c.Query("ip"),
 		"status_code": c.Query("status_code"),
-		"start":       c.Query("start"),
-		"end":         c.Query("end"),
+		"start":       start.Format(time.RFC3339),
+		"end":         end.Format(time.RFC3339),
+		"cursor":      c.Query("cursor"),
 	}
 
 	logs, total, err := h.repo.List(page, pageSize, filters)
@@ -351,114 +378,118 @@ func (h *AccessLogHandler) List(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"items": logs,
-		"total": total,
-		"page":  page,
-		"size":  pageSize,
+		"items":       logs,
+		"next_cursor": repository.EncodeLogCursor(logs, total, pageSize),
+		"total":       total,
+		"page":        page,
+		"size":        pageSize,
 	})
 }
 
 func (h *AccessLogHandler) Stats(c *gin.Context) {
-	stats, err := h.repo.Stats()
+	data, err := h.analytics(c)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取统计失败"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "统计失败，请检查日期范围（最多366天）"})
 		return
 	}
-
-	c.JSON(http.StatusOK, stats)
+	c.JSON(http.StatusOK, data.Stats)
 }
 
 func (h *AccessLogHandler) StatsByDevice(c *gin.Context) {
-	data, err := h.repo.StatsByDevice()
+	data, err := h.analytics(c)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取设备统计失败"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "统计失败，请检查日期范围（最多366天）"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"items": data})
+	c.JSON(http.StatusOK, gin.H{"items": data.Device})
 }
 
 func (h *AccessLogHandler) StatsByBrowser(c *gin.Context) {
-	data, err := h.repo.StatsByBrowser()
+	data, err := h.analytics(c)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取浏览器统计失败"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "统计失败，请检查日期范围（最多366天）"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"items": data})
+	c.JSON(http.StatusOK, gin.H{"items": data.Browser})
 }
 
 func (h *AccessLogHandler) StatsByOS(c *gin.Context) {
-	data, err := h.repo.StatsByOS()
+	data, err := h.analytics(c)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取操作系统统计失败"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "统计失败，请检查日期范围（最多366天）"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"items": data})
+	c.JSON(http.StatusOK, gin.H{"items": data.OS})
 }
 
 func (h *AccessLogHandler) StatsByHour(c *gin.Context) {
-	data, err := h.repo.StatsByHour()
+	data, err := h.analytics(c)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取时段统计失败"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "统计失败，请检查日期范围（最多366天）"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"items": data})
+	c.JSON(http.StatusOK, gin.H{"items": data.Hour})
 }
 
 func (h *AccessLogHandler) StatsByCountry(c *gin.Context) {
-	data, err := h.repo.StatsByCountry()
+	data, err := h.analytics(c)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取统计失败"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "统计失败，请检查日期范围（最多366天）"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"items": data})
+	c.JSON(http.StatusOK, gin.H{"items": data.Country})
 }
 
 func (h *AccessLogHandler) StatsByReferrer(c *gin.Context) {
-	data, err := h.repo.StatsByReferrer()
+	data, err := h.analytics(c)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取统计失败"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "统计失败，请检查日期范围（最多366天）"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"items": data})
+	c.JSON(http.StatusOK, gin.H{"items": data.Referrer})
 }
 
 func (h *AccessLogHandler) StatsByPath(c *gin.Context) {
-	data, err := h.repo.StatsByPath()
+	data, err := h.analytics(c)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取统计失败"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "统计失败，请检查日期范围（最多366天）"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"items": data})
+	c.JSON(http.StatusOK, gin.H{"items": data.Path})
 }
 
 func (h *AccessLogHandler) StatsByStatusCode(c *gin.Context) {
-	data, err := h.repo.StatsByStatusCode()
+	data, err := h.analytics(c)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取统计失败"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "统计失败，请检查日期范围（最多366天）"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"items": data})
+	c.JSON(http.StatusOK, gin.H{"items": data.Status})
 }
 
 func (h *AccessLogHandler) StatsTimeRange(c *gin.Context) {
-	start := c.Query("start")
-	end := c.Query("end")
-	data, err := h.repo.StatsTimeRange(start, end)
+	data, err := h.analytics(c)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取统计失败"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "统计失败，请检查日期范围（最多366天）"})
 		return
 	}
-	c.JSON(http.StatusOK, data)
+	c.JSON(http.StatusOK, data.Stats)
 }
 
 func (h *AccessLogHandler) Export(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
+	start, end, rangeErr := repository.AnalyticsRange(strings.Split(c.Query("start"), "T")[0], strings.Split(c.Query("end"), "T")[0], time.Now())
+	if rangeErr != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "日期范围无效（最多366天）"})
+		return
+	}
 	filters := map[string]string{
 		"path":        c.Query("path"),
 		"method":      c.Query("method"),
 		"ip":          c.Query("ip"),
 		"status_code": c.Query("status_code"),
-		"start":       c.Query("start"),
-		"end":         c.Query("end"),
+		"start":       start.Format(time.RFC3339),
+		"end":         end.Format(time.RFC3339),
 	}
 
 	logs, _, err := h.repo.List(1, 10000, filters)
@@ -496,6 +527,7 @@ func (h *AccessLogHandler) Export(c *gin.Context) {
 }
 
 func (h *AccessLogHandler) Delete(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
@@ -509,6 +541,7 @@ func (h *AccessLogHandler) Delete(c *gin.Context) {
 }
 
 func (h *AccessLogHandler) Clear(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	var input struct {
 		Confirm string `json:"confirm"`
 	}
@@ -520,6 +553,9 @@ func (h *AccessLogHandler) Clear(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "清空失败"})
 		return
 	}
+	h.cache.Lock()
+	h.cache.entries = map[string]analyticsEntry{}
+	h.cache.Unlock()
 	c.JSON(http.StatusOK, gin.H{"message": "已清空"})
 }
 
@@ -551,16 +587,18 @@ func verifyTurnstile(db *gorm.DB, module, token, ip string) bool {
 		return true
 	}
 
-	resp, err := http.PostForm("https://challenges.cloudflare.com/turnstile/v0/siteverify", url.Values{
-		"secret":   {secret},
-		"response": {token},
-		"remoteip": {ip},
-	})
+	values := url.Values{"secret": {secret}, "response": {token}, "remoteip": {ip}}
+	req, err := http.NewRequestWithContext(db.Statement.Context, http.MethodPost, "https://challenges.cloudflare.com/turnstile/v0/siteverify", strings.NewReader(values.Encode()))
+	if err != nil {
+		return false
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resp, err := (&http.Client{Timeout: 5 * time.Second}).Do(req)
 	if err != nil {
 		return false
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	var result struct {
 		Success bool `json:"success"`
 	}

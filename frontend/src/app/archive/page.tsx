@@ -1,19 +1,18 @@
 'use client';
 
-import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import { Loading } from '@/components/Loading';
+import { LoadMore } from '@/components/LoadMore';
+import { usePagedItems } from '@/lib/use-paged-items';
+import { mergeArchiveGroups, type ArchiveGroup } from '@/lib/pagination';
+
+const fetchArchive = (params: Record<string, string>) => api.getArchive(params);
 
 export default function ArchivePage() {
-  const [items, setItems] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    api.getArchive().then((res) => setItems(res.items || [])).catch(() => setItems([])).finally(() => setLoading(false));
-  }, []);
-
-  if (loading) return <Loading />;
+  const pagination = usePagedItems<ArchiveGroup>(fetchArchive, 50, mergeArchiveGroups);
+  const { items, initialLoading } = pagination;
+  if (initialLoading) return <Loading />;
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-8">
@@ -41,6 +40,7 @@ export default function ArchivePage() {
           </div>
         ))
       )}
+      <LoadMore {...pagination} />
     </div>
   );
 }

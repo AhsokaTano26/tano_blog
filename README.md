@@ -106,14 +106,14 @@ tano_blog/
 ## Quick Start
 
 ### Prerequisites
-- Go 1.26+
+- Go 1.26.2+
 - Node.js 22+
 - PostgreSQL 16 (or Docker)
 
 ### 1. 启动数据库
 
 ```bash
-docker compose up -d
+docker compose up -d postgres
 ```
 
 ### 2. 配置后端
@@ -150,6 +150,8 @@ npm run dev
 
 前端默认运行在 `http://localhost:3000`，通过 Next.js rewrites 将 `/api/*` 代理到后端。
 
+连接池、请求预算、日志保留、大文件上传、备份与升级注意事项见 [性能与容量运维指南](docs/performance-operations.md)。
+
 ## Development Checks
 
 ```bash
@@ -185,6 +187,11 @@ images; uploads insert at their original position while editing continues.
 | 变量 | 必填 | 默认值 | 说明 |
 |------|------|--------|------|
 | `DB_DSN` | Yes | — | PostgreSQL 连接字符串 |
+| `DB_MAX_OPEN_CONNS` | No | `20` | 每个 API 进程最多打开的数据库连接数 |
+| `DB_MAX_IDLE_CONNS` | No | `10` | 每个 API 进程最多保留的空闲连接数 |
+| `REQUEST_TIMEOUT_SECONDS` | No | `30` | 普通请求预算（秒） |
+| `UPLOAD_TIMEOUT_SECONDS` | No | `1800` | 上传、备份创建/下载、恢复请求预算（秒） |
+| `ACCESS_LOG_RETENTION_DAYS` | No | `0` | 原始访问日志保留天数；`0` 或未设置禁用自动清理 |
 | `JWT_SECRET` | No | 随机 32 字节 | JWT 签名密钥 |
 | `ADMIN_PASSWORD` | No | 随机 8 字符 Hex | 初始管理员密码 |
 | `SERVER_PORT` | No | `8080` | 服务端口 |
@@ -231,7 +238,7 @@ cp .env.example .env
 docker compose up --build -d
 ```
 
-使用 `docker-compose.yml` 从当前工作区构建并启动 PostgreSQL + 应用容器。应用通过 `docker-entrypoint.sh` 同时启动 Go API（容器内端口 8080）和 Next.js 前端（宿主机端口 3000）。
+使用 `docker-compose.yml` 从当前工作区构建并启动 PostgreSQL + 应用容器。应用通过 `docker-entrypoint.sh` 同时启动 Go API（容器内端口 8080）和 Next.js 前端（宿主机端口 3001，容器内端口 3000）。
 
 首次启动务必查看日志获取管理员密码：
 ```bash

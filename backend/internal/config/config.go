@@ -20,13 +20,17 @@ type Config struct {
 }
 
 type ServerConfig struct {
-	Port         string
-	ReadTimeout  time.Duration
-	WriteTimeout time.Duration
+	Port           string
+	ReadTimeout    time.Duration
+	WriteTimeout   time.Duration
+	RequestTimeout time.Duration
+	UploadTimeout  time.Duration
 }
 
 type DatabaseConfig struct {
-	DSN string
+	DSN     string
+	MaxOpen int
+	MaxIdle int
 }
 
 type JWTConfig struct {
@@ -61,12 +65,14 @@ func Load() *Config {
 
 	return &Config{
 		Server: ServerConfig{
-			Port:         getEnv("SERVER_PORT", "8080"),
-			ReadTimeout:  30 * time.Second,
-			WriteTimeout: 30 * time.Second,
+			Port:           getEnv("SERVER_PORT", "8080"),
+			RequestTimeout: time.Duration(positiveEnv("REQUEST_TIMEOUT_SECONDS", 30)) * time.Second,
+			UploadTimeout:  time.Duration(positiveEnv("UPLOAD_TIMEOUT_SECONDS", 1800)) * time.Second,
 		},
 		Database: DatabaseConfig{
-			DSN: dbDSN,
+			DSN:     dbDSN,
+			MaxOpen: positiveEnv("DB_MAX_OPEN_CONNS", 20),
+			MaxIdle: positiveEnv("DB_MAX_IDLE_CONNS", 10),
 		},
 		JWT: JWTConfig{
 			Secret:               jwtSecret,
@@ -83,6 +89,14 @@ func Load() *Config {
 		AdminPassword:        os.Getenv("ADMIN_PASSWORD"),
 		SyncKeyEncryptionKey: os.Getenv("SYNC_KEY_ENCRYPTION_KEY"),
 	}
+}
+
+func positiveEnv(key string, fallback int) int {
+	value := getEnvInt64(key, int64(fallback))
+	if value <= 0 || value > 100000 {
+		return fallback
+	}
+	return int(value)
 }
 
 func getEnv(key, fallback string) string {

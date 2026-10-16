@@ -28,6 +28,7 @@ func NewIPBanHandler(repo *repository.IPBanRepo, configRepo *repository.SiteConf
 }
 
 func (h *IPBanHandler) ListBans(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	page := parseInt(c.DefaultQuery("page", "1"), 1)
 	pageSize := parseInt(c.DefaultQuery("page_size", "20"), 20)
 
@@ -40,6 +41,7 @@ func (h *IPBanHandler) ListBans(c *gin.Context) {
 }
 
 func (h *IPBanHandler) CreateBan(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	var input struct {
 		IPAddress string `json:"ip_address"`
 		Scope     string `json:"scope"`
@@ -100,6 +102,7 @@ func (h *IPBanHandler) CreateBan(c *gin.Context) {
 }
 
 func (h *IPBanHandler) DeleteBan(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的ID"})
@@ -113,6 +116,7 @@ func (h *IPBanHandler) DeleteBan(c *gin.Context) {
 }
 
 func (h *IPBanHandler) GetBanConfig(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	keys := []string{
 		"ip_ban_auto_enabled", "ip_ban_auto_threshold",
 		"ip_ban_auto_window", "ip_ban_auto_scope", "ip_ban_auto_duration",
@@ -126,6 +130,7 @@ func (h *IPBanHandler) GetBanConfig(c *gin.Context) {
 }
 
 func (h *IPBanHandler) UpdateBanConfig(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	var input map[string]string
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的请求数据"})

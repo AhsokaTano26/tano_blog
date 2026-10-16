@@ -47,7 +47,7 @@ func AuthRequired(cfg *config.JWTConfig, db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 		var user model.User
-		if db.First(&user, uid).Error != nil {
+		if db.WithContext(c.Request.Context()).First(&user, uid).Error != nil {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "用户不存在"})
 			return
 		}
@@ -106,7 +106,7 @@ func OptionalAuth(cfg *config.JWTConfig, db *gorm.DB) gin.HandlerFunc {
 			uid, err := uuid.Parse(claims.UserID)
 			if err == nil {
 				var user model.User
-				if db.First(&user, uid).Error == nil && user.TokenVersion == claims.TokenVersion {
+				if db.WithContext(c.Request.Context()).First(&user, uid).Error == nil && user.TokenVersion == claims.TokenVersion {
 					c.Set("user_id", user.ID.String())
 					c.Set("username", user.Username)
 					c.Set("role", user.Role)

@@ -7,7 +7,7 @@ const nextConfig: NextConfig = {
   output: 'standalone',
   poweredByHeader: false,
   experimental: {
-    proxyClientMaxBodySize: '2048MB',
+    proxyClientMaxBodySize: '50MB',
   },
   images: {
     // The project renders media with native <img>; disable the optimizer so
@@ -37,12 +37,14 @@ const nextConfig: NextConfig = {
     ];
   },
   async rewrites() {
-    return [
-      { source: '/api/:path*', destination: `${API_UPSTREAM}/api/:path*` },
-      { source: '/uploads/:path*', destination: `${API_UPSTREAM}/uploads/:path*` },
-      { source: '/rss.xml', destination: `${API_UPSTREAM}/rss.xml` },
-      { source: '/sitemap.xml', destination: `${API_UPSTREAM}/sitemap.xml` },
-    ];
+    return {
+      fallback: [
+        { source: '/api/:path*', destination: `${API_UPSTREAM}/api/:path*` },
+        { source: '/uploads/:path*', destination: `${API_UPSTREAM}/uploads/:path*` },
+        { source: '/rss.xml', destination: `${API_UPSTREAM}/rss.xml` },
+        { source: '/sitemap.xml', destination: `${API_UPSTREAM}/sitemap.xml` },
+      ],
+    };
   },
   turbopack: {
     root: process.cwd(),

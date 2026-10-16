@@ -1,20 +1,16 @@
 package middleware
 
 import (
-	"fmt"
 	"net/url"
-	"os"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"gorm.io/gorm"
 	"tano_blog/backend/internal/model"
-	"tano_blog/backend/internal/utils"
 )
 
-func AccessLogger(db *gorm.DB) gin.HandlerFunc {
+func AccessLogger(writer *AccessLogWriter) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
 		path := c.Request.URL.Path
@@ -23,13 +19,12 @@ func AccessLogger(db *gorm.DB) gin.HandlerFunc {
 		c.Next()
 
 		// Don't log admin access logs requests to avoid infinite loop
-		if path == "/api/v1/admin/access-logs" || path == "/api/v1/admin/access-logs/stats" {
+		if path == "/health" || strings.HasPrefix(path, "/uploads/") || strings.HasPrefix(path, "/api/v1/admin/access-logs") || path == "/api/v1/admin/metrics" || path == "/api/v1/admin/backup/status" {
 			return
 		}
 
 		elapsed := time.Since(start)
 		ua := c.GetHeader("User-Agent")
-		browser, osName, device := utils.ParseUserAgent(ua)
 
 		var userID *uuid.UUID
 		if uid, exists := c.Get("user_id"); exists {
@@ -43,9 +38,8 @@ func AccessLogger(db *gorm.DB) gin.HandlerFunc {
 			sid = s
 		}
 
-		country, city := utils.LookupIP(c.ClientIP())
-
 		log := model.AccessLog{
+			CreatedAt:    start,
 			IPAddress:    c.ClientIP(),
 			UserAgent:    ua,
 			Method:       c.Request.Method,
@@ -54,18 +48,11 @@ func AccessLogger(db *gorm.DB) gin.HandlerFunc {
 			StatusCode:   c.Writer.Status(),
 			ResponseTime: int(elapsed.Milliseconds()),
 			Referer:      redactSensitiveURL(c.GetHeader("Referer")),
-			Country:      country,
-			City:         city,
-			DeviceType:   device,
-			Browser:      browser,
-			OS:           osName,
 			UserID:       userID,
 			SessionID:    sid,
 		}
 
-		if err := db.Create(&log).Error; err != nil {
-			fmt.Fprintf(os.Stderr, "access log write error: %v\n", err)
-		}
+		writer.Enqueue(log)
 	}
 }
 

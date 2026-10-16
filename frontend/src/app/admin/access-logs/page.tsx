@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { api } from '@/lib/api';
 import { ScrollText, Search, Download, Trash2, X, Activity, Globe, AlertTriangle, Clock, BarChart3, LineChart } from 'lucide-react';
@@ -33,6 +33,19 @@ type Stats = {
   daily_counts: { date: string; count: number }[];
 };
 
+type LogFilters = { path: string; method: string; status_code: string; ip: string; start: string; end: string };
+
+function defaultFilters(): LogFilters {
+  // Match the API's inclusive calendar-day ranges in the site's UTC+8 zone.
+  const end = new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10);
+  const start = new Date(Date.parse(end) - 29 * 86400000).toISOString().slice(0, 10);
+  return { path: '', method: '', status_code: '', ip: '', start, end };
+}
+
+function filterParams(filters: LogFilters): Record<string, string> {
+  return Object.fromEntries(Object.entries(filters).filter(([, value]) => value));
+}
+
 function FloatingModal({ onClose, children }: { onClose: () => void; children: React.ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -59,48 +72,70 @@ export default function AdminAccessLogs() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [listError, setListError] = useState('');
+  const [statsError, setStatsError] = useState('');
+  const [filterError, setFilterError] = useState('');
+  const [refresh, setRefresh] = useState(0);
   const [stats, setStats] = useState<Stats | null>(null);
   const [chartType, setChartType] = useState<'bar' | 'line'>('bar');
   const [chartWidth, setChartWidth] = useState(600);
   const chartRef = useRef<HTMLDivElement>(null);
   const [detailLog, setDetailLog] = useState<AccessLog | null>(null);
 
-  // Filters
+  // Draft edits only take effect after applying the filters.
+  const [appliedFilters, setAppliedFilters] = useState<LogFilters>(defaultFilters);
   const [pathFilter, setPathFilter] = useState('');
   const [methodFilter, setMethodFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [ipFilter, setIpFilter] = useState('');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+  const [startDate, setStartDate] = useState(appliedFilters.start);
+  const [endDate, setEndDate] = useState(appliedFilters.end);
+  const pageCursors = useRef<Record<number, string>>({});
+  const listSequence = useRef(0);
+  const statsSequence = useRef(0);
 
   const pageSize = 20;
 
-  async function load() {
+  const load = useCallback(async () => {
+    const sequence = ++listSequence.current;
     setLoading(true);
+    setListError('');
     try {
-      const params: Record<string, string> = { page: String(page), page_size: String(pageSize) };
-      if (pathFilter) params.path = pathFilter;
-      if (methodFilter) params.method = methodFilter;
-      if (statusFilter) params.status_code = statusFilter;
-      if (ipFilter) params.ip = ipFilter;
-      if (startDate) params.start = startDate;
-      if (endDate) params.end = endDate + 'T23:59:59';
+      const params: Record<string, string> = { page: String(page), page_size: String(pageSize), ...filterParams(appliedFilters) };
+      if (pageCursors.current[page]) params.cursor = pageCursors.current[page];
       const res = await api.admin.accessLogs.list(params);
+      if (sequence !== listSequence.current) return;
       setItems(res.items || []);
       setTotal(res.total);
-    } catch { /* empty */ }
-    setLoading(false);
-  }
+      if (res.next_cursor) pageCursors.current[page + 1] = res.next_cursor;
+      else delete pageCursors.current[page + 1];
+    } catch (error) {
+      if (sequence === listSequence.current) setListError(error instanceof Error ? error.message : '日志加载失败');
+    } finally {
+      if (sequence === listSequence.current) setLoading(false);
+    }
+  }, [page, appliedFilters]);
 
-  async function loadStats() {
+  const loadStats = useCallback(async () => {
+    const sequence = ++statsSequence.current;
+    setStatsError('');
+    setStats(null);
     try {
-      const res = await api.admin.accessLogs.stats();
-      setStats(res);
-    } catch { /* empty */ }
-  }
+      const res = await api.admin.accessLogs.overview({ start: appliedFilters.start, end: appliedFilters.end });
+      if (sequence === statsSequence.current) setStats(res.stats);
+    } catch (error) {
+      if (sequence === statsSequence.current) setStatsError(error instanceof Error ? error.message : '统计加载失败');
+    }
+  }, [appliedFilters.start, appliedFilters.end]);
 
-  useEffect(() => { load(); }, [page]);
-  useEffect(() => { loadStats(); }, []);
+  useEffect(() => {
+    void load();
+    return () => { listSequence.current++; };
+  }, [load, refresh]);
+  useEffect(() => {
+    void loadStats();
+    return () => { statsSequence.current++; };
+  }, [loadStats, refresh]);
 
   useEffect(() => {
     const el = chartRef.current;
@@ -109,53 +144,61 @@ export default function AdminAccessLogs() {
     ro.observe(el);
     setChartWidth(el.offsetWidth);
     return () => ro.disconnect();
-  }, [stats?.daily_counts]);
+  }, [stats?.daily_counts, chartType]);
 
   function handleFilter() {
+    const days = (Date.parse(endDate) - Date.parse(startDate)) / 86400000;
+    if (!Number.isFinite(days) || days < 0 || days > 365) {
+      setFilterError('请选择有效日期范围，开始日期不能晚于结束日期，最多 366 天');
+      return;
+    }
+    setFilterError('');
+    pageCursors.current = {};
+    listSequence.current++;
     setPage(1);
-    load();
+    setAppliedFilters({ path: pathFilter.trim(), method: methodFilter, status_code: statusFilter, ip: ipFilter.trim(), start: startDate, end: endDate });
   }
 
   function handleClearFilters() {
+    const defaults = defaultFilters();
     setPathFilter('');
     setMethodFilter('');
     setStatusFilter('');
     setIpFilter('');
-    setStartDate('');
-    setEndDate('');
+    setStartDate(defaults.start);
+    setEndDate(defaults.end);
+    setFilterError('');
+    pageCursors.current = {};
+    listSequence.current++;
     setPage(1);
-    setTimeout(load, 0);
+    setAppliedFilters(defaults);
+  }
+
+  function reloadAfterMutation() {
+    pageCursors.current = {};
+    listSequence.current++;
+    setPage(1);
+    setRefresh(value => value + 1);
   }
 
   async function handleDelete(id: string) {
     if (!await confirm('确定删除此日志？')) return;
     try {
       await api.admin.accessLogs.delete(id);
-      setItems(prev => prev.filter(i => i.id !== id));
-      setTotal(prev => prev - 1);
-      loadStats();
-    } catch { /* empty */ }
+      reloadAfterMutation();
+    } catch (error) { setListError(error instanceof Error ? error.message : '删除失败'); }
   }
 
   async function handleClearAll() {
     if (!await confirm('确定清空所有日志？此操作不可恢复！')) return;
     try {
       await api.admin.accessLogs.clear();
-      setItems([]);
-      setTotal(0);
-      loadStats();
-    } catch { /* empty */ }
+      reloadAfterMutation();
+    } catch (error) { setListError(error instanceof Error ? error.message : '清空失败'); }
   }
 
   function handleExport() {
-    const params: Record<string, string> = {};
-    if (pathFilter) params.path = pathFilter;
-    if (methodFilter) params.method = methodFilter;
-    if (statusFilter) params.status_code = statusFilter;
-    if (ipFilter) params.ip = ipFilter;
-    if (startDate) params.start = startDate;
-    if (endDate) params.end = endDate + 'T23:59:59';
-    api.admin.accessLogs.export(Object.keys(params).length > 0 ? params : undefined);
+    api.admin.accessLogs.export(filterParams(appliedFilters));
   }
 
   function hasActiveFilters() {
@@ -188,6 +231,12 @@ export default function AdminAccessLogs() {
       </div>
 
       {/* Stats */}
+      <p className="text-xs mb-3" style={{ color: 'var(--text-secondary)' }}>
+        统计日期：{appliedFilters.start} 至 {appliedFilters.end}（UTC+8，包含结束日）
+      </p>
+      {statsError && <div role="alert" className="mb-4 text-sm" style={{ color: 'var(--color-error)' }}>
+        {statsError} <button onClick={() => void loadStats()} className="underline ml-2">重试统计</button>
+      </div>}
       {stats && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
           {[
@@ -214,7 +263,7 @@ export default function AdminAccessLogs() {
       {stats && stats.daily_counts.length > 0 && (
         <div className="glass-card rounded-xl p-4 mb-5">
           <div className="flex items-center justify-between mb-3">
-            <div className="text-xs" style={{ color: 'var(--text-info)' }}>近7日请求趋势</div>
+            <div className="text-xs" style={{ color: 'var(--text-info)' }}>所选日期请求趋势</div>
             <div className="flex gap-1 p-0.5 rounded-lg" style={{ background: 'var(--btn-card-bg)' }}>
               <button onClick={() => setChartType('bar')}
                 className="px-2 py-0.5 rounded text-xs transition-all"
@@ -264,7 +313,7 @@ export default function AdminAccessLogs() {
                   const padTop = 16;
                   const plotH = 80 - padTop - padBottom;
                   const pts = data.map((d: any, i: number) => {
-                    const x = (i / (data.length - 1)) * chartWidth;
+                    const x = (data.length === 1 ? 0.5 : i / (data.length - 1)) * chartWidth;
                     const y = padTop + plotH - (d.count / maxV) * plotH;
                     return `${x},${y}`;
                   });
@@ -281,7 +330,7 @@ export default function AdminAccessLogs() {
                 const padBottom = 18;
                 const padTop = 16;
                 const plotH = 80 - padTop - padBottom;
-                const left = (i / (stats.daily_counts.length - 1)) * 100;
+                const left = (stats.daily_counts.length === 1 ? 0.5 : i / (stats.daily_counts.length - 1)) * 100;
                 const cy = padBottom + (d.count / maxV) * plotH;
                 return (
                   <div key={i} className="absolute" style={{ left: `${left}%`, bottom: `${cy}px`, transform: 'translateX(-50%) translateY(-3px)' }}>
@@ -294,7 +343,7 @@ export default function AdminAccessLogs() {
               })}
               <div className="absolute bottom-0 left-0 right-0" style={{ height: '16px' }}>
                 {stats.daily_counts.map((d: any, i: number) => (
-                  <div key={i} className="absolute" style={{ left: `${(i / (stats.daily_counts.length - 1)) * 100}%`, transform: 'translateX(-50%)' }}>
+                  <div key={i} className="absolute" style={{ left: `${(stats.daily_counts.length === 1 ? 0.5 : i / (stats.daily_counts.length - 1)) * 100}%`, transform: 'translateX(-50%)' }}>
                     <span className="text-[10px]" style={{ color: 'var(--text-info)' }}>{d.date.slice(5)}</span>
                   </div>
                 ))}
@@ -350,12 +399,12 @@ export default function AdminAccessLogs() {
             </div>
             <div className="w-36">
               <label className="block text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>开始日期</label>
-              <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
+              <input aria-label="开始日期" type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
                 className={inputClass} style={inputStyle} />
             </div>
             <div className="w-36">
               <label className="block text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>结束日期</label>
-              <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)}
+              <input aria-label="结束日期" type="date" value={endDate} onChange={e => setEndDate(e.target.value)}
                 className={inputClass} style={inputStyle} />
             </div>
             <div className="flex gap-2">
@@ -363,7 +412,7 @@ export default function AdminAccessLogs() {
                 className="px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors"
                 style={{ background: 'var(--primary)' }}>筛选</button>
               {hasActiveFilters() && (
-                <button onClick={handleClearFilters}
+                <button onClick={handleClearFilters} aria-label="重置筛选" title="重置为近 30 天"
                   className="px-3 py-2 rounded-lg text-sm btn-glass transition-colors"
                   style={{ color: 'var(--text-secondary)' }}>
                   <X className="w-4 h-4" />
@@ -371,12 +420,17 @@ export default function AdminAccessLogs() {
               )}
             </div>
           </div>
+          <p className="text-xs mt-3" style={{ color: 'var(--text-info)' }}>默认查询近 30 天；可选择任意历史日期，每次最多 366 天。导出使用已应用的筛选。</p>
+          {filterError && <p role="alert" className="text-sm mt-2" style={{ color: 'var(--color-error)' }}>{filterError}</p>}
         </div>
 
         {/* Table */}
+        {listError && <div role="alert" className="p-4 text-sm" style={{ color: 'var(--color-error)' }}>
+          {listError} <button onClick={() => void load()} className="underline ml-2">重试日志</button>
+        </div>}
         {loading ? (
           <Loading />
-        ) : items.length === 0 ? (
+        ) : listError ? null : items.length === 0 ? (
           <div className="text-center py-20" style={{ color: 'var(--text-secondary)' }}>
             <ScrollText className="w-12 h-12 mx-auto mb-3" style={{ color: 'var(--text-info)' }} />
             <p>暂无日志</p>

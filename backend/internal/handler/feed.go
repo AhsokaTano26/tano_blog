@@ -46,6 +46,7 @@ func (h *FeedHandler) getSiteConfig() (title, desc, siteURL string) {
 }
 
 func (h *FeedHandler) RSS(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	var posts []model.Post
 	h.db.Where("status = ?", "published").
 		Preload("Category").Preload("Tags").
@@ -124,6 +125,7 @@ func escapeXML(s string) string {
 }
 
 func (h *FeedHandler) Sitemap(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	var posts []model.Post
 	h.db.Where("status = ?", "published").
 		Select("slug, updated_at, created_at").

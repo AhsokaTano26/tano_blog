@@ -21,38 +21,18 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     Promise.all([
-      api.admin.accessLogs.stats().catch(() => null),
-      api.admin.posts.list({ page: '1', page_size: '1' }).catch(() => ({ total: 0 })),
-      api.admin.comments.list({ page: '1', page_size: '1' }).catch(() => ({ total: 0 })),
-      api.admin.media.list({ page: '1', page_size: '1' }).catch(() => ({ total: 0 })),
+      api.admin.accessLogs.overview().catch(() => null),
+      api.admin.summary().catch(() => null),
       api.getTopViewed().catch(() => ({ items: [] })),
-      api.admin.comments.list({ page: '1', page_size: '1', status: 'pending' }).catch(() => ({ total: 0 })),
-      api.admin.links.list().catch(() => ({ items: [] })),
-      api.getCategories().catch(() => ({ items: [] })),
-      api.getTags().catch(() => ({ items: [] })),
-      api.admin.accessLogs.statsByDevice().catch(() => ({ items: [] })),
-      api.admin.accessLogs.statsByBrowser().catch(() => ({ items: [] })),
-      api.admin.accessLogs.statsByOS().catch(() => ({ items: [] })),
-      api.admin.accessLogs.statsByHour().catch(() => ({ items: [] })),
-    ]).then(([statRes, postsRes, commentsRes, mediaRes, topViewedRes, pendingCommentsRes, linksRes, categoriesRes, tagsRes, deviceRes, browserRes, osRes, hourRes]) => {
-      setStats(statRes);
-      setCounts({
-        posts: postsRes?.total || 0,
-        comments: commentsRes?.total || 0,
-        media: mediaRes?.total || 0,
-      });
-      setTopViewed(topViewedRes?.items?.slice(0, 5) || []);
-      setPendingComments(pendingCommentsRes?.total || 0);
-      const pending = linksRes?.items?.filter((i: any) => i.status === 'pending').length || 0;
-      setPendingLinks(pending);
-      setCategoriesCount(categoriesRes?.items?.length || 0);
-      setTagsCount(tagsRes?.items?.length || 0);
-      setAnalytics({
-        device: deviceRes?.items || [],
-        browser: browserRes?.items || [],
-        os: osRes?.items || [],
-        hour: hourRes?.items || [],
-      });
+    ]).then(([overview, summary, topViewedRes]) => {
+      setStats(overview?.stats || null);
+      setCounts({ posts: summary?.posts || 0, comments: summary?.comments || 0, media: summary?.media || 0 });
+      setTopViewed(topViewedRes.items || []);
+      setPendingComments(summary?.pending_comments || 0);
+      setPendingLinks(summary?.pending_links || 0);
+      setCategoriesCount(summary?.categories || 0);
+      setTagsCount(summary?.tags || 0);
+      setAnalytics(overview ? { device: overview.device, browser: overview.browser, os: overview.os, hour: overview.hour } : null);
     }).finally(() => setLoading(false));
   }, []);
 
@@ -75,7 +55,7 @@ export default function AdminDashboard() {
     { label: '待审核评论', value: pendingComments, icon: MessageSquare, color: 'hsl(40, 80%, 55%)', bg: 'hsla(40, 80%, 50%, 0.1)' },
     { label: '待审核友链', value: pendingLinks, icon: MessageSquare, color: 'hsl(40, 80%, 55%)', bg: 'hsla(40, 80%, 50%, 0.1)' },
     { label: '附件', value: counts.media, icon: Image, color: 'hsl(270, 60%, 55%)', bg: 'hsla(270, 60%, 50%, 0.1)' },
-    { label: '访问量', value: stats?.total_requests || 0, icon: Eye, color: 'hsl(30, 60%, 55%)', bg: 'hsla(30, 60%, 50%, 0.1)' },
+    { label: '近30天访问量', value: stats?.total_requests || 0, icon: Eye, color: 'hsl(30, 60%, 55%)', bg: 'hsla(30, 60%, 50%, 0.1)' },
   ];
 
   const quickActions = [

@@ -19,6 +19,7 @@ func NewNavLinkHandler(db *gorm.DB) *NavLinkHandler {
 
 // ListPublic returns all nav links sorted by sort_order
 func (h *NavLinkHandler) ListPublic(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	var links []model.NavLink
 	if err := h.db.Order("sort_order ASC, created_at ASC").Find(&links).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取导航失败"})
@@ -32,6 +33,7 @@ func (h *NavLinkHandler) ListPublic(c *gin.Context) {
 
 // AdminList returns all nav links
 func (h *NavLinkHandler) AdminList(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	var links []model.NavLink
 	if err := h.db.Order("sort_order ASC, created_at ASC").Find(&links).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取导航失败"})
@@ -45,6 +47,7 @@ func (h *NavLinkHandler) AdminList(c *gin.Context) {
 
 // AdminCreate creates a nav link
 func (h *NavLinkHandler) AdminCreate(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	var input struct {
 		Title     string `json:"title" binding:"required"`
 		URL       string `json:"url" binding:"required"`
@@ -70,6 +73,7 @@ func (h *NavLinkHandler) AdminCreate(c *gin.Context) {
 
 // AdminUpdate updates a nav link
 func (h *NavLinkHandler) AdminUpdate(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
@@ -112,6 +116,7 @@ func (h *NavLinkHandler) AdminUpdate(c *gin.Context) {
 
 // AdminDelete deletes a nav link
 func (h *NavLinkHandler) AdminDelete(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
@@ -127,6 +132,7 @@ func (h *NavLinkHandler) AdminDelete(c *gin.Context) {
 
 // AdminReorder batch updates sort_order for all nav links
 func (h *NavLinkHandler) AdminReorder(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	var input struct {
 		IDs []string `json:"ids" binding:"required"`
 	}

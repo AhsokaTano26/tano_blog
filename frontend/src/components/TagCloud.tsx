@@ -8,7 +8,7 @@ interface TagItem {
   id: string;
   name: string;
   slug: string;
-  post_count: number;
+  post_count?: number;
 }
 
 function getTagSize(count: number, minCount: number, maxCount: number): number {
@@ -25,14 +25,18 @@ function getTagColor(count: number, minCount: number, maxCount: number): string 
   return 'var(--primary)';
 }
 
-export function TagCloud() {
-  const [tags, setTags] = useState<TagItem[]>([]);
+export function TagCloud({ initialTags }: { initialTags?: TagItem[] } = {}) {
+  const [fetchedTags, setTags] = useState<TagItem[]>([]);
+  const tags = initialTags ?? fetchedTags;
 
   useEffect(() => {
+    if (initialTags !== undefined) return;
+    let cancelled = false;
     api.getTags().then(res => {
-      setTags(res.items || []);
+      if (!cancelled) setTags(res.items || []);
     }).catch(() => {});
-  }, []);
+    return () => { cancelled = true; };
+  }, [initialTags]);
 
   if (tags.length === 0) return null;
 

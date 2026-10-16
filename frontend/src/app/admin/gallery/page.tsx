@@ -1,11 +1,14 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useRef } from 'react';
 import { api } from '@/lib/api';
 import { Loading } from '@/components/Loading';
 import { MediaPickerModal } from '@/components/MediaField';
 import { ImageWithFallback } from '@/components/ImageWithFallback';
 import { Plus, Trash2, ArrowUp, ArrowDown, X } from 'lucide-react';
+import { LoadMore } from '@/components/LoadMore';
+import { usePagedItems } from '@/lib/use-paged-items';
+import { mergeById } from '@/lib/pagination';
 
 interface GalleryImage {
   id: string;
@@ -18,9 +21,13 @@ interface GalleryImage {
   sort_order: number;
 }
 
+const fetchImages = (params: Record<string, string>) => api.admin.gallery.list(params);
+
 export default function AdminGalleryPage() {
-  const [images, setImages] = useState<GalleryImage[]>([]);
-  const [loading, setLoading] = useState(true);
+  const pagination = usePagedItems<GalleryImage>(fetchImages, 48, mergeById);
+  const { items: images, setItems: setImages, total, initialLoading, reload: loadImages } = pagination;
+  const [moving, setMoving] = useState(false);
+  const [moveError, setMoveError] = useState('');
   const [showDialog, setShowDialog] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formUrl, setFormUrl] = useState('');
@@ -28,17 +35,6 @@ export default function AdminGalleryPage() {
   const [formDescription, setFormDescription] = useState('');
   const [showMediaPicker, setShowMediaPicker] = useState(false);
   const mediaBtnRef = useRef<HTMLButtonElement>(null);
-
-  async function loadImages() {
-    try {
-      const res = await api.admin.gallery.list();
-      setImages(res.items || []);
-    } catch {} finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => { loadImages(); }, []);
 
   function openCreate() {
     setEditingId(null);
@@ -89,23 +85,26 @@ export default function AdminGalleryPage() {
 
   async function handleMove(index: number, direction: -1 | 1) {
     const newIndex = index + direction;
-    if (newIndex < 0 || newIndex >= images.length) return;
-    const items = images.map((img, i) => ({
-      id: img.id,
-      sort_order: i === index ? images[newIndex].sort_order : i === newIndex ? images[index].sort_order : img.sort_order,
-    }));
-    // 先交换内存中的 sort_order
+    if (moving || newIndex < 0 || newIndex >= images.length) return;
+    setMoving(true);
+    setMoveError('');
+    const items = [
+      { id: images[index].id, sort_order: images[newIndex].sort_order },
+      { id: images[newIndex].id, sort_order: images[index].sort_order },
+    ];
     const updated = [...images];
-    [updated[index], updated[newIndex]] = [updated[newIndex], updated[index]];
+    updated[index] = { ...images[newIndex], sort_order: images[index].sort_order };
+    updated[newIndex] = { ...images[index], sort_order: images[newIndex].sort_order };
     setImages(updated);
     try {
       await api.admin.gallery.reorder(items);
-    } catch {
-      loadImages();
-    }
+    } catch (error) {
+      setImages(images);
+      setMoveError(error instanceof Error ? error.message : '排序失败，请重试');
+    } finally { setMoving(false); }
   }
 
-  if (loading) return <Loading />;
+  if (initialLoading) return <Loading />;
 
   const inputStyle: React.CSSProperties = {
     background: 'var(--glass-bg)',
@@ -118,7 +117,7 @@ export default function AdminGalleryPage() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>图片馆</h1>
-          <p className="text-sm mt-1" style={{ color: 'var(--text-info)' }}>共 {images.length} 张图片</p>
+          <p className="text-sm mt-1" style={{ color: 'var(--text-info)' }}>共 {total} 张图片</p>
         </div>
         <button onClick={openCreate}
           className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium text-white transition-all hover:opacity-90"
@@ -128,6 +127,7 @@ export default function AdminGalleryPage() {
         </button>
       </div>
 
+      {moveError && <p role="alert" className="mb-4 text-sm" style={{ color: 'var(--color-error)' }}>{moveError}</p>}
       {images.length === 0 ? (
         <div className="text-center py-20" style={{ color: 'var(--text-info)' }}>
           还没有图片，点击右上角添加
@@ -149,14 +149,16 @@ export default function AdminGalleryPage() {
                 <div className="flex items-center justify-between mt-2">
                   <div className="flex gap-1">
                     <button onClick={() => handleMove(index, -1)}
+                      aria-label={`上移 ${img.title || '无标题'}`}
                       className="p-1 rounded-lg btn-glass transition-colors disabled:opacity-30"
-                      disabled={index === 0}
+                      disabled={moving || index === 0}
                       style={{ color: 'var(--text-info)' }}>
                       <ArrowUp className="w-3.5 h-3.5" />
                     </button>
                     <button onClick={() => handleMove(index, 1)}
+                      aria-label={`下移 ${img.title || '无标题'}`}
                       className="p-1 rounded-lg btn-glass transition-colors disabled:opacity-30"
-                      disabled={index === images.length - 1}
+                      disabled={moving || index === images.length - 1}
                       style={{ color: 'var(--text-info)' }}>
                       <ArrowDown className="w-3.5 h-3.5" />
                     </button>
@@ -172,6 +174,8 @@ export default function AdminGalleryPage() {
           ))}
         </div>
       )}
+
+      <LoadMore {...pagination} />
 
       {/* 新增/编辑弹窗 */}
       {showDialog && (

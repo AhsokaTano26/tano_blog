@@ -62,7 +62,7 @@ function savePos(pos: { x: number; y: number }) {
   } catch {}
 }
 
-export function MusicPlayer() {
+export function MusicPlayer({ hidden = false }: { hidden?: boolean }) {
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [currentPlaylistIndex, setCurrentPlaylistIndex] = useState(0);
   const [visible, setVisible] = useState(false);
@@ -73,6 +73,7 @@ export function MusicPlayer() {
   const [duration, setDuration] = useState(0);
   const [showPlaylist, setShowPlaylist] = useState(false);
   const [showPlaylistSelector, setShowPlaylistSelector] = useState(false);
+  const [playlistPage, setPlaylistPage] = useState(0);
   const audioRef = useRef<HTMLAudioElement>(null);
   const [mounted, setMounted] = useState(false);
   const seekBarRef = useRef<HTMLDivElement>(null);
@@ -92,8 +93,17 @@ export function MusicPlayer() {
     setCurrentPlaylistIndex(saved.playlistIndex || 0);
     const savedPos = loadPos();
     if (savedPos) setDragPos(savedPos);
+  }, []);
 
-    api.getPublicConfig().then(res => {
+  useEffect(() => {
+    if (hidden) return;
+    let cancelled = false;
+    api.getMusicConfig().then(res => {
+      if (cancelled) return;
+      if (res.config?.music_password_protected && !res.config.music_page_config && !res.config.music_playlist) {
+        setPlaylists([]);
+        return;
+      }
       try {
         // Read from music_page_config (new structure) with fallback to music_playlist (old)
         const cfg = JSON.parse(res.config?.music_page_config || '{}');
@@ -110,7 +120,14 @@ export function MusicPlayer() {
         }
       } catch {}
     }).catch(() => {});
-  }, []);
+    return () => { cancelled = true; };
+  }, [hidden]);
+
+  // Keep this audio element across ordinary navigation. Dedicated player/admin
+  // routes hide it and pause playback so two players cannot play together.
+  useEffect(() => {
+    if (hidden) audioRef.current?.pause();
+  }, [hidden]);
 
   // Persist drag position
   useEffect(() => {
@@ -134,15 +151,14 @@ export function MusicPlayer() {
       audioRef.current.src = targetUrl;
       audioRef.current.setAttribute('data-src', targetUrl);
     }
-    audioRef.current.volume = volume;
-    if (playing) {
+    if (playing && !hidden) {
       audioRef.current.play().catch(() => setPlaying(false));
     }
-  }, [currentTrack]);
+  }, [currentTrack, playing, hidden]);
 
   useEffect(() => {
     if (audioRef.current) audioRef.current.volume = volume;
-  }, [volume]);
+  }, [volume, mounted]);
 
   const togglePlay = useCallback(() => {
     if (!audioRef.current || !currentTrack) return;
@@ -217,14 +233,14 @@ export function MusicPlayer() {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-      if (e.code === 'Space' && visible) {
+      if (e.code === 'Space' && visible && !hidden) {
         e.preventDefault();
         togglePlay();
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [togglePlay, visible]);
+  }, [togglePlay, visible, hidden]);
 
   // ── Drag logic ──
   const startDrag = useCallback((e: React.MouseEvent | React.TouchEvent, el: HTMLElement, onTap?: () => void) => {
@@ -232,7 +248,6 @@ export function MusicPlayer() {
     const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
     const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
     const rect = el.getBoundingClientRect();
-    const startedAt = Date.now();
     let moved = false;
 
     draggingRef.current = {
@@ -282,7 +297,7 @@ export function MusicPlayer() {
   return (
     <>
       {/* Mini floating button when collapsed */}
-      {!visible && (
+      {!visible && !hidden && (
         <button
           ref={(ref) => { if (ref) ref.dataset.playerBtn = 'true'; }}
           onMouseDown={(e) => startDrag(e, e.currentTarget, () => setVisible(true))}
@@ -302,6 +317,7 @@ export function MusicPlayer() {
       )}
 
       {/* Floating player window */}
+      {visible && !hidden && (
       <div
         ref={windowRef}
         className={`fixed z-50 transition-[opacity,transform] duration-300 ease-out ${
@@ -451,7 +467,7 @@ export function MusicPlayer() {
         </div>
 
         {/* Playlist panel */}
-        <div className={`transition-all duration-300 ease-out overflow-hidden ${showPlaylist ? 'max-h-64 opacity-100' : 'max-h-0 opacity-0'}`}>
+        {showPlaylist && <div className="overflow-hidden max-h-64">
           <div className="px-3 pb-3 space-y-0.5 max-h-52 overflow-y-auto"
             style={{ borderTop: showPlaylist ? '1px solid var(--glass-border)' : 'none' }}>
             <div className="flex items-center gap-2 px-2.5 py-1.5">
@@ -476,6 +492,7 @@ export function MusicPlayer() {
                         {playlists.map((pl, i) => (
                           <button key={pl.id} onClick={() => {
                             setCurrentPlaylistIndex(i);
+                            setPlaylistPage(0);
                             setCurrentIndex(0);
                             setPlaying(false);
                             if (audioRef.current) {
@@ -503,7 +520,9 @@ export function MusicPlayer() {
                 </span>
               )}
             </div>
-            {playlist.map((track, i) => (
+            {playlist.slice(playlistPage * 50, (playlistPage + 1) * 50).map((track, offset) => {
+              const i = playlistPage * 50 + offset;
+              return (
               <button key={i} onClick={() => playTrack(i)}
                 className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs transition-all hover:bg-white/5 group"
                 style={{
@@ -511,7 +530,7 @@ export function MusicPlayer() {
                   color: i === currentIndex ? 'var(--primary)' : 'var(--text-secondary)',
                 }}>
                 {track.cover ? (
-                  <img src={track.cover} alt="" className="w-7 h-7 rounded-md object-cover flex-shrink-0" />
+                  <img src={track.cover} alt="" loading="lazy" decoding="async" width={28} height={28} className="w-7 h-7 rounded-md object-cover flex-shrink-0" />
                 ) : (
                   <div className="w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0"
                     style={{ background: 'var(--btn-card-bg)' }}>
@@ -526,10 +545,18 @@ export function MusicPlayer() {
                   : <Play className="w-3.5 h-3.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
                 }
               </button>
-            ))}
+            ); })}
+            {playlist.length > 50 && (
+              <div className="flex items-center justify-between gap-2 px-2.5 py-2 text-xs" style={{ color: 'var(--text-info)' }}>
+                <button disabled={playlistPage === 0} onClick={() => setPlaylistPage(page => page - 1)} className="disabled:opacity-30">上一页</button>
+                <span>{playlistPage + 1} / {Math.ceil(playlist.length / 50)}</span>
+                <button disabled={(playlistPage + 1) * 50 >= playlist.length} onClick={() => setPlaylistPage(page => page + 1)} className="disabled:opacity-30">下一页</button>
+              </div>
+            )}
           </div>
-        </div>
+        </div>}
       </div>
+      )}
 
       {/* Hidden audio element */}
       <audio ref={audioRef}

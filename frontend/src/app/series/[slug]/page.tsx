@@ -1,30 +1,38 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import { Bookmark, Calendar, Eye, BookOpen, ChevronRight } from 'lucide-react';
 import { Loading } from '@/components/Loading';
 import { ScrollReveal } from '@/components/ScrollReveal';
 import { ImageWithFallback } from '@/components/ImageWithFallback';
+import { LoadMore } from '@/components/LoadMore';
+import { usePagedItems } from '@/lib/use-paged-items';
+import { mergeById } from '@/lib/pagination';
 
 export default function SeriesPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = React.use(params);
+  return <SeriesContent key={slug} slug={slug} />;
+}
+
+function SeriesContent({ slug }: { slug: string }) {
   const [series, setSeries] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    api.getSeriesBySlug(slug).then(res => {
-      setSeries(res.series);
-    }).catch(() => {}).finally(() => setLoading(false));
+  const fetchPosts = useCallback(async (params: Record<string, string>) => {
+    const res = await api.getSeriesBySlug(slug, params);
+    setSeries(res.series);
+    return { items: res.series.posts || [], total: res.total, page: res.page, size: res.size };
   }, [slug]);
+  const pagination = usePagedItems<any>(fetchPosts, 20, mergeById);
+  const { items: posts, total, initialLoading } = pagination;
 
-  if (loading) return <Loading />;
+  if (initialLoading) return <Loading />;
   if (!series) {
     return (
       <div className="text-center py-20" style={{ color: 'var(--text-secondary)' }}>
         <p className="text-lg mb-2">系列不存在</p>
         <Link href="/" className="text-sm hover:underline" style={{ color: 'var(--primary)' }}>返回首页</Link>
+        <LoadMore {...pagination} />
       </div>
     );
   }
@@ -35,7 +43,7 @@ export default function SeriesPage({ params }: { params: Promise<{ slug: string 
       <ScrollReveal>
       {series.cover_image ? (
         <div className="relative rounded-2xl overflow-hidden mb-8" style={{ background: 'var(--card-bg)' }}>
-          <ImageWithFallback src={series.cover_image} alt={series.name}
+          <ImageWithFallback src={series.cover_thumbnail_url || series.cover_image} fallbackSrc={series.cover_image} alt={series.name}
             className="w-full max-h-[60vh] object-contain"
             style={{ display: 'block' }} />
           <div className="absolute bottom-0 left-0 right-0 p-7 backdrop-blur-sm"
@@ -48,7 +56,7 @@ export default function SeriesPage({ params }: { params: Promise<{ slug: string 
               <p className="text-sm ml-11" style={{ color: 'rgba(255,255,255,0.85)' }}>{series.description}</p>
             )}
             <p className="text-xs ml-11 mt-1" style={{ color: 'rgba(255,255,255,0.55)' }}>
-              共 {series.posts?.length || 0} 篇文章
+              共 {total} 篇文章
             </p>
           </div>
         </div>
@@ -63,7 +71,7 @@ export default function SeriesPage({ params }: { params: Promise<{ slug: string 
               <p className="text-sm ml-8" style={{ color: 'var(--text-secondary)' }}>{series.description}</p>
             )}
             <p className="text-xs ml-8 mt-1" style={{ color: 'var(--text-info)' }}>
-              共 {series.posts?.length || 0} 篇文章
+              共 {total} 篇文章
             </p>
           </div>
         </div>
@@ -72,7 +80,7 @@ export default function SeriesPage({ params }: { params: Promise<{ slug: string 
 
       {/* Post list */}
       <div className="flex flex-col gap-3">
-        {series.posts?.map((post: any, index: number) => (
+        {posts.map((post: any, index: number) => (
           <ScrollReveal key={post.id || post.slug || index}
             className={`stagger-${(index % 8) + 1}`}>
           <Link
@@ -116,10 +124,11 @@ export default function SeriesPage({ params }: { params: Promise<{ slug: string 
           </Link>
           </ScrollReveal>
         ))}
-        {(!series.posts || series.posts.length === 0) && (
+        {posts.length === 0 && (
           <p className="text-center py-10" style={{ color: 'var(--text-info)' }}>暂无文章</p>
         )}
       </div>
+      <LoadMore {...pagination} />
     </div>
   );
 }

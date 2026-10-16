@@ -32,14 +32,10 @@ export default function AboutPage() {
   const [postCount, setPostCount] = useState(0);
 
   const load = useCallback(async () => {
-    try {
-      const res = await api.getPublicConfig();
-      setConfig(res.config || {});
-    } catch {}
-    try {
-      const postsRes = await api.getPosts({ page: '1', page_size: '1' });
-      setPostCount(postsRes.total || 0);
-    } catch {}
+    await Promise.allSettled([
+      api.getAboutConfig().then(res => setConfig(res.config || {})),
+      api.getPosts({ page: '1', page_size: '1' }).then(res => setPostCount(res.total || 0)),
+    ]);
     setLoading(false);
   }, []);
 

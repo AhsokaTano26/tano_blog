@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import DOMPurify from 'dompurify';
 import { api } from '@/lib/api';
 
@@ -11,34 +11,31 @@ interface InjectionConfig {
   site_favicon?: string;
 }
 
-let cachedConfig: InjectionConfig | null = null;
-
-function useInjectionConfig() {
-  const [config, setConfig] = useState<InjectionConfig>(cachedConfig || {});
+function useInjectionConfig(initialConfig?: InjectionConfig) {
+  const [config, setConfig] = useState<InjectionConfig>({});
 
   useEffect(() => {
-    if (cachedConfig) {
-      setConfig(cachedConfig);
-      return;
-    }
+    if (initialConfig !== undefined) return;
+    let cancelled = false;
     (async () => {
       try {
         const res = await api.getPublicConfig();
         const c = res.config || {};
-        cachedConfig = {
+        const loadedConfig = {
           head_injection: c.head_injection || '',
           content_head_injection: c.content_head_injection || '',
           footer_injection: c.footer_injection || '',
           site_favicon: c.site_favicon || '',
         };
-        setConfig(cachedConfig);
+        if (!cancelled) setConfig(loadedConfig);
       } catch {
         // Config unavailable (backend offline or endpoint missing) — silently ignore
       }
     })();
-  }, []);
+    return () => { cancelled = true; };
+  }, [initialConfig]);
 
-  return config;
+  return initialConfig ?? config;
 }
 
 /**
@@ -121,15 +118,20 @@ export function ContentHeadInjection() {
 }
 
 /** Injects footer HTML at the bottom of the page */
-export function FooterInjection() {
-  const config = useInjectionConfig();
+export function FooterInjection({ initialConfig }: { initialConfig?: InjectionConfig } = {}) {
+  const config = useInjectionConfig(initialConfig);
+  const footerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (footerRef.current) footerRef.current.innerHTML = DOMPurify.sanitize(config.footer_injection || '');
+  }, [config.footer_injection]);
 
   if (!config.footer_injection) return null;
 
   return (
     <div
       data-injection="footer"
-      dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(config.footer_injection) }}
+      ref={footerRef}
     />
   );
 }

@@ -20,6 +20,7 @@ func NewSeriesHandler(repo *repository.SeriesRepo) *SeriesHandler {
 
 // List public — returns series list with post count
 func (h *SeriesHandler) List(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	series, err := h.repo.ListWithCount()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取系列列表失败"})
@@ -33,17 +34,20 @@ func (h *SeriesHandler) List(c *gin.Context) {
 
 // GetBySlug public — returns series detail with posts
 func (h *SeriesHandler) GetBySlug(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	slug := c.Param("slug")
-	s, err := h.repo.GetBySlug(slug)
+	page, size := pagination(c, 20, 100)
+	s, total, err := h.repo.GetBySlugPage(slug, page, size)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "系列不存在"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"series": s})
+	c.JSON(http.StatusOK, gin.H{"series": s, "total": total, "page": page, "size": size})
 }
 
 // AdminList — admin series list
 func (h *SeriesHandler) AdminList(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
 	if page < 1 {
@@ -73,6 +77,7 @@ func (h *SeriesHandler) AdminList(c *gin.Context) {
 
 // AdminCreate — create series
 func (h *SeriesHandler) AdminCreate(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	var input struct {
 		Name        string `json:"name" binding:"required"`
 		Description string `json:"description"`
@@ -103,6 +108,7 @@ func (h *SeriesHandler) AdminCreate(c *gin.Context) {
 
 // AdminUpdate — update series
 func (h *SeriesHandler) AdminUpdate(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
@@ -139,6 +145,7 @@ func (h *SeriesHandler) AdminUpdate(c *gin.Context) {
 
 // AdminDelete — delete series
 func (h *SeriesHandler) AdminDelete(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
@@ -153,6 +160,7 @@ func (h *SeriesHandler) AdminDelete(c *gin.Context) {
 
 // AdminListPosts — list posts in series (for admin)
 func (h *SeriesHandler) AdminListPosts(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
@@ -171,6 +179,7 @@ func (h *SeriesHandler) AdminListPosts(c *gin.Context) {
 
 // AdminSetPosts — batch set posts in series with sort order
 func (h *SeriesHandler) AdminSetPosts(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
@@ -197,4 +206,14 @@ func (h *SeriesHandler) AdminSetPosts(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "已更新"})
+}
+
+func (h *SeriesHandler) Progress(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
+	progress, err := h.repo.Progress(c.Param("slug"), c.Query("post"))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "文章不在此系列"})
+		return
+	}
+	c.JSON(http.StatusOK, progress)
 }

@@ -12,6 +12,16 @@ import { ImageWithFallback } from '@/components/ImageWithFallback';
 const SITE_URL = typeof window !== 'undefined' ? window.location.origin : 'https://tano.asia';
 
 type MediaTag = { id: string; name: string };
+type UploadEntry = {
+  id: string;
+  name: string;
+  status: 'pending' | 'uploading' | 'completed' | 'failed' | 'cancelled';
+  loaded: number;
+  total: number;
+  percent: number | null;
+  error?: string;
+};
+type UploadTask = { entry: UploadEntry; file?: File; tagIds?: string[]; controller: AbortController };
 type MediaItem = {
   id: string;
   thumbnail_url?: string;
@@ -26,6 +36,7 @@ type MediaItem = {
   artist?: string;
   album?: string;
   description?: string;
+  in_gallery?: boolean;
 };
 
 function getMediaType(mime: string): 'image' | 'video' | 'audio' | 'document' {
@@ -101,7 +112,12 @@ export default function AdminMedia() {
   const [items, setItems] = useState<MediaItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState('');
+  const [uploadQueue, setUploadQueue] = useState<UploadEntry[]>([]);
+  const uploadTasks = useRef<UploadTask[]>([]);
+  const uploadRunning = useRef(false);
+  const uploadMounted = useRef(true);
+  const uploadProgress = `${uploadQueue.filter(item => item.status !== 'pending' && item.status !== 'uploading').length}/${uploadQueue.length}`;
+  const failedUploads = uploadQueue.filter(item => item.status === 'failed');
   const [uploadError, setUploadError] = useState('');
   const [copiedKey, setCopiedKey] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
@@ -111,7 +127,6 @@ export default function AdminMedia() {
   const [loadError, setLoadError] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
   const [uploadNotice, setUploadNotice] = useState('');
-  const [failedUploads, setFailedUploads] = useState<File[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const loadSequence = useRef(0);
   const [openLinksId, setOpenLinksId] = useState<string | null>(null);
@@ -134,7 +149,6 @@ export default function AdminMedia() {
   const [pageSize, setPageSize] = useState(30);
   const [total, setTotal] = useState(0);
 
-  const [galleryUrls, setGalleryUrls] = useState(new Set<string>());
   const [selectedIds, setSelectedIds] = useState(new Set<string>());
   const [showBatchTag, setShowBatchTag] = useState(false);
   const [pendingBatchTagIds, setPendingBatchTagIds] = useState<string[]>([]);
@@ -156,13 +170,6 @@ export default function AdminMedia() {
     document.addEventListener('keydown', handleKey);
     return () => document.removeEventListener('keydown', handleKey);
   }, [viewerItem]);
-
-  const loadGallery = useCallback(async () => {
-    try {
-      const res = await api.admin.gallery.list();
-      setGalleryUrls(new Set((res.items || []).map((image: { url: string }) => image.url)));
-    } catch { /* gallery badges do not block the media list */ }
-  }, []);
 
   const load = useCallback(async () => {
     const sequence = ++loadSequence.current;
@@ -189,7 +196,6 @@ export default function AdminMedia() {
     const timer = setTimeout(() => { setSearchQuery(search.trim()); setPage(1); }, 300);
     return () => clearTimeout(timer);
   }, [search]);
-  useEffect(() => { void loadGallery(); }, [loadGallery]);
 
   const loadTags = useCallback(async () => {
     try {
@@ -201,41 +207,109 @@ export default function AdminMedia() {
   useEffect(() => { load(); }, [load, refreshKey]);
   useEffect(() => { loadTags(); }, [loadTags]);
 
-  async function uploadFiles(files: File[]) {
-    if (!files.length || uploading) return;
+  useEffect(() => {
+    uploadMounted.current = true;
+    return () => {
+      uploadMounted.current = false;
+      for (const task of uploadTasks.current) {
+        if (task.entry.status === 'pending' || task.entry.status === 'uploading') {
+          task.entry.status = 'cancelled';
+          task.file = undefined;
+          task.controller.abort();
+        }
+      }
+    };
+  }, []);
+
+  function publishUploads() {
+    if (uploadMounted.current) setUploadQueue(uploadTasks.current.map(task => ({ ...task.entry })));
+  }
+
+  function cancelUpload(id?: string) {
+    for (const task of uploadTasks.current) {
+      if (id && task.entry.id !== id) continue;
+      if (task.entry.status !== 'pending' && task.entry.status !== 'uploading') continue;
+      task.entry.status = 'cancelled';
+      task.file = undefined;
+      task.controller.abort();
+    }
+    publishUploads();
+  }
+
+  async function runUploads(tasks: UploadTask[]) {
+    if (!tasks.length || uploadRunning.current) return;
+    uploadRunning.current = true;
     setUploading(true);
-    setUploadProgress(`0/${files.length}`);
     setUploadError('');
     setUploadNotice('');
-    setFailedUploads([]);
-    const failures: File[] = [];
-    const errors: string[] = [];
+    publishUploads();
     let cursor = 0;
-    let completed = 0;
-    const tagIds = uploadTagIds.length ? uploadTagIds : undefined;
     async function worker() {
-      while (cursor < files.length) {
-        const file = files[cursor++];
+      while (cursor < tasks.length) {
+        const task = tasks[cursor++];
+        const file = task.file;
+        if (!file || task.entry.status !== 'pending') continue;
+        task.entry.status = 'uploading';
+        publishUploads();
         try {
-          await api.admin.media.upload(file, tagIds);
+          await api.admin.media.upload(file, task.tagIds, {
+            signal: task.controller.signal,
+            onProgress: progress => {
+              if (task.controller.signal.aborted) return;
+              Object.assign(task.entry, progress);
+              publishUploads();
+            },
+          });
+          if (!task.controller.signal.aborted) {
+            task.entry.status = 'completed';
+            task.entry.percent = 100;
+            task.file = undefined;
+          }
         } catch (err) {
-          failures.push(file);
-          errors.push(`${file.name}：${err instanceof Error ? err.message : '上传失败'}`);
+          if (task.controller.signal.aborted || (err instanceof Error && err.name === 'AbortError')) {
+            task.entry.status = 'cancelled';
+            task.file = undefined;
+          } else {
+            task.entry.status = 'failed';
+            task.entry.error = err instanceof Error ? err.message : '上传失败';
+          }
         } finally {
-          completed++;
-          setUploadProgress(`${completed}/${files.length}`);
+          publishUploads();
         }
       }
     }
-    await Promise.all(Array.from({ length: Math.min(2, files.length) }, () => worker()));
-    setFailedUploads(failures);
-    setUploadError(errors.join('；'));
-    setUploadNotice(`已上传 ${files.length - failures.length}/${files.length} 个文件${failures.length ? `，${failures.length} 个失败，可重试` : ''}`);
-    setUploadProgress('');
+    await Promise.all(Array.from({ length: Math.min(2, tasks.length) }, () => worker()));
+    uploadRunning.current = false;
+    if (!uploadMounted.current) return;
+    const entries = uploadTasks.current.map(task => task.entry);
+    const failures = entries.filter(item => item.status === 'failed');
+    const completed = entries.filter(item => item.status === 'completed').length;
+    const cancelled = entries.filter(item => item.status === 'cancelled').length;
+    setUploadError(failures.map(item => `${item.name}：${item.error}`).join('；'));
+    setUploadNotice(`已上传 ${completed}/${entries.length} 个文件${failures.length ? `，${failures.length} 个失败，可重试` : ''}${cancelled ? `，${cancelled} 个已取消` : ''}`);
     setUploading(false);
     setPage(1);
     setRefreshKey(key => key + 1);
-    void loadGallery();
+  }
+
+  function uploadFiles(files: File[]) {
+    if (!files.length || uploadRunning.current) return;
+    const tasks: UploadTask[] = files.map(file => ({
+      entry: { id: crypto.randomUUID(), name: file.name, status: 'pending', loaded: 0, total: file.size, percent: null },
+      file, tagIds: uploadTagIds.length ? [...uploadTagIds] : undefined, controller: new AbortController(),
+    }));
+    uploadTasks.current.push(...tasks);
+    void runUploads(tasks);
+  }
+
+  function retryFailedUploads() {
+    if (uploadRunning.current) return;
+    const tasks = uploadTasks.current.filter(task => task.entry.status === 'failed' && task.file);
+    for (const task of tasks) {
+      task.entry = { ...task.entry, status: 'pending', loaded: 0, percent: null, error: undefined };
+      task.controller = new AbortController();
+    }
+    void runUploads(tasks);
   }
 
   function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -506,7 +580,26 @@ export default function AdminMedia() {
       <div role="status" aria-live="polite" className="mb-3 text-xs" style={{ color: 'var(--text-info)' }}>
         {uploading ? `正在上传 ${uploadProgress}，请稍候…` : uploadNotice || '支持选择多个文件或拖拽上传，点击缩略图查看原图'}
       </div>
-      {failedUploads.length > 0 && !uploading && <button onClick={() => void uploadFiles(failedUploads)}
+      {uploadQueue.length > 0 && <div className="glass-card rounded-xl p-3 mb-4">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>上传队列</span>
+          {uploading && <button onClick={() => cancelUpload()} className="text-xs px-2 py-1 rounded btn-glass"
+            style={{ color: 'var(--text-secondary)' }}>取消全部上传</button>}
+        </div>
+        <ul aria-label="上传队列" className="space-y-2 max-h-64 overflow-y-auto">
+          {uploadQueue.map(item => <li key={item.id} data-upload-file={item.name} className="flex items-center gap-3 text-xs">
+            <span className="min-w-0 flex-1 truncate" title={item.name} style={{ color: 'var(--text-secondary)' }}>{item.name}</span>
+            {item.status === 'uploading' && <progress aria-label={`${item.name} 上传进度`} max={100}
+              value={item.percent ?? undefined} className="w-24" />}
+            <span style={{ color: item.status === 'failed' ? 'var(--color-error)' : 'var(--text-info)' }}>
+              {item.status === 'pending' ? '等待上传' : item.status === 'uploading' ? (item.percent === null ? '上传中' : item.percent === 100 ? '处理中' : `${Math.round(item.percent)}%`) : item.status === 'completed' ? '已上传' : item.status === 'cancelled' ? '已取消' : `上传失败：${item.error}`}
+            </span>
+            {(item.status === 'pending' || item.status === 'uploading') && <button onClick={() => cancelUpload(item.id)}
+              aria-label={`取消上传 ${item.name}`} className="px-2 py-1 rounded btn-glass" style={{ color: 'var(--text-info)' }}>取消</button>}
+          </li>)}
+        </ul>
+      </div>}
+      {failedUploads.length > 0 && !uploading && <button onClick={retryFailedUploads}
         className="mb-3 px-3 py-2 rounded-xl text-sm btn-glass" style={{ color: 'var(--primary)' }}>重试失败文件（{failedUploads.length}）</button>}
       {loadError && <div role="alert" className="mb-3 text-sm" style={{ color: 'var(--color-error)' }}>
         {loadError} <button onClick={() => void load()} className="underline">重试加载</button>
@@ -723,7 +816,7 @@ export default function AdminMedia() {
                     <div className="absolute top-2 left-2 z-10">
                       <Checkbox checked={selectedIds.has(item.id)} onChange={() => toggleSelect(item.id)} />
                     </div>
-                    {galleryUrls.has(item.url) && (
+                    {item.in_gallery && (
                       <div className="absolute top-2 right-2 z-10 px-1.5 py-0.5 rounded text-[10px] font-medium"
                         style={{ background: 'rgba(34,197,94,0.85)', color: '#fff' }}>
                         图片馆
@@ -1178,19 +1271,15 @@ export default function AdminMedia() {
                         e.stopPropagation();
                         try {
                           const res = await api.admin.gallery.toggle(item.url, item.original_name || item.filename);
-                          setGalleryUrls(prev => {
-                            const next = new Set(prev);
-                            if (res.in_gallery) next.add(item.url);
-                            else next.delete(item.url);
-                            return next;
-                          });
+                          setItems(previous => previous.map(media => media.url === item.url ? { ...media, in_gallery: res.in_gallery } : media));
+                          setEditingMetadataItem(previous => previous?.url === item.url ? { ...previous, in_gallery: res.in_gallery } : previous);
                         } catch { /* empty */ }
                       }}
-                      className={`relative w-11 h-6 rounded-full transition-colors ${galleryUrls.has(item.url) ? 'bg-green-500' : 'bg-gray-600'}`}
+                      className={`relative w-11 h-6 rounded-full transition-colors ${item.in_gallery ? 'bg-green-500' : 'bg-gray-600'}`}
                       role="switch"
-                      aria-checked={galleryUrls.has(item.url)}
+                      aria-checked={Boolean(item.in_gallery)}
                     >
-                      <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform ${galleryUrls.has(item.url) ? 'translate-x-5' : ''}`} />
+                      <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform ${item.in_gallery ? 'translate-x-5' : ''}`} />
                     </button>
                   </div>
                 )}

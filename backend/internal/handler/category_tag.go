@@ -21,6 +21,7 @@ func NewCategoryHandler(db *gorm.DB) *CategoryHandler {
 }
 
 func (h *CategoryHandler) List(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "100"))
 	if page < 1 {
@@ -52,6 +53,7 @@ func (h *CategoryHandler) List(c *gin.Context) {
 }
 
 func (h *CategoryHandler) GetBySlug(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	slug := c.Param("slug")
 	var cat model.Category
 	if err := h.db.Where("slug = ?", slug).First(&cat).Error; err != nil {
@@ -86,6 +88,7 @@ func (h *CategoryHandler) GetBySlug(c *gin.Context) {
 }
 
 func (h *CategoryHandler) Create(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	var input struct {
 		Name        string `json:"name" binding:"required"`
 		Slug        string `json:"slug"`
@@ -117,6 +120,7 @@ func (h *CategoryHandler) Create(c *gin.Context) {
 }
 
 func (h *CategoryHandler) Update(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
@@ -156,6 +160,7 @@ func (h *CategoryHandler) Update(c *gin.Context) {
 }
 
 func (h *CategoryHandler) Delete(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
@@ -185,6 +190,7 @@ func NewTagHandler(db *gorm.DB) *TagHandler {
 }
 
 func (h *TagHandler) List(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "100"))
 	if page < 1 {
@@ -216,6 +222,7 @@ func (h *TagHandler) List(c *gin.Context) {
 }
 
 func (h *TagHandler) GetBySlug(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	slug := c.Param("slug")
 	var tag model.Tag
 	if err := h.db.Where("slug = ?", slug).First(&tag).Error; err != nil {
@@ -252,6 +259,7 @@ func (h *TagHandler) GetBySlug(c *gin.Context) {
 }
 
 func (h *TagHandler) Create(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	var input struct {
 		Name string `json:"name" binding:"required"`
 		Slug string `json:"slug"`
@@ -275,6 +283,7 @@ func (h *TagHandler) Create(c *gin.Context) {
 }
 
 func (h *TagHandler) Update(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
@@ -311,6 +320,7 @@ func (h *TagHandler) Update(c *gin.Context) {
 }
 
 func (h *TagHandler) Delete(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})

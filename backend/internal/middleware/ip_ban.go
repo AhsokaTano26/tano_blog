@@ -25,7 +25,17 @@ func IPBan(ipBanRepo *repository.IPBanRepo) gin.HandlerFunc {
 		}
 
 		ip := c.ClientIP()
-		bans, err := ipBanRepo.FindActiveByIP(ip)
+		// Server rendering has no authenticated client-IP transport. If bans exist,
+		// let the browser perform the normal checked read rather than trusting a
+		// caller-supplied forwarding header or bypassing a ban with the server IP.
+		if c.GetHeader("X-Render-Request") == "1" {
+			active, err := ipBanRepo.WithContext(c.Request.Context()).HasActive()
+			if err != nil || active {
+				c.AbortWithStatusJSON(http.StatusConflict, gin.H{"error": "需要浏览器验证访问权限"})
+				return
+			}
+		}
+		bans, err := ipBanRepo.WithContext(c.Request.Context()).FindActiveByIP(ip)
 		if err != nil || len(bans) == 0 {
 			c.Next()
 			return

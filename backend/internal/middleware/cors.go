@@ -69,10 +69,6 @@ func CSRF() gin.HandlerFunc {
 
 		// Validate CSRF token
 		token := c.GetHeader("X-CSRF-Token")
-		if token == "" {
-			// Also check form value for non-JSON requests
-			token = c.PostForm("csrf_token")
-		}
 		if token == "" || len(token) != len(cookie) ||
 			subtle.ConstantTimeCompare([]byte(token), []byte(cookie)) != 1 {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "CSRF 令牌无效"})

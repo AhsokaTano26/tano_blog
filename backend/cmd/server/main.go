@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -50,6 +51,15 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		log.Fatal(err)
+	}
+	sqlDB.SetMaxOpenConns(cfg.Database.MaxOpen)
+	sqlDB.SetMaxIdleConns(cfg.Database.MaxIdle)
+	sqlDB.SetConnMaxLifetime(30 * time.Minute)
+	sqlDB.SetConnMaxIdleTime(5 * time.Minute)
+	defer sqlDB.Close()
 	utils.LogInfo("Connected to database")
 
 	// Auto migrate
@@ -57,6 +67,9 @@ func main() {
 		log.Fatalf("Failed to migrate database: %v", err)
 	}
 	utils.LogInfo("Database migrated")
+	if err := model.EnsurePerformanceIndexes(db); err != nil {
+		log.Fatalf("Failed to create performance indexes: %v", err)
+	}
 
 	// Enable pg_trgm extension for full-text search
 	if err := db.Exec("CREATE EXTENSION IF NOT EXISTS pg_trgm").Error; err != nil {
@@ -69,6 +82,14 @@ func main() {
 		utils.LogWarn("failed to create content trigram index", "error", err)
 	}
 
+	for _, statement := range []string{
+		"CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_access_logs_path_trgm ON access_logs USING GIN (path gin_trgm_ops)",
+		"CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_access_logs_ip_trgm ON access_logs USING GIN (ip_address gin_trgm_ops)",
+	} {
+		if err := db.Exec(statement).Error; err != nil {
+			utils.LogWarn("failed to create log search index", "error", err)
+		}
+	}
 	// Initialize GeoIP
 	utils.InitGeoIP()
 
@@ -109,6 +130,9 @@ func main() {
 	accessLogHandler := handler.NewAccessLogHandler(db)
 	backupHandler := handler.NewBackupHandler(db, cfg.Upload.Dir, cfg.BackupDir)
 	replicationService := service.NewReplicationService(repository.NewSiteConfigRepo(db), cfg.BackupDir, cfg.Upload.Dir, backupHandler.CreateSyncSnapshot, backupHandler.RestoreSyncSnapshot, backupHandler.VerifySyncSnapshotUploads, cfg.SyncKeyEncryptionKey)
+	replicationService.SetSnapshotCreator(backupHandler.CreateSyncSnapshotContext)
+	backupHandler.SetBackupGate(replicationService.AcquireBackupGate)
+	replicationService.SetSnapshotRestorer(backupHandler.RestoreSyncSnapshotContext)
 	syncHandler := handler.NewSyncHandler(replicationService)
 	seriesHandler := handler.NewSeriesHandler(seriesRepo)
 	feedHandler := handler.NewFeedHandler(db)
@@ -125,7 +149,9 @@ func main() {
 	// Keep only small multipart parts in memory; larger uploads spill to temp files.
 	r.MaxMultipartMemory = 32 << 20
 	r.Use(gin.Recovery())
-	r.Use(middleware.AccessLogger(db))
+	r.Use(middleware.RequestBudget(cfg.Server.RequestTimeout, cfg.Server.UploadTimeout))
+	accessWriter := middleware.NewAccessLogWriter(db, 2048)
+	r.Use(middleware.AccessLogger(accessWriter))
 
 	// CORS: allow frontend origin
 	allowedOrigins := strings.Split(os.Getenv("CORS_ORIGINS"), ",")
@@ -149,6 +175,18 @@ func main() {
 	r.Use(middleware.IPBan(ipBanRepo))
 
 	// Serve uploaded files
+	r.Use(func(c *gin.Context) {
+		if strings.HasPrefix(c.Request.URL.Path, "/uploads/") {
+			for _, part := range strings.Split(c.Request.URL.Path, "/") {
+				if strings.HasPrefix(part, ".") {
+					c.AbortWithStatus(http.StatusNotFound)
+					return
+				}
+			}
+			c.Header("Cache-Control", "public, max-age=31536000, immutable")
+		}
+		c.Next()
+	})
 	r.Static("/uploads", cfg.Upload.Dir)
 
 	api := r.Group("/api/v1")
@@ -190,6 +228,8 @@ func main() {
 
 		// Public config endpoint (for injection)
 		api.GET("/config/public", siteConfigHandler.GetPublic)
+		api.GET("/config/about", siteConfigHandler.GetPublic)
+		api.GET("/config/music", siteConfigHandler.GetMusic)
 
 		// Public content endpoints
 		api.GET("/posts", postHandler.ListPublic)
@@ -209,6 +249,7 @@ func main() {
 		api.POST("/auth/forgot-password", middleware.RateLimit(3, 60*time.Second), authHandler.ForgotPassword)
 		api.POST("/auth/reset-password", middleware.RateLimit(5, 60*time.Second), authHandler.ResetPassword)
 		api.GET("/posts/:slug", middleware.OptionalAuth(&cfg.JWT, db), postHandler.GetBySlug)
+		api.POST("/posts/:slug/view", middleware.OptionalAuth(&cfg.JWT, db), middleware.RateLimit(60, 60*time.Second), postHandler.RecordView)
 		api.GET("/archive", postHandler.Archive)
 
 		// Friend links (public)
@@ -229,7 +270,7 @@ func main() {
 				return
 			}
 			var musicConfig model.SiteConfig
-			if err := db.Where("key = ?", "music_password").First(&musicConfig).Error; err != nil || musicConfig.Value == "" {
+			if err := db.WithContext(c.Request.Context()).Where("key = ?", "music_password").First(&musicConfig).Error; err != nil || musicConfig.Value == "" {
 				c.JSON(http.StatusNotFound, gin.H{"error": "未设置密码"})
 				return
 			}
@@ -256,6 +297,7 @@ func main() {
 
 		api.GET("/series", seriesHandler.List)
 		api.GET("/series/:slug", seriesHandler.GetBySlug)
+		api.GET("/series/:slug/progress", seriesHandler.Progress)
 
 		api.GET("/posts/:slug/comments", middleware.OptionalAuth(&cfg.JWT, db), commentHandler.ListByPost)
 		api.POST("/posts/:slug/comments", middleware.OptionalAuth(&cfg.JWT, db), middleware.RateLimit(5, 60*time.Second), commentHandler.Create)
@@ -291,6 +333,7 @@ func main() {
 			admin := authRequired.Group("/admin")
 			admin.Use(middleware.RoleRequired("admin"))
 			{
+				admin.GET("/summary", siteConfigHandler.Summary)
 				admin.GET("/posts", postHandler.AdminList)
 				admin.POST("/posts/batch-status", postHandler.BatchUpdateStatus)
 				admin.POST("/posts/batch-delete", postHandler.BatchDelete)
@@ -355,6 +398,7 @@ func main() {
 
 				admin.GET("/users", authHandler.ListUsers)
 
+				admin.GET("/access-logs/overview", accessLogHandler.Overview)
 				admin.GET("/access-logs", accessLogHandler.List)
 				admin.GET("/access-logs/stats", accessLogHandler.Stats)
 				admin.GET("/access-logs/stats/device", accessLogHandler.StatsByDevice)
@@ -371,6 +415,11 @@ func main() {
 				admin.POST("/access-logs/clear", accessLogHandler.Clear)
 
 				// Backup
+				admin.GET("/backup/status", backupHandler.BackupStatus)
+				admin.POST("/backup/cancel", backupHandler.CancelBackup)
+				admin.GET("/metrics", func(c *gin.Context) {
+					c.JSON(http.StatusOK, gin.H{"database": sqlDB.Stats(), "access_log_pending": accessWriter.Pending(), "access_log_dropped": accessWriter.Dropped()})
+				})
 				admin.GET("/backups", backupHandler.ListBackups)
 				admin.POST("/backups", backupHandler.CreateBackup)
 				admin.GET("/backups/:filename/download", backupHandler.DownloadBackup)
@@ -426,10 +475,13 @@ func main() {
 
 	port := cfg.Server.Port
 	srv := &http.Server{
-		Addr:         ":" + port,
-		Handler:      r,
-		ReadTimeout:  cfg.Server.ReadTimeout,
-		WriteTimeout: cfg.Server.WriteTimeout,
+		Addr:              ":" + port,
+		Handler:           r,
+		ReadHeaderTimeout: 10 * time.Second,
+		MaxHeaderBytes:    64 << 10,
+		IdleTimeout:       60 * time.Second,
+		ReadTimeout:       cfg.Server.ReadTimeout,
+		WriteTimeout:      cfg.Server.WriteTimeout,
 	}
 
 	// Publish scheduled posts every minute
@@ -458,6 +510,21 @@ func main() {
 		}
 	}()
 
+	// Raw log retention is opt-in; never silently erase existing history.
+	if days, _ := strconv.Atoi(os.Getenv("ACCESS_LOG_RETENTION_DAYS")); days > 0 {
+		go func() {
+			ticker := time.NewTicker(time.Hour)
+			defer ticker.Stop()
+			for range ticker.C {
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+				err := middleware.PruneAccessLogs(ctx, db, time.Now().AddDate(0, 0, -days))
+				cancel()
+				if err != nil {
+					utils.LogWarn("log retention failed", "error", err)
+				}
+			}
+		}()
+	}
 	// Cleanup old backups every hour
 	go func() {
 		ticker := time.NewTicker(1 * time.Hour)
@@ -484,6 +551,11 @@ func main() {
 	if err := srv.Shutdown(ctx); err != nil {
 		log.Fatalf("Server forced to shutdown: %v", err)
 	}
+	drainCtx, drainCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	if err := accessWriter.Close(drainCtx); err != nil {
+		utils.LogWarn("log drain incomplete", "error", err)
+	}
+	drainCancel()
 	utils.LogInfo("Server exited")
 
 	utils.CloseGeoIP()

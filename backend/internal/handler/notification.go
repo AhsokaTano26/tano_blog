@@ -21,6 +21,7 @@ func NewNotificationHandler(db *gorm.DB) *NotificationHandler {
 }
 
 func (h *NotificationHandler) List(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	userIDStr, _ := c.Get("user_id")
 	userID, _ := uuid.Parse(userIDStr.(string))
 
@@ -37,6 +38,7 @@ func (h *NotificationHandler) List(c *gin.Context) {
 }
 
 func (h *NotificationHandler) MarkRead(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	userIDStr, _ := c.Get("user_id")
 	userID, _ := uuid.Parse(userIDStr.(string))
 	notifID, err := uuid.Parse(c.Param("id"))
@@ -52,6 +54,7 @@ func (h *NotificationHandler) MarkRead(c *gin.Context) {
 }
 
 func (h *NotificationHandler) MarkAllRead(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	userIDStr, _ := c.Get("user_id")
 	userID, _ := uuid.Parse(userIDStr.(string))
 	if err := h.repo.MarkAllRead(userID); err != nil {
@@ -62,6 +65,7 @@ func (h *NotificationHandler) MarkAllRead(c *gin.Context) {
 }
 
 func (h *NotificationHandler) UnreadCount(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	userIDStr, _ := c.Get("user_id")
 	userID, _ := uuid.Parse(userIDStr.(string))
 	count, err := h.repo.UnreadCount(userID)

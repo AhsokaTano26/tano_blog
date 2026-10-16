@@ -116,7 +116,7 @@ func (r *SeriesRepo) ListPosts(seriesID uuid.UUID) ([]model.Post, error) {
 	var posts []model.Post
 	err := r.db.Joins("JOIN post_series ON post_series.post_id = posts.id").
 		Where("post_series.series_id = ?", seriesID).
-		Preload("Category").Preload("Tags").
+		Select(PostSummaryColumns).Preload("Category").Preload("Tags").
 		Order("post_series.sort_order ASC, posts.published_at DESC").
 		Find(&posts).Error
 	return posts, err

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '@/lib/api';
 
 interface NameCount {
@@ -52,39 +52,43 @@ export default function AnalyticsPage() {
     const [byOS, setByOS] = useState<NameCount[]>([]);
     const [byHour, setByHour] = useState<{ hour: number; count: number }[]>([]);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
+    const requestSequence = useRef(0);
 
     const loadData = useCallback(async () => {
+        const sequence = ++requestSequence.current;
+        const days = (Date.parse(endDate) - Date.parse(startDate)) / 86400000;
+        if (!Number.isFinite(days) || days < 0 || days > 365) {
+            setError('请选择有效日期范围，开始日期不能晚于结束日期，最多 366 天');
+            setLoading(false);
+            return;
+        }
         setLoading(true);
+        setError('');
         try {
             const params = { start: startDate, end: endDate };
-            const [statsRes, pathRes, refRes, countryRes, statusRes, devRes, browRes, osRes, hourRes] = await Promise.all([
-                api.admin.accessLogs.statsTimeRange(params),
-                api.admin.accessLogs.statsByPath(),
-                api.admin.accessLogs.statsByReferrer(),
-                api.admin.accessLogs.statsByCountry(),
-                api.admin.accessLogs.statsByStatusCode(),
-                api.admin.accessLogs.statsByDevice(),
-                api.admin.accessLogs.statsByBrowser(),
-                api.admin.accessLogs.statsByOS(),
-                api.admin.accessLogs.statsByHour(),
-            ]);
-            setTimeRangeStats(statsRes as any);
-            setByPath(pathRes.items);
-            setByReferrer(refRes.items);
-            setByCountry(countryRes.items);
-            setByStatusCode(statusRes.items);
-            setByDevice(devRes.items);
-            setByBrowser(browRes.items);
-            setByOS(osRes.items);
-            setByHour(hourRes.items);
+            const data = await api.admin.accessLogs.overview(params);
+            if (sequence !== requestSequence.current) return;
+            setTimeRangeStats(data.stats);
+            setByPath(data.path);
+            setByReferrer(data.referrer);
+            setByCountry(data.country);
+            setByStatusCode(data.status);
+            setByDevice(data.device);
+            setByBrowser(data.browser);
+            setByOS(data.os);
+            setByHour(data.hour);
         } catch (e) {
-            console.error(e);
+            if (sequence === requestSequence.current) setError(e instanceof Error ? e.message : '统计加载失败，请重试');
         } finally {
-            setLoading(false);
+            if (sequence === requestSequence.current) setLoading(false);
         }
     }, [startDate, endDate]);
 
-    useEffect(() => { loadData(); }, [loadData]);
+    useEffect(() => {
+        void loadData();
+        return () => { requestSequence.current++; };
+    }, [loadData]);
 
     const maxPath = Math.max(...byPath.map(i => i.count), 1);
     const maxRef = Math.max(...byReferrer.map(i => i.count), 1);
@@ -95,16 +99,22 @@ export default function AnalyticsPage() {
             <div className="flex items-center justify-between">
                 <h1 className="text-2xl font-bold">访问统计</h1>
                 <div className="flex items-center gap-3">
-                    <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
+                    <input type="date" aria-label="开始日期" value={startDate} onChange={e => setStartDate(e.target.value)}
                         className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-sm" />
                     <span className="text-gray-400">至</span>
-                    <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)}
+                    <input type="date" aria-label="结束日期" value={endDate} onChange={e => setEndDate(e.target.value)}
                         className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-sm" />
                 </div>
             </div>
+            <p className="text-xs text-gray-400">按 UTC+8 日期统计，包含结束日；每次最多 366 天。</p>
 
             {loading ? (
                 <div className="text-center py-12 text-gray-400">加载中...</div>
+            ) : error ? (
+                <div role="alert" className="glass-card rounded-xl p-5 text-sm" style={{ color: 'var(--color-error)' }}>
+                    {error}
+                    <button onClick={() => void loadData()} className="ml-3 underline">重试</button>
+                </div>
             ) : (
                 <>
                     {/* Summary cards */}
@@ -127,7 +137,7 @@ export default function AnalyticsPage() {
                     {/* Daily trend chart */}
                     {timeRangeStats && timeRangeStats.daily_counts.length > 0 && (
                         <div className="glass-card rounded-xl p-5">
-                            <h2 className="text-sm font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>每日趋势（近7天）</h2>
+                            <h2 className="text-sm font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>每日趋势（所选日期）</h2>
                             <div className="flex items-end gap-1" style={{ height: '160px' }}>
                                 {timeRangeStats.daily_counts.map(d => {
                                     const maxDaily = Math.max(...timeRangeStats!.daily_counts.map(x => x.count), 1);

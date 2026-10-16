@@ -1,9 +1,25 @@
 import { uploadFilename } from './editor-upload';
+import { uploadForm, type UploadOptions } from './upload';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
 
 interface FetchOptions extends RequestInit {
   params?: Record<string, string>;
+  timeoutMs?: number;
+}
+
+// Browser-only cache: never share cookie-dependent data across server requests.
+const publicRequests = new Map<string, { expires: number; promise: Promise<any> }>();
+function publicRequest<T>(path: string, ttl = 60_000): Promise<T> {
+  if (typeof window === 'undefined') return request<T>(path);
+  const cached = publicRequests.get(path);
+  if (cached && cached.expires > Date.now()) return cached.promise;
+  const promise = request<T>(path).catch(error => {
+    publicRequests.delete(path);
+    throw error;
+  });
+  publicRequests.set(path, { expires: Date.now() + ttl, promise });
+  return promise;
 }
 
 function getCSRFToken(): string {
@@ -13,7 +29,7 @@ function getCSRFToken(): string {
 }
 
 async function request<T>(path: string, options: FetchOptions = {}): Promise<T> {
-  const { params, ...fetchOptions } = options;
+  const { params, timeoutMs = 30_000, signal: callerSignal, ...fetchOptions } = options;
 
   let url = `${API_BASE}${path}`;
   if (params) {
@@ -24,13 +40,14 @@ async function request<T>(path: string, options: FetchOptions = {}): Promise<T> 
   const isMutating = fetchOptions.method && !['GET', 'HEAD', 'OPTIONS'].includes(fetchOptions.method.toUpperCase());
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30000);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const signal = callerSignal ? AbortSignal.any([callerSignal, controller.signal]) : controller.signal;
 
   let res: Response;
   try {
     res = await fetch(url, {
       ...fetchOptions,
-      signal: controller.signal,
+      signal,
       credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
@@ -40,16 +57,14 @@ async function request<T>(path: string, options: FetchOptions = {}): Promise<T> 
     });
   } catch {
     clearTimeout(timeout);
+    if (signal.aborted) throw new Error(callerSignal?.aborted ? '请求已取消' : '请求超时，请重试');
     throw new Error('网络连接失败');
   }
-  clearTimeout(timeout);
-
+  try {
   if (!res.ok) {
-    // Session expired — redirect to login and suppress the error
-    if (res.status === 401 && typeof window !== 'undefined' && !window.location.pathname.startsWith('/admin/login')) {
+    // Optional authentication on public pages must never interrupt reading.
+    if (res.status === 401 && typeof window !== 'undefined' && window.location.pathname.startsWith('/admin/') && !window.location.pathname.startsWith('/admin/login')) {
       window.location.href = '/admin/login';
-      // Don't throw — navigation is already in progress
-      return new Promise(() => {}) as never;
     }
 
     let errMsg = `HTTP ${res.status}`;
@@ -60,43 +75,53 @@ async function request<T>(path: string, options: FetchOptions = {}): Promise<T> 
     throw new Error(errMsg);
   }
 
-  return res.json();
+  if (isMutating && (path.startsWith('/api/v1/admin/') || path.startsWith('/api/v1/auth/'))) publicRequests.clear();
+  return await res.json();
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 export const api = {
   // Public config
   getPublicConfig: () =>
-    request<{ config: Record<string, string> }>('/api/v1/config/public'),
+    publicRequest<{ config: Record<string, string> }>('/api/v1/config/public'),
+  getAboutConfig: () =>
+    publicRequest<{ config: Record<string, string> }>('/api/v1/config/about'),
+  getMusicConfig: () =>
+    request<{ config: Record<string, string> }>('/api/v1/config/music'),
 
   // Posts
   getPosts: (params?: Record<string, string>) =>
     request<{ items: any[]; total: number; page: number; size: number }>('/api/v1/posts', { params }),
   getPost: (slug: string) =>
     request<{ post: any; reactions?: Record<string, number>; user_emojis?: string[] }>(`/api/v1/posts/${slug}`),
+  recordPostView: (slug: string) =>
+    request<{ reactions?: Record<string, number>; user_emojis?: string[] }>(`/api/v1/posts/${slug}/view`, { method: 'POST' }),
   getPostByPreview: (token: string) =>
     request<{ post: any }>('/api/v1/posts/preview', { params: { token } }),
   getTopPosts: () =>
     request<{ items: any[] }>('/api/v1/posts/top'),
   getTopViewed: () =>
     request<{ items: any[] }>('/api/v1/posts/top-viewed'),
-  getArchive: () =>
-    request<{ items: any[] }>('/api/v1/archive'),
+  getArchive: (params?: Record<string, string>) =>
+    request<{ items: any[]; total: number; page: number; size: number }>('/api/v1/archive', { params }),
 
   // Categories
   getCategories: () =>
-    request<{ items: any[] }>('/api/v1/categories'),
+    publicRequest<{ items: any[] }>('/api/v1/categories'),
   getCategory: (slug: string, params?: Record<string, string>) =>
     request<{ category: any; posts: any[]; total: number; page: number; size: number }>(`/api/v1/categories/${slug}`, { params }),
 
   // Tags
   getTags: () =>
-    request<{ items: any[] }>('/api/v1/tags'),
+    publicRequest<{ items: any[] }>('/api/v1/tags'),
   getTag: (slug: string, params?: Record<string, string>) =>
     request<{ tag: any; posts: any[]; total: number; page: number; size: number }>(`/api/v1/tags/${slug}`, { params }),
 
   // Comments
-  getComments: (postId: string, sort?: string) =>
-    request<{ items: any[] }>(`/api/v1/posts/${postId}/comments`, { params: sort ? { sort } : undefined }),
+  getComments: (postId: string, sort?: string, params?: Record<string, string>) =>
+    request<{ items: any[]; total: number; page: number; size: number }>(`/api/v1/posts/${postId}/comments`, { params: { ...(sort ? { sort } : {}), ...params } }),
   createComment: (postId: string, data: any) =>
     request(`/api/v1/posts/${postId}/comments`, {
       method: 'POST',
@@ -123,9 +148,11 @@ export const api = {
 
   // Series
   getSeries: () =>
-    request<{ items: any[] }>('/api/v1/series'),
-  getSeriesBySlug: (slug: string) =>
-    request<{ series: any }>(`/api/v1/series/${slug}`),
+    publicRequest<{ items: any[] }>('/api/v1/series'),
+  getSeriesBySlug: (slug: string, params?: Record<string, string>) =>
+    request<{ series: any; total: number; page: number; size: number }>(`/api/v1/series/${slug}`, { params }),
+  getSeriesProgress: (slug: string, postSlug: string) =>
+    request<{ position: number; total: number }>(`/api/v1/series/${slug}/progress`, { params: { post: postSlug } }),
 
   // Adjacent posts
   getAdjacentPosts: (slug: string) =>
@@ -144,8 +171,8 @@ export const api = {
     request<{ items: any[] }>('/api/v1/nav-links'),
 
   // Gallery
-  getGalleryImages: () =>
-    request<{ items: any[] }>('/api/v1/gallery'),
+  getGalleryImages: (params?: Record<string, string>) =>
+    request<{ items: any[]; total: number; page: number; size: number }>('/api/v1/gallery', { params }),
   verifyPostPassword: (slug: string, password: string) =>
     request<{ verified: boolean }>(`/api/v1/posts/${slug}/verify-password`, { method: 'POST', body: JSON.stringify({ password }) }),
 
@@ -208,6 +235,7 @@ export const api = {
 
   // Admin
   admin: {
+    summary: () => publicRequest<{ posts: number; comments: number; media: number; categories: number; tags: number; pending_comments: number; pending_links: number }>('/api/v1/admin/summary', 5000),
     posts: {
       list: (params?: Record<string, string>) =>
         request<{ items: any[]; total: number; page: number; size: number }>('/api/v1/admin/posts', { params }),
@@ -288,21 +316,11 @@ export const api = {
         request('/api/v1/admin/media/batch-delete', { method: 'POST', body: JSON.stringify({ ids }) }),
       batchUpdateTags: (ids: string[], tagIds: string[]) =>
         request('/api/v1/admin/media/batch-tag', { method: 'POST', body: JSON.stringify({ ids, tag_ids: tagIds }) }),
-      upload: async (file: File, tagIds?: string[]) => {
+      upload: async (file: File, tagIds?: string[], options?: UploadOptions) => {
         const form = new FormData();
         form.append('file', file, uploadFilename(file));
         if (tagIds && tagIds.length > 0) form.append('tag_ids', tagIds.join(','));
-        const res = await fetch(`${API_BASE}/api/v1/admin/upload`, {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'X-CSRF-Token': getCSRFToken() },
-          body: form,
-        });
-        if (!res.ok) {
-          const body = await res.json().catch(() => ({}));
-          throw new Error(body.error || `上传失败 (${res.status})`);
-        }
-        return res.json();
+        return uploadForm<{ media: { id: string; url: string; filename: string; thumbnail_url?: string } }>(`${API_BASE}/api/v1/admin/upload`, form, getCSRFToken(), options);
       },
       updateTags: (id: string, tagIds: string[]) =>
         request(`/api/v1/admin/media/${id}/tags`, { method: 'PUT', body: JSON.stringify({ tag_ids: tagIds }) }),
@@ -316,8 +334,11 @@ export const api = {
     },
     config: {
       get: () => request<{ config: Record<string, string> }>('/api/v1/admin/config'),
-      update: (data: Record<string, string>) =>
-        request('/api/v1/admin/config', { method: 'PUT', body: JSON.stringify(data) }),
+      update: async (data: Record<string, string>) => {
+        const result = await request('/api/v1/admin/config', { method: 'PUT', body: JSON.stringify(data) });
+        publicRequests.clear();
+        return result;
+      },
       testEmail: () =>
         request<{ message: string }>('/api/v1/admin/config/test-email', { method: 'POST' }),
     },
@@ -333,8 +354,9 @@ export const api = {
       setPosts: (id: string, postIds: string[]) => request(`/api/v1/admin/series/${id}/posts`, { method: 'PUT', body: JSON.stringify({ post_ids: postIds }) }),
     },
     accessLogs: {
+      overview: (params?: Record<string, string>) => request<{ stats: { total_requests: number; unique_ips: number; total_errors: number; avg_response_ms: number; daily_counts: { date: string; count: number }[] }; path: { name: string; count: number }[]; referrer: { name: string; count: number }[]; country: { name: string; count: number }[]; status: { name: string; count: number }[]; device: { name: string; count: number }[]; browser: { name: string; count: number }[]; os: { name: string; count: number }[]; hour: { hour: number; count: number }[] }>('/api/v1/admin/access-logs/overview', { params }),
       list: (params?: Record<string, string>) =>
-        request<{ items: any[]; total: number; page: number; size: number }>('/api/v1/admin/access-logs', { params }),
+        request<{ items: any[]; total: number; page: number; size: number; next_cursor: string }>('/api/v1/admin/access-logs', { params }),
       stats: () =>
         request<{ total_requests: number; unique_ips: number; total_errors: number; avg_response_ms: number; daily_counts: { date: string; count: number }[] }>('/api/v1/admin/access-logs/stats'),
       statsByDevice: () => request<{ items: { name: string; count: number }[] }>('/api/v1/admin/access-logs/stats/device'),
@@ -361,24 +383,19 @@ export const api = {
         request('/api/v1/admin/access-logs/clear', { method: 'POST', body: JSON.stringify({ confirm: 'CLEAR_ALL' }) }),
     },
     backups: {
+      status: () => request<{ running: boolean; phase: string; table: string; rows: number; bytes: number; error?: string }>('/api/v1/admin/backup/status'),
+      cancel: () => request('/api/v1/admin/backup/cancel', { method: 'POST' }),
       list: () =>
         request<{ items: any[] }>('/api/v1/admin/backups'),
-      create: () =>
-        request<{ message: string; filename: string }>('/api/v1/admin/backups', { method: 'POST' }),
+      create: (signal?: AbortSignal) =>
+        request<{ message: string; filename: string }>('/api/v1/admin/backups', { method: 'POST', timeoutMs: 30 * 60_000, signal }),
       download: async (filename: string) => {
-        const res = await fetch(`${API_BASE}/api/v1/admin/backups/${filename}/download`, {
-          credentials: 'include',
-        });
-        if (!res.ok) return;
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
-        a.href = url;
+        a.href = `${API_BASE}/api/v1/admin/backups/${encodeURIComponent(filename)}/download`;
         a.download = filename;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-        URL.revokeObjectURL(url);
       },
       delete: (filename: string) =>
         request(`/api/v1/admin/backups/${filename}`, { method: 'DELETE' }),
@@ -388,29 +405,21 @@ export const api = {
       run: () => request<{ message: string }>('/api/v1/admin/sync/run', { method: 'POST' }),
     },
     restore: {
-      upload: async (file: File) => {
+      upload: async (file: File, options?: UploadOptions) => {
         const form = new FormData();
         form.append('file', file);
-        const res = await fetch(`${API_BASE}/api/v1/admin/restore/upload`, {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'X-CSRF-Token': getCSRFToken() },
-          body: form,
-        });
-        if (!res.ok) {
-          const err = await res.json();
-          throw new Error(err.error || '恢复失败');
-        }
-        return res.json();
+        return uploadForm<{ message: string; warning?: string }>(`${API_BASE}/api/v1/admin/restore/upload`, form, getCSRFToken(), options);
       },
-      url: (url: string) =>
+      url: (url: string, signal?: AbortSignal) =>
         request<{ message: string; warning?: string }>('/api/v1/admin/restore/url', {
           method: 'POST',
+          timeoutMs: 30 * 60_000, signal,
           body: JSON.stringify({ url }),
         }),
-      local: (filename: string) =>
+      local: (filename: string, signal?: AbortSignal) =>
         request<{ message: string; warning?: string }>('/api/v1/admin/restore/local', {
           method: 'POST',
+          timeoutMs: 30 * 60_000, signal,
           body: JSON.stringify({ filename }),
         }),
       clearAll: () =>
@@ -460,8 +469,8 @@ export const api = {
       },
     },
     gallery: {
-      list: () =>
-        request<{ items: any[] }>('/api/v1/admin/gallery'),
+      list: (params?: Record<string, string>) =>
+        request<{ items: any[]; total: number; page: number; size: number }>('/api/v1/admin/gallery', { params }),
       create: (data: { url: string; title?: string; description?: string; width?: number; height?: number }) =>
         request('/api/v1/admin/gallery', { method: 'POST', body: JSON.stringify(data) }),
       update: (id: string, data: any) =>

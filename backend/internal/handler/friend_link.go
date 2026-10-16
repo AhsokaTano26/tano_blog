@@ -11,6 +11,7 @@ import (
 	"gorm.io/gorm"
 	"tano_blog/backend/internal/model"
 	"tano_blog/backend/internal/repository"
+	"tano_blog/backend/internal/utils"
 )
 
 type FriendLinkHandler struct {
@@ -23,6 +24,7 @@ func NewFriendLinkHandler(db *gorm.DB) *FriendLinkHandler {
 
 // ListPublic returns approved friend links sorted by sort_order
 func (h *FriendLinkHandler) ListPublic(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	var links []model.FriendLink
 	if err := h.db.Where("status = ?", "approved").
 		Order("sort_order ASC, created_at ASC").
@@ -38,6 +40,7 @@ func (h *FriendLinkHandler) ListPublic(c *gin.Context) {
 
 // Apply creates a new friend link application with pending status
 func (h *FriendLinkHandler) Apply(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	var input struct {
 		Name                string `json:"name" binding:"required"`
 		URL                 string `json:"url" binding:"required"`
@@ -97,7 +100,9 @@ func (h *FriendLinkHandler) Apply(c *gin.Context) {
 			Content: link.Description,
 			Link:    "/admin/links",
 		}
-		go notifRepo.Create(notif)
+		if err := notifRepo.Create(notif); err != nil {
+			utils.LogWarn("notification write failed", "error", err)
+		}
 	}
 
 	c.JSON(http.StatusCreated, gin.H{"message": "申请已提交，请等待审核"})
@@ -105,6 +110,7 @@ func (h *FriendLinkHandler) Apply(c *gin.Context) {
 
 // AdminList returns all friend links
 func (h *FriendLinkHandler) AdminList(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
 	if page < 1 {
@@ -140,6 +146,7 @@ func (h *FriendLinkHandler) AdminList(c *gin.Context) {
 
 // AdminCreate creates a friend link directly (admin)
 func (h *FriendLinkHandler) AdminCreate(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	var input struct {
 		Name        string `json:"name" binding:"required"`
 		URL         string `json:"url" binding:"required"`
@@ -180,6 +187,7 @@ func (h *FriendLinkHandler) AdminCreate(c *gin.Context) {
 
 // AdminUpdate updates a friend link
 func (h *FriendLinkHandler) AdminUpdate(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
@@ -227,6 +235,7 @@ func (h *FriendLinkHandler) AdminUpdate(c *gin.Context) {
 
 // AdminUpdateStatus updates the approval status of a friend link
 func (h *FriendLinkHandler) AdminUpdateStatus(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
@@ -257,6 +266,7 @@ func (h *FriendLinkHandler) AdminUpdateStatus(c *gin.Context) {
 
 // AdminDelete deletes a friend link
 func (h *FriendLinkHandler) AdminDelete(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
@@ -272,6 +282,7 @@ func (h *FriendLinkHandler) AdminDelete(c *gin.Context) {
 }
 
 func (h *FriendLinkHandler) ExportCSV(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
 	var items []model.FriendLink
 	h.db.Find(&items)
 
