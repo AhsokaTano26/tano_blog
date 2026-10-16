@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
 import { Loading } from '@/components/Loading';
 
@@ -10,29 +11,32 @@ export default function CategoriesPage({ params }: { params: Promise<{ slug: str
   const [category, setCategory] = useState<any>(null);
   const [posts, setPosts] = useState<any[]>([]);
   const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
+  const searchParams = useSearchParams();
+  const page = Math.max(1, Math.floor(Number(searchParams.get('page')) || 1));
+  const [error, setError] = useState('');
+  const [retry, setRetry] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    setPage(Math.max(1, Number(new URLSearchParams(window.location.search).get('page')) || 1));
-  }, []);
-
-  useEffect(() => {
+    let active = true;
     setLoading(true);
+    setError('');
     api.getCategory(slug, { page: String(page), page_size: '10' })
       .then(res => {
+        if (!active) return;
         setCategory(res.category);
         setPosts(res.posts);
         setTotal(res.total);
       })
-      .finally(() => setLoading(false));
-  }, [slug, page]);
+      .catch(error => { if (active) setError(error.message || '加载失败'); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [slug, page, retry]);
 
   const totalPages = Math.ceil(total / 10);
 
   function changePage(nextPage: number) {
     const normalized = Math.max(1, nextPage);
-    setPage(normalized);
     const url = new URL(window.location.href);
     if (normalized === 1) url.searchParams.delete('page');
     else url.searchParams.set('page', String(normalized));
@@ -40,6 +44,7 @@ export default function CategoriesPage({ params }: { params: Promise<{ slug: str
   }
 
   if (loading) return <Loading />;
+  if (error) return <div role="alert" className="text-center py-20">{error} <button onClick={() => setRetry(value => value + 1)}>重试</button></div>;
   if (!category) return <div className="text-center py-20" style={{ color: 'var(--text-secondary)' }}>分类不存在</div>;
 
   return (

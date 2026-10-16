@@ -20,7 +20,7 @@ test('editor variant renders fenced highlighted and plain code using real Markdo
   assert.ok(container.querySelector('code.language-js .hljs-keyword'));
   assert.match(container.querySelectorAll('pre')[1].textContent, /plain code/);
   assert.ok(container.querySelector('.mermaid-diagram'));
-  assert.equal(container.querySelector('.article-code-header'), null);
+  assert.equal(container.querySelector('.article-code-header') === null, true);
 });
 
 test('article rendering preserves rich Markdown while removing unsafe HTML', () => {

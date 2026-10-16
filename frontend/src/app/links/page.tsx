@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { api } from '@/lib/api';
+import { Turnstile } from '@/components/Turnstile';
 import { ImageWithFallback } from '@/components/ImageWithFallback';
 import { ExternalLink, Link as LinkIcon, Send, CheckCircle } from 'lucide-react';
 import { Loading } from '@/components/Loading';
@@ -22,8 +23,7 @@ export default function LinksPage() {
   const [turnstileEnabled, setTurnstileEnabled] = useState(false);
   const [turnstileSitekey, setTurnstileSitekey] = useState('');
   const [turnstileToken, setTurnstileToken] = useState('');
-  const turnstileRef = useRef<HTMLDivElement>(null);
-  const turnstileWidgetId = useRef<string | null>(null);
+  const [captchaAttempt, setCaptchaAttempt] = useState(0);
 
   useEffect(() => {
     api.getLinks().then(res => {
@@ -36,40 +36,9 @@ export default function LinksPage() {
       if (res.config?.turnstile_enabled === 'true' && res.config?.turnstile_sitekey && (res.config?.turnstile_modules || 'comment,link').split(',').map(s => s.trim()).includes('link')) {
         setTurnstileEnabled(true);
         setTurnstileSitekey(res.config.turnstile_sitekey);
-        if (!document.querySelector('script[src*="turnstile"]')) {
-          const script = document.createElement('script');
-          script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js';
-          script.async = true;
-          script.defer = true;
-          document.head.appendChild(script);
-        }
       }
-    });
+    }).catch(() => {});
   }, []);
-
-  // Render Turnstile widget
-  useEffect(() => {
-    if (!turnstileEnabled || !turnstileSitekey || !turnstileRef.current) return;
-    const w = window as any;
-    const check = () => {
-      if (w.turnstile) {
-        const id = w.turnstile.render(turnstileRef.current, {
-          sitekey: turnstileSitekey,
-          action: 'turnstile-link-v2',
-          callback: (token: string) => setTurnstileToken(token),
-        });
-        turnstileWidgetId.current = id;
-      } else {
-        setTimeout(check, 200);
-      }
-    };
-    check();
-    return () => {
-      if (w.turnstile && turnstileWidgetId.current) {
-        try { w.turnstile.remove(turnstileWidgetId.current); } catch {}
-      }
-    };
-  }, [turnstileEnabled, turnstileSitekey]);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -86,6 +55,7 @@ export default function LinksPage() {
       setForm({ name: '', url: '', description: '', avatar: '', email: '' });
     }).catch((e) => {
       setFormError(e.message || '提交失败，请稍后重试');
+      setCaptchaAttempt(value => value + 1);
     }).finally(() => setSubmitting(false));
   }
 
@@ -210,7 +180,7 @@ export default function LinksPage() {
             )}
 
             {turnstileEnabled && (
-              <div ref={turnstileRef} />
+              <Turnstile key={captchaAttempt} sitekey={turnstileSitekey} action="turnstile-link-v2" onToken={setTurnstileToken} />
             )}
 
             <button type="submit" disabled={submitting}

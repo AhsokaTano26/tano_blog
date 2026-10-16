@@ -50,6 +50,7 @@ export function ArticleAudioPlayer({ src, ..._rest }: ArticleAudioPlayerProps) {
   const seekRef = useRef<HTMLDivElement>(null);
 
   const [playing, setPlaying] = useState(false);
+  const [mediaError, setMediaError] = useState('');
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [coverUrl, setCoverUrl] = useState<string | null>(null);
@@ -120,7 +121,7 @@ export function ArticleAudioPlayer({ src, ..._rest }: ArticleAudioPlayerProps) {
     if (playing) {
       audioRef.current.pause();
     } else {
-      audioRef.current.play().catch(() => {});
+      audioRef.current.play().then(() => setMediaError('')).catch(() => setMediaError('音频播放失败，请重试'));
     }
   }, [playing]);
 
@@ -324,7 +325,10 @@ export function ArticleAudioPlayer({ src, ..._rest }: ArticleAudioPlayerProps) {
         </span>
       </span>
 
+      {mediaError && <span role="alert" className="block text-xs">{mediaError}</span>}
       <audio
+        onError={() => { setPlaying(false); setMediaError('音频加载失败，请重试'); }}
+        onLoadStart={() => setMediaError('')}
         ref={audioRef}
         src={src}
         preload="metadata"

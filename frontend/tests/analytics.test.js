@@ -55,7 +55,7 @@ test('analytics failures are visible and retry the current range without display
   assert.ok(retry);
   await React.act(async () => retry.click());
   assert.deepEqual(requests.at(-1), { start: '2025-02-01', end: '2025-02-28' });
-  assert.equal(container.querySelector('[role="alert"]'), null);
+  assert.equal(container.querySelector('[role="alert"]') === null, true);
   assert.match(container.textContent, /\/loaded-range/);
 });
 
@@ -67,7 +67,7 @@ test('a stale analytics failure does not replace the current range or stop its l
   await changeDates('2025-03-01', '2025-03-31');
   await React.act(async () => failOld(new Error('obsolete request failed')));
   assert.match(container.textContent, /加载中/);
-  assert.equal(container.querySelector('[role="alert"]'), null);
+  assert.equal(container.querySelector('[role="alert"]') === null, true);
   await React.act(async () => finishCurrent(overview('/march')));
   assert.match(container.textContent, /\/march/);
 });

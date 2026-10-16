@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { api } from '@/lib/api';
+import { isPublicAuthRoute } from '@/lib/auth-routes';
 import { useTheme } from '@/lib/theme';
 import {
   FileText, FolderTree, Tags, MessageSquare, Image, Settings, ScrollText,
@@ -57,18 +58,23 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const { theme, setTheme } = useTheme();
 
   useEffect(() => {
+    if (isPublicAuthRoute(pathname)) { setLoading(false); return; }
+    let active = true;
+    setLoading(true);
     api.getMe().then(u => {
+      if (!active) return;
       setUser(u);
       // Force redirect to profile page if password must be changed
-      if ((u as any).must_change_password && !pathname.includes('/admin/profile') && !pathname.includes('/admin/login')) {
+      if ((u as any).must_change_password && !pathname.includes('/admin/profile') && !isPublicAuthRoute(pathname)) {
         window.location.href = '/admin/profile?force_password=1';
       }
     }).catch(() => {
-      if (!pathname.includes('/admin/login')) {
+      if (active && !isPublicAuthRoute(pathname)) {
         window.location.href = '/admin/login';
       }
-    }).finally(() => setLoading(false));
-  }, []);
+    }).finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [pathname]);
 
   useEffect(() => {
     if (user && sessionStorage.getItem('jl')) {
@@ -110,6 +116,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     }
   }, [notifCount]);
 
+  if (isPublicAuthRoute(pathname)) return <>{children}</>;
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--color-bg)' }}>
@@ -118,9 +126,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     );
   }
 
-  if (pathname === '/admin/login') {
-    return <>{children}</>;
-  }
 
   if (!user) {
     return (

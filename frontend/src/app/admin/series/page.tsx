@@ -232,15 +232,40 @@ export default function AdminSeries() {
 function SetPostsModal({ series, onClose }: { series: any; onClose: () => void }) {
   const [allPosts, setAllPosts] = useState<any[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [membersLoaded, setMembersLoaded] = useState(false);
+  const [postsLoaded, setPostsLoaded] = useState(false);
+  const [error, setError] = useState('');
+  const [postsError, setPostsError] = useState('');
+  const [retry, setRetry] = useState(0);
+  const [saving, setSaving] = useState(false);
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState('');
+  const [total, setTotal] = useState(0);
 
   useEffect(() => {
-    api.admin.posts.list({ page_size: '100' }).then(res => {
-      setAllPosts(res.items || []);
-    }).catch(() => {});
+    if (membersLoaded) return;
+    let active = true;
+    setError('');
     api.admin.series.listPosts(series.id).then(res => {
-      setSelectedIds((res.items || []).map((p: any) => p.id));
-    }).catch(() => {});
-  }, [series.id]);
+      if (!active) return;
+      setSelectedIds((res.items || []).map((post: any) => post.id));
+      setMembersLoaded(true);
+    }).catch(error => { if (active) setError(error.message || '读取系列文章失败'); });
+    return () => { active = false; };
+  }, [series.id, retry, membersLoaded]);
+
+  useEffect(() => {
+    let active = true;
+    setPostsLoaded(false);
+    setPostsError('');
+    api.admin.posts.list({ page: String(page), page_size: '50', search }).then(res => {
+      if (!active) return;
+      setAllPosts(res.items || []);
+      setTotal(res.total || 0);
+      setPostsLoaded(true);
+    }).catch(error => { if (active) setPostsError(error.message || '读取文章失败'); });
+    return () => { active = false; };
+  }, [page, search, retry]);
 
   function togglePost(id: string) {
     setSelectedIds(prev =>
@@ -249,12 +274,14 @@ function SetPostsModal({ series, onClose }: { series: any; onClose: () => void }
   }
 
   async function handleSave() {
+    if (!membersLoaded || !postsLoaded || error || postsError || saving) return;
+    setSaving(true);
     try {
       await api.admin.series.setPosts(series.id, selectedIds);
       onClose();
-    } catch (e: any) {
-      alert(e.message);
-    }
+    } catch (error) {
+      setError(error instanceof Error ? error.message : '保存失败');
+    } finally { setSaving(false); }
   }
 
   return (
@@ -266,26 +293,34 @@ function SetPostsModal({ series, onClose }: { series: any; onClose: () => void }
         <h2 className="text-lg font-bold mb-4" style={{ color: 'var(--text-primary)' }}>
           设置「{series.name}」的文章
         </h2>
+        <input aria-label="搜索系列文章" placeholder="搜索文章..." value={search}
+          onChange={event => { setSearch(event.target.value); setPage(1); }} className="w-full mb-3 px-3 py-2 rounded-xl glass-card" />
+        {(error || postsError) && <p role="alert">{error || postsError} <button onClick={() => { setError(''); setRetry(value => value + 1); }}>重试</button></p>}
+        {(!membersLoaded || !postsLoaded) && !error && !postsError && <p role="status">正在读取文章...</p>}
         <div className="space-y-2">
-          {allPosts.map((post: any) => (
+          {membersLoaded && postsLoaded && allPosts.map((post: any) => (
             <div key={post.id} onClick={() => togglePost(post.id)}
               className="flex items-center gap-3 px-3 py-2 rounded-xl cursor-pointer transition-colors hover:opacity-80"
               style={{ background: selectedIds.includes(post.id) ? 'var(--primary-sub)' : 'var(--btn-card-bg)' }}>
-              <Checkbox checked={selectedIds.includes(post.id)} onChange={() => togglePost(post.id)} />
-              <span className="text-sm" style={{ color: 'var(--text-primary)' }}>{post.title}</span>
+              <Checkbox checked={selectedIds.includes(post.id)} onChange={() => togglePost(post.id)} label={post.title} />
               <span className="text-xs ml-auto" style={{ color: 'var(--text-info)' }}>
                 {post.status === 'published' ? '已发布' : '草稿'}
               </span>
             </div>
           ))}
-          {allPosts.length === 0 && (
+          {membersLoaded && postsLoaded && allPosts.length === 0 && (
             <p className="text-sm" style={{ color: 'var(--text-info)' }}>暂无文章</p>
           )}
         </div>
+        {total > 50 && <nav aria-label="系列文章分页" className="flex items-center justify-between mt-4">
+          <button disabled={page === 1} onClick={() => setPage(value => value - 1)}>上一页</button>
+          <span>{page} / {Math.ceil(total / 50)} · 已选 {selectedIds.length} 篇</span>
+          <button disabled={page * 50 >= total} onClick={() => setPage(value => value + 1)}>下一页</button>
+        </nav>}
         <div className="flex justify-end gap-2 mt-4">
           <button onClick={onClose}
             className="px-4 py-2 rounded-xl text-sm btn-glass" style={{ color: 'var(--text-secondary)' }}>取消</button>
-          <button onClick={handleSave}
+          <button onClick={handleSave} disabled={!membersLoaded || !postsLoaded || !!error || !!postsError || saving}
             className="px-4 py-2 rounded-xl text-sm font-medium text-white transition-all hover:opacity-90"
             style={{ background: 'var(--primary)' }}>保存</button>
         </div>

@@ -3,29 +3,32 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
 import { api } from '@/lib/api';
+import { toDateTimeLocal, scheduledTimestamp, type ExcerptMode } from '@/lib/post-settings';
 import { Checkbox, Select } from './ConfirmDialog';
 import { MediaField } from './MediaField';
+import { SeriesSelect } from './SeriesSelect';
 
-export default function PostDetailDialog({ post, categories, tags, seriesList, onSave, onClose }: {
+export default function PostDetailDialog({ post, categories, tags, seriesList, passwordNeedsReentry = false, onSave, onClose }: {
   post: any;
   categories: any[];
   tags: any[];
   seriesList: any[];
-  onSave: (data: any) => Promise<void>;
+  passwordNeedsReentry?: boolean;
+  onSave: (data: any, excerptMode: ExcerptMode) => Promise<void>;
   onClose: () => void;
 }) {
   const [authorName, setAuthorName] = useState(post?.author_name || '');
   const [status, setStatus] = useState(post?.status || 'draft');
-  const [scheduledAt, setScheduledAt] = useState(post?.published_at && post?.status === 'draft' ? post.published_at.slice(0, 16) : '');
-  const [categoryId, setCategoryId] = useState(post?.category_id || post?.category?.id || '');
-  const [selectedSeriesId, setSelectedSeriesId] = useState(post?.series?.[0]?.id || '');
+  const [scheduledAt, setScheduledAt] = useState(toDateTimeLocal(post?.scheduled_at));
+  const [categoryId, setCategoryId] = useState(post?.category_id ?? post?.category?.id ?? '');
+  const [selectedSeriesId, setSelectedSeriesId] = useState(post?.series_id ?? post?.series?.[0]?.id ?? '');
   const [tagIds, setTagIds] = useState<string[]>(post?.tags?.map((t: any) => t.id) || []);
   const [coverImage, setCoverImage] = useState(post?.cover_image || '');
   const [excerpt, setExcerpt] = useState(post?.excerpt || '');
-  const [excerptMode, setExcerptMode] = useState<'manual' | 'auto'>(post?.excerpt ? 'manual' : 'auto');
+  const [excerptMode, setExcerptMode] = useState<'manual' | 'auto'>(post?.excerpt_mode || (post?.excerpt ? 'manual' : 'auto'));
   const [isTop, setIsTop] = useState(post?.is_top || false);
   const [allowComment, setAllowComment] = useState(post?.allow_comment !== false);
-  const [password, setPassword] = useState('');
+  const [password, setPassword] = useState(post?.password || '');
   const [passwordHint, setPasswordHint] = useState(post?.password_hint || '');
   const [passwordSet, setPasswordSet] = useState(post?.password_set || false);
   const [saving, setSaving] = useState(false);
@@ -52,6 +55,10 @@ export default function PostDetailDialog({ post, categories, tags, seriesList, o
 
   async function handleSave() {
     if (saving) return;
+    if (passwordNeedsReentry && !password) {
+      setError('请重新输入访问密码，本地草稿不会保存密码明文。');
+      return;
+    }
     setSaving(true);
     setError('');
     try {
@@ -61,22 +68,21 @@ export default function PostDetailDialog({ post, categories, tags, seriesList, o
         is_top: isTop,
         allow_comment: allowComment,
       };
-      if (categoryId) data.category_id = categoryId;
-      if (tagIds.length > 0) data.tag_ids = tagIds;
-      if (selectedSeriesId) data.series_id = selectedSeriesId;
-      if (coverImage) data.cover_image = coverImage;
+      data.category_id = categoryId;
+      data.tag_ids = tagIds;
+      data.series_id = selectedSeriesId;
+      data.cover_image = coverImage;
+      data.password_hint = passwordHint;
       data.excerpt = excerptMode === 'manual' ? excerpt : generateExcerpt(post?.content || '');
-      if (scheduledAt && status === 'draft') {
-        data.scheduled_at = scheduledAt;
-      }
+      data.scheduled_at = scheduledTimestamp(scheduledAt, status);
       if (password) {
         data.password = password;
         data.password_hint = passwordHint;
-      } else if (passwordSet === false && post?.id) {
+      } else if (passwordSet === false) {
         data.password = '';
         data.password_hint = '';
       }
-      await onSave(data);
+      await onSave(data, excerptMode);
       onClose();
     } catch (err: any) {
       setError(err.message || '保存失败');
@@ -170,11 +176,8 @@ export default function PostDetailDialog({ post, categories, tags, seriesList, o
           {/* Series */}
           <div>
             <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-info)' }}>系列</label>
-            <Select value={selectedSeriesId} onChange={setSelectedSeriesId}
-              options={[
-                { value: '', label: '无系列' },
-                ...seriesList.map(s => ({ value: s.id, label: s.name })),
-              ]} />
+            <SeriesSelect value={selectedSeriesId} onChange={setSelectedSeriesId}
+              initialOptions={[...(post?.series || []), ...seriesList]} />
           </div>
 
           {/* Tags */}
@@ -270,7 +273,8 @@ export default function PostDetailDialog({ post, categories, tags, seriesList, o
           {/* Password protection */}
           <div>
             <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-info)' }}>密码保护</label>
-            {post?.id && passwordSet ? (
+            {passwordNeedsReentry && <p role="alert" className="text-xs mb-2" style={{ color: 'var(--color-error)' }}>此草稿的访问密码尚未保存，请重新输入密码后保存。</p>}
+            {post?.id && passwordSet && !passwordNeedsReentry ? (
               <div className="space-y-2">
                 <div className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm glass-card" style={{ color: 'var(--text-primary)' }}>
                   <span style={{ color: 'var(--color-success)' }}>已设置密码</span>

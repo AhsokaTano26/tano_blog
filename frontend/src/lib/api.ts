@@ -1,3 +1,4 @@
+import { isPublicAuthRoute } from './auth-routes';
 import { uploadFilename } from './editor-upload';
 import { uploadForm, type UploadOptions } from './upload';
 
@@ -63,7 +64,7 @@ async function request<T>(path: string, options: FetchOptions = {}): Promise<T> 
   try {
   if (!res.ok) {
     // Optional authentication on public pages must never interrupt reading.
-    if (res.status === 401 && typeof window !== 'undefined' && window.location.pathname.startsWith('/admin/') && !window.location.pathname.startsWith('/admin/login')) {
+    if (res.status === 401 && typeof window !== 'undefined' && window.location.pathname.startsWith('/admin/') && !isPublicAuthRoute(window.location.pathname)) {
       window.location.href = '/admin/login';
     }
 

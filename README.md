@@ -106,7 +106,7 @@ tano_blog/
 ## Quick Start
 
 ### Prerequisites
-- Go 1.26.2+
+- Go 1.26.9+
 - Node.js 22+
 - PostgreSQL 16 (or Docker)
 
@@ -153,6 +153,9 @@ npm run dev
 连接池、请求预算、日志保留、大文件上传、备份与升级注意事项见 [性能与容量运维指南](docs/performance-operations.md)。
 
 ## Development Checks
+
+Frontend tests require Python 3 and run through a process watchdog. Use `npm test`
+for both full and filtered runs; see [safe test execution](frontend/TESTING.md).
 
 ```bash
 cd frontend

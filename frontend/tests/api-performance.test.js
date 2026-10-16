@@ -50,3 +50,13 @@ test('concurrent public config consumers share one request and retry failures', 
   assert.equal(calls, 2);
   assert.equal(results[0].config.site_title, 'test');
 });
+
+for (const pathname of ['/admin/forgot-password', '/admin/reset-password', '/admin/login']) {
+  test('authentication errors stay on the public auth route ' + pathname, async t => {
+    t.mock.method(global, 'fetch', async () => new Response('{"error":"invalid token"}', { status: 401 }));
+    global.window = { location: { pathname, href: pathname + '?token=example' } };
+    t.after(() => { delete global.window; });
+    await assert.rejects(freshAPI().getMe(), /invalid token/);
+    assert.equal(window.location.href, pathname + '?token=example');
+  });
+}

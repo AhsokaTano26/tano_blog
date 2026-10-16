@@ -25,6 +25,9 @@ function highlightText(text: string, keyword: string): React.ReactNode {
 function SearchContent() {
   const searchParams = useSearchParams();
   const q = searchParams.get('q') || '';
+  const page = Math.max(1, Math.floor(Number(searchParams.get('page')) || 1));
+  const [error, setError] = useState('');
+  const [retry, setRetry] = useState(0);
   const [posts, setPosts] = useState<any[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -37,18 +40,31 @@ function SearchContent() {
     api.getPosts({ page: '1', page_size: '5' }).then(res => setRecentPosts(res.items || [])).catch(() => {});
   }, []);
 
+  useEffect(() => { setQuery(q); }, [q]);
   useEffect(() => {
-    if (!q) return;
+    if (!q) { setPosts([]); setTotal(0); setLoading(false); return; }
+    let active = true;
     setLoading(true);
-    api.getPosts({ search: q, page: '1', page_size: '20' }).then(res => {
+    setError('');
+    api.getPosts({ search: q, page: String(page), page_size: '20' }).then(res => {
+      if (!active) return;
       setPosts(res.items);
       setTotal(res.total);
-    }).finally(() => setLoading(false));
-  }, [q]);
+    }).catch(error => { if (active) setError(error.message || '搜索失败'); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [q, page, retry]);
 
-  async function handleSearch(e: React.FormEvent) {
+  function changePage(nextPage: number) {
+    const params = new URLSearchParams({ q });
+    if (nextPage > 1) params.set('page', String(nextPage));
+    window.history.pushState(null, '', `/search?${params}`);
+  }
+
+  function handleSearch(e: React.FormEvent) {
     e.preventDefault();
-    if (query) window.location.href = `/search?q=${encodeURIComponent(query)}`;
+    const params = new URLSearchParams({ q: query.trim() });
+    window.history.pushState(null, '', `/search?${params}`);
   }
 
   return (
@@ -85,7 +101,7 @@ function SearchContent() {
           <p className="mb-6 text-sm" style={{ color: 'var(--text-secondary)' }}>
             搜索 &ldquo;{q}&rdquo;，共 {total} 条结果
           </p>
-          {loading ? (
+          {error ? <p role="alert">{error} <button onClick={() => setRetry(value => value + 1)}>重试</button></p> : loading ? (
             <Loading />
           ) : (
             <div className="space-y-4">
@@ -106,6 +122,11 @@ function SearchContent() {
               )}
             </div>
           )}
+          {!loading && !error && total > 20 && <nav aria-label="搜索结果分页" className="flex items-center justify-center gap-4 mt-6">
+            <button onClick={() => changePage(page - 1)} disabled={page <= 1}>上一页</button>
+            <span>{page} / {Math.ceil(total / 20)}</span>
+            <button onClick={() => changePage(page + 1)} disabled={page * 20 >= total}>下一页</button>
+          </nav>}
         </>
       ) : (
         <div className="space-y-8">

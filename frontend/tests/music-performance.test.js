@@ -94,10 +94,10 @@ test('hiding the floating player retains its audio element and selected track', 
     await act(async () => { audio.dispatchEvent(new view.window.Event('play')); });
     audio.currentTime = 42;
     await act(async () => view.root.render(React.createElement(MusicPlayer, { hidden: true })));
-    assert.equal(document.querySelector('audio'), audio);
+    assert.equal(document.querySelector('audio') === audio, true);
     assert.equal(document.querySelectorAll('button').length, 0);
     await act(async () => view.root.render(React.createElement(MusicPlayer, { hidden: false })));
-    assert.equal(document.querySelector('audio'), audio);
+    assert.equal(document.querySelector('audio') === audio, true);
     assert.equal(audio.currentTime, 42);
     assert.equal(audio.getAttribute('data-src'), '/audio/0.mp3');
   } finally { await view.cleanup(); }
@@ -113,7 +113,7 @@ test('layout defers the player until idle and preserves playback across public r
     window.cancelIdleCallback = id => idleCallbacks.delete(id);
   });
   try {
-    assert.equal(document.querySelector('audio'), null);
+    assert.equal(document.querySelector('audio') === null, true);
     await act(async () => { for (const callback of idleCallbacks.values()) callback(); });
     const audio = document.querySelector('audio');
     assert.ok(audio);
@@ -124,15 +124,15 @@ test('layout defers the player until idle and preserves playback across public r
     for (const route of ['/posts/example', '/archive', '/']) {
       pathname = route;
       await act(async () => view.root.render(React.createElement(Layout)));
-      assert.equal(document.querySelector('audio'), audio, 'navigation must retain the playing audio element');
+      assert.equal(document.querySelector('audio') === audio, true, 'navigation must retain the playing audio element');
       assert.equal(audio.currentTime, 42);
     }
     assert.equal(pauses, 0, 'ordinary navigation must not interrupt playback');
     pathname = '/music';
     await act(async () => view.root.render(React.createElement(Layout)));
-    assert.equal(document.querySelector('audio'), audio);
+    assert.equal(document.querySelector('audio') === audio, true);
     assert.equal(pauses, 1, 'entering the dedicated music page pauses the floating player');
-    assert.equal(document.querySelector('[title="打开音乐播放器"]'), null);
+    assert.equal(document.querySelector('[title="打开音乐播放器"]') === null, true);
   } finally { pathname = '/'; await view.cleanup(); }
 });
 
@@ -235,10 +235,10 @@ test('music password gate uses the protected response and accepts an authorized 
   const view = await mount(MusicPage);
   try {
     assert.ok(document.querySelector('input[type="password"]'));
-    assert.equal(document.querySelector('audio'), null);
+    assert.equal(document.querySelector('audio') === null, true);
     const enter = [...document.querySelectorAll('button')].find(button => button.textContent === '进入音乐馆');
     await act(async () => enter.click());
-    assert.equal(document.querySelector('input[type="password"]'), null);
+    assert.equal(document.querySelector('input[type="password"]') === null, true);
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 2100)); });
     assert.equal(document.querySelector('audio').getAttribute('data-src'), '/audio/0.mp3');
   } finally {

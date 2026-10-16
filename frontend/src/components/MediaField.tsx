@@ -114,6 +114,7 @@ export function MediaPickerModal({ onSelect, onClose, onUpload, triggerRect, fil
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
+  const [loadedPage, setLoadedPage] = useState(0);
   const [tagFilter, setTagFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState(filterType || '');
   const [mediaTags, setMediaTags] = useState<{ id: string; name: string }[]>([]);
@@ -138,6 +139,7 @@ export function MediaPickerModal({ onSelect, onClose, onUpload, triggerRect, fil
       if (!active) return;
       setItems(previous => page === 1 ? res.items || [] : [...previous, ...(res.items || [])]);
       setTotal(res.total || 0);
+      setLoadedPage(page);
     }).catch(err => {
       if (active) setLoadError(err instanceof Error ? err.message : '加载媒体库失败');
     }).finally(() => { if (active) setLoading(false); });
@@ -146,7 +148,7 @@ export function MediaPickerModal({ onSelect, onClose, onUpload, triggerRect, fil
 
   const filtered = items;
 
-  const hasMore = items.length < total;
+  const hasMore = loadedPage * pageSize < total;
 
   const modalContent = (
     <>
@@ -236,9 +238,9 @@ export function MediaPickerModal({ onSelect, onClose, onUpload, triggerRect, fil
       {loading && (
         <p className="text-center text-sm mt-2" style={{ color: 'var(--text-info)' }}>加载中...</p>
       )}
-      {hasMore && !loading && (
+      {hasMore && !loading && !loadError && (
         <button
-          onClick={() => setPage(page + 1)}
+          onClick={() => setPage(loadedPage + 1)}
           className="w-full mt-2 py-2 rounded-xl text-sm btn-glass"
           style={{ color: 'var(--text-secondary)' }}
         >

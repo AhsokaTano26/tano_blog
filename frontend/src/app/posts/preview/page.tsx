@@ -3,7 +3,7 @@
 import React, { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import DOMPurify from 'dompurify';
+import ArticleMarkdown from '@/components/ArticleMarkdown';
 import { api } from '@/lib/api';
 import { Loading } from '@/components/Loading';
 
@@ -20,10 +20,14 @@ function PreviewContent() {
       setLoading(false);
       return;
     }
+    let active = true;
+    setLoading(true);
+    setError('');
     api.getPostByPreview(token)
-      .then(res => setPost(res.post))
-      .catch(e => setError(e.message || '预览链接无效'))
-      .finally(() => setLoading(false));
+      .then(res => { if (active) setPost(res.post); })
+      .catch(e => { if (active) setError(e.message || '预览链接无效'); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
   }, [token]);
 
   if (loading) return <Loading />;
@@ -44,7 +48,7 @@ function PreviewContent() {
       <div className="text-sm mb-6" style={{ color: 'var(--text-info)' }}>
         {post.author?.display_name || post.author?.username}
       </div>
-      <div className="prose max-w-none" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(post.content) }} />
+      <div className="prose max-w-none"><ArticleMarkdown content={post.content} /></div>
     </div>
   );
 }

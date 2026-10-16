@@ -67,6 +67,7 @@ export function MusicPlayer({ hidden = false }: { hidden?: boolean }) {
   const [currentPlaylistIndex, setCurrentPlaylistIndex] = useState(0);
   const [visible, setVisible] = useState(false);
   const [playing, setPlaying] = useState(false);
+  const [mediaError, setMediaError] = useState('');
   const [currentIndex, setCurrentIndex] = useState(0);
   const [volume, setVolume] = useState(0.5);
   const [currentTime, setCurrentTime] = useState(0);
@@ -152,7 +153,7 @@ export function MusicPlayer({ hidden = false }: { hidden?: boolean }) {
       audioRef.current.setAttribute('data-src', targetUrl);
     }
     if (playing && !hidden) {
-      audioRef.current.play().catch(() => setPlaying(false));
+      audioRef.current.play().catch(() => { setPlaying(false); setMediaError('音频播放失败，请重试'); });
     }
   }, [currentTrack, playing, hidden]);
 
@@ -166,7 +167,7 @@ export function MusicPlayer({ hidden = false }: { hidden?: boolean }) {
       audioRef.current.pause();
       setPlaying(false);
     } else {
-      audioRef.current.play().then(() => setPlaying(true)).catch(() => {});
+      audioRef.current.play().then(() => { setPlaying(true); setMediaError(''); }).catch(() => setMediaError('音频播放失败，请重试'));
     }
     setVisible(true);
   }, [playing, currentTrack]);
@@ -558,8 +559,11 @@ export function MusicPlayer({ hidden = false }: { hidden?: boolean }) {
       </div>
       )}
 
+      {mediaError && !hidden && <p role="alert" className="fixed bottom-4 right-4 z-[200] p-3 rounded-xl glass-card">{mediaError}</p>}
       {/* Hidden audio element */}
       <audio ref={audioRef}
+        onError={() => { setPlaying(false); setMediaError('音频加载失败，请重试'); }}
+        onLoadStart={() => setMediaError('')}
         onTimeUpdate={() => setCurrentTime(audioRef.current?.currentTime || 0)}
         onLoadedMetadata={() => setDuration(audioRef.current?.duration || 0)}
         onEnded={handleEnded}

@@ -37,6 +37,8 @@ export default function MusicPage() {
   const router = useRouter();
   const [config, setConfig] = useState<MusicPageConfig | null>(null);
   const [loading, setLoading] = useState(true);
+  const [configError, setConfigError] = useState('');
+  const [mediaError, setMediaError] = useState('');
   const [splashDone, setSplashDone] = useState(false);
   const [exiting, setExiting] = useState(false);
   const [passwordGate, setPasswordGate] = useState<boolean | null>(null);
@@ -103,6 +105,8 @@ export default function MusicPage() {
 
   // Load config
   const loadConfig = useCallback(() => {
+    setLoading(true);
+    setConfigError('');
     return api.getMusicConfig().then(res => {
       // Authorized responses include the playlists; a locked response carries
       // only the protection flag, without exposing music URLs.
@@ -133,7 +137,10 @@ export default function MusicPage() {
       } catch {
         setConfig({ title: '音乐馆', subtitle: '', background: '', playlists: [] });
       }
-    }).catch(() => {
+    }).catch(error => {
+      setPasswordGate(false);
+      setSplashDone(true);
+      setConfigError(error instanceof Error ? error.message : '音乐配置加载失败');
       setConfig({ title: '音乐馆', subtitle: '', background: '', playlists: [] });
     }).finally(() => {
       setLoading(false);
@@ -464,7 +471,7 @@ export default function MusicPage() {
       audioRef.current.volume = volume;
     }
     if (playing) {
-      audioRef.current.play().catch(() => setPlaying(false));
+      audioRef.current.play().catch(() => { setPlaying(false); setMediaError('音频播放失败，请重试或选择其他歌曲'); });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentIndex, currentTrack?.url, playing, splashDone]);
@@ -484,7 +491,7 @@ export default function MusicPage() {
       setPlaying(false);
     } else {
       setupAnalyser();
-      audioRef.current.play().then(() => setPlaying(true)).catch(() => {});
+      audioRef.current.play().then(() => { setPlaying(true); setMediaError(''); }).catch(() => setMediaError('音频播放失败，请重试或选择其他歌曲'));
     }
   }, [playing, currentTrack, setupAnalyser]);
 
@@ -613,6 +620,8 @@ export default function MusicPage() {
           }
         }
       `}</style>
+      {configError && <div role="alert" className="relative z-[201] p-6 text-center">{configError} <button onClick={() => void loadConfig()} disabled={loading}>重试</button> <button onClick={() => router.push('/')}>返回首页</button></div>}
+      {mediaError && <p role="alert" className="relative z-[201] p-4 text-center">{mediaError}</p>}
       {/* Particle canvas background */}
       <canvas ref={canvasRef}
         className="fixed inset-0 w-full h-full pointer-events-none transition-opacity duration-500"
@@ -1104,7 +1113,9 @@ export default function MusicPage() {
       </div>
 
         {/* Audio element */}
-        <audio ref={audioRef}
+        <audio ref={audioRef} crossOrigin="anonymous"
+          onError={() => { setPlaying(false); setMediaError('音频加载失败，请重试或选择其他歌曲'); }}
+          onLoadStart={() => setMediaError('')}
           onTimeUpdate={() => setCurrentTime(audioRef.current?.currentTime || 0)}
           onLoadedMetadata={() => setDuration(audioRef.current?.duration || 0)}
           onEnded={handleEnded}

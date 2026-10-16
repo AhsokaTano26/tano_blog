@@ -102,7 +102,7 @@ test('home hydration reuses initial data and only requests posts when filters or
   try {
     assert.deepEqual(calls, [], 'hydration must not refetch any seeded data, including TagCloud');
     assert.ok(view.container.querySelector('h2'));
-    assert.equal(view.container.querySelector('h2').closest('.reveal'), null, 'the first server article must be visible before scroll effects run');
+    assert.equal(view.container.querySelector('h2').closest('.reveal') === null, true, 'the first server article must be visible before scroll effects run');
     const category = [...view.container.querySelectorAll('button')].find(button => button.textContent === 'Coding');
     await act(async () => category.click());
     assert.deepEqual(calls, [['posts', { page: '1', page_size: '10', category: 'code' }]]);

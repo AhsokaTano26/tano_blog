@@ -3,6 +3,7 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, useDeferredValue } from 'react';
 import dynamic from 'next/dynamic';
 import { api } from '@/lib/api';
+import { toDateTimeLocal, scheduledTimestamp } from '@/lib/post-settings';
 import {
   ExternalLink, X, FileText,
   ArrowLeft, Save,
@@ -211,14 +212,6 @@ function ImageEditDialog({ attrs, onSave, onClose }: {
 }
 
 /* ── Full-page post editor ── */
-function toDateTimeLocal(value?: string): string {
-  if (!value) return '';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '';
-  const pad = (part: number) => String(part).padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
-
 export default function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
   const { confirm } = useConfirm();
   const [title, setTitle] = useState(post?.title || '');
@@ -227,12 +220,12 @@ export default function PostEditor({ post, onClose }: { post: any; onClose: () =
   const deferredContent = useDeferredValue(content);
   const [excerpt, setExcerpt] = useState(post?.excerpt || '');
   const [coverImage, setCoverImage] = useState(post?.cover_image || '');
-  const [categoryId, setCategoryId] = useState(post?.category_id || post?.category?.id || '');
+  const [categoryId, setCategoryId] = useState(post?.category_id ?? post?.category?.id ?? '');
   const [tagIds, setTagIds] = useState<string[]>(post?.tags?.map((t: any) => t.id) || []);
   const [status, setStatus] = useState(post?.status || 'draft');
   const [isTop, setIsTop] = useState(post?.is_top || false);
   const [allowComment, setAllowComment] = useState(post?.allow_comment !== false);
-  const [seriesList, setSeriesList] = useState<any[]>([]);
+  const seriesList: any[] = [];
   const [selectedSeriesId, setSelectedSeriesId] = useState(post?.series?.[0]?.id || '');
   const [categories, setCategories] = useState<any[]>([]);
   const [tags, setTags] = useState<any[]>([]);
@@ -240,12 +233,15 @@ export default function PostEditor({ post, onClose }: { post: any; onClose: () =
   const [error, setError] = useState('');
   const [authorName, setAuthorName] = useState(post?.author_name || '');
   const [excerptMode, setExcerptMode] = useState<'manual' | 'auto'>(post?.excerpt ? 'manual' : 'auto');
-  const [scheduledAt, setScheduledAt] = useState(post?.published_at && post?.status === 'draft' ? post.published_at.slice(0, 16) : '');
+  const [scheduledAt, setScheduledAt] = useState(toDateTimeLocal(post?.scheduled_at));
   const [password, setPassword] = useState('');
   const [passwordHint, setPasswordHint] = useState(post?.password_hint || '');
   const initialCreatedAt = toDateTimeLocal(post?.created_at);
   const [createdAt, setCreatedAt] = useState(initialCreatedAt);
-  const [passwordSet, setPasswordSet] = useState(post?.password_set || false);
+  const serverPasswordSet = Boolean(post?.password_set);
+  const [passwordCleared, setPasswordCleared] = useState(false);
+  const [passwordNeedsReentry, setPasswordNeedsReentry] = useState(false);
+  const passwordSet = serverPasswordSet && !passwordCleared;
   const [users, setUsers] = useState<any[]>([]);
   const [rightTab, setRightTab] = useState<'outline' | 'history' | 'details'>('outline');
   const [revisions, setRevisions] = useState<any[]>([]);
@@ -335,7 +331,6 @@ export default function PostEditor({ post, onClose }: { post: any; onClose: () =
     api.getCategories().then(res => setCategories(res.items)).catch(() => {});
     api.getTags().then(res => setTags(res.items)).catch(() => {});
     api.admin.users.list().then(res => setUsers(res.items)).catch(() => {});
-    api.admin.series.list().then(res => setSeriesList(res.items || [])).catch(() => {});
   }, []);
 
   // Auto-save key
@@ -343,45 +338,55 @@ export default function PostEditor({ post, onClose }: { post: any; onClose: () =
 
   // Check for saved draft on mount
   useEffect(() => {
-    if (post?.id) return; // Only for new posts
     try {
       const saved = localStorage.getItem(autosaveKey);
       if (saved) {
         const data = JSON.parse(saved);
-        if (data.content || data.title) {
+        const serverUpdatedAt = Date.parse(post?.updated_at || '') || 0;
+        if ((data.content !== undefined || data.title !== undefined) && (!post?.id || data.savedAt > serverUpdatedAt)) {
           setShowRestoreBanner(true);
         }
       }
     } catch {}
   }, []);
 
-  // Auto-save every 30 seconds
+  // The interval remains stable while its ref tracks the latest committed edits.
+  const draftRef = useRef<Record<string, any>>({});
+  useEffect(() => {
+    draftRef.current = { title, slug, content, excerpt, excerptMode, coverImage, categoryId, tagIds, status, isTop,
+      allowComment, authorName, selectedSeriesId, scheduledAt, createdAt, passwordHint, passwordCleared,
+      passwordNeedsReentry: Boolean(password) || passwordNeedsReentry };
+  }, [title, slug, content, excerpt, excerptMode, coverImage, categoryId, tagIds, status, isTop, allowComment,
+    authorName, selectedSeriesId, scheduledAt, createdAt, passwordHint, password, passwordCleared, passwordNeedsReentry]);
   useEffect(() => {
     const interval = setInterval(() => {
-      if (!title && !content) return;
-      try {
-        localStorage.setItem(autosaveKey, JSON.stringify({
-          title, slug, content, excerpt, coverImage, categoryId, tagIds, status, isTop, allowComment, authorName,
-          savedAt: Date.now(),
-        }));
-      } catch {}
+      if (showRestoreBanner) return;
+      const draft = draftRef.current;
+      if (!draft.title && !draft.content) return;
+      try { localStorage.setItem(autosaveKey, JSON.stringify({ ...draft, savedAt: Date.now() })); } catch {}
     }, 30000);
     return () => clearInterval(interval);
-  }, [title, slug, content, excerpt, coverImage, categoryId, tagIds, status, isTop, allowComment, authorName]);
+  }, [autosaveKey, showRestoreBanner]);
 
   function restoreDraft() {
     try {
       const saved = JSON.parse(localStorage.getItem(autosaveKey) || '{}');
-      if (saved.title) setTitle(saved.title);
-      if (saved.slug) setSlug(saved.slug);
-      if (saved.content) setContent(saved.content);
-      if (saved.excerpt) setExcerpt(saved.excerpt);
-      if (saved.coverImage) setCoverImage(saved.coverImage);
-      if (saved.categoryId) setCategoryId(saved.categoryId);
-      if (saved.tagIds) setTagIds(saved.tagIds);
-      if (saved.status) setStatus(saved.status);
-      if (saved.isTop !== undefined) setIsTop(saved.isTop);
-      if (saved.authorName) setAuthorName(saved.authorName);
+      const setters: Record<string, (value: any) => void> = { title: setTitle, slug: setSlug, content: setContent,
+        excerpt: setExcerpt, excerptMode: setExcerptMode, coverImage: setCoverImage, categoryId: setCategoryId,
+        tagIds: setTagIds, status: setStatus, isTop: setIsTop, allowComment: setAllowComment, authorName: setAuthorName,
+        selectedSeriesId: setSelectedSeriesId, scheduledAt: setScheduledAt, createdAt: setCreatedAt,
+        passwordHint: setPasswordHint };
+      for (const [key, setter] of Object.entries(setters)) {
+        if (saved[key] !== undefined) setter(saved[key]);
+      }
+      // Older backups used passwordSet for both a server password and a pending
+      // local password. Treat that ambiguous state conservatively on recovery.
+      const needsPassword = saved.passwordNeedsReentry === true ||
+        (saved.passwordNeedsReentry === undefined && saved.passwordSet === true);
+      setPassword('');
+      setPasswordCleared(saved.passwordCleared === true || (saved.passwordSet === false && serverPasswordSet));
+      setPasswordNeedsReentry(needsPassword);
+      if (needsPassword) setError('本地草稿不保存访问密码，请在文章设置中重新输入密码后保存。');
     } catch {}
     setShowRestoreBanner(false);
   }
@@ -410,6 +415,11 @@ export default function PostEditor({ post, onClose }: { post: any; onClose: () =
   }
 
   async function handleSave(publishStatus?: string) {
+    if (passwordNeedsReentry && !password) {
+      setError('请重新输入访问密码后再保存或发布文章。');
+      setShowDetailDialog(true);
+      return;
+    }
     if (mediaUploading) {
       setError('文件仍在上传，请等待上传完成后保存');
       return;
@@ -441,17 +451,15 @@ export default function PostEditor({ post, onClose }: { post: any; onClose: () =
       if (password) {
         data.password = password;
         data.password_hint = passwordHint;
-      } else if (passwordSet === false && post?.id) {
+      } else if (passwordCleared && serverPasswordSet) {
         data.password = '';
         data.password_hint = '';
       }
-      if (categoryId) data.category_id = categoryId;
-      if (tagIds.length > 0) data.tag_ids = tagIds;
-      if (selectedSeriesId) data.series_id = selectedSeriesId;
-      // If saving as draft with a scheduled date
-      if (scheduledAt && (publishStatus || status) === 'draft') {
-        data.scheduled_at = scheduledAt;
-      }
+      data.category_id = categoryId;
+      data.tag_ids = tagIds;
+      data.series_id = selectedSeriesId;
+      data.password_hint = passwordHint;
+      data.scheduled_at = scheduledTimestamp(scheduledAt, publishStatus || status);
 
       if (post?.id) {
         await api.admin.posts.update(post.id, data);
@@ -1068,11 +1076,15 @@ export default function PostEditor({ post, onClose }: { post: any; onClose: () =
 
       {showDetailDialog && (
         <PostDetailDialog
-          post={post}
+          post={{ ...post, title, content, author_name: authorName, status, is_top: isTop, allow_comment: allowComment,
+            category_id: categoryId, series_id: selectedSeriesId, tags: tagIds.map(id => ({ id })), cover_image: coverImage,
+            excerpt, excerpt_mode: excerptMode, scheduled_at: scheduledAt, password, password_set: passwordSet, password_hint: passwordHint }}
+          passwordNeedsReentry={passwordNeedsReentry}
           categories={categories}
           tags={tags}
           seriesList={seriesList}
-          onSave={async (data) => {
+          onSave={async (data, mode) => {
+            setExcerptMode(mode);
             if (data.author_name !== undefined) setAuthorName(data.author_name);
             if (data.status !== undefined) setStatus(data.status);
             if (data.is_top !== undefined) setIsTop(data.is_top);
@@ -1082,9 +1094,15 @@ export default function PostEditor({ post, onClose }: { post: any; onClose: () =
             if (data.series_id !== undefined) setSelectedSeriesId(data.series_id);
             if (data.cover_image !== undefined) setCoverImage(data.cover_image);
             if (data.excerpt !== undefined) setExcerpt(data.excerpt);
-            if (data.scheduled_at !== undefined) setScheduledAt(data.scheduled_at);
-            if ('password' in data) { setPassword(data.password); setPasswordHint(data.password_hint || ''); }
-            if ('password_set' in data) setPasswordSet(data.password_set);
+            if (data.scheduled_at !== undefined) setScheduledAt(toDateTimeLocal(data.scheduled_at));
+            if ('password' in data) {
+              setPassword(data.password);
+              setPasswordCleared(data.password === '' && serverPasswordSet);
+              setPasswordNeedsReentry(false);
+              setPasswordHint(data.password_hint || '');
+              setError('');
+            }
+            if ('password_hint' in data) setPasswordHint(data.password_hint);
           }}
           onClose={() => setShowDetailDialog(false)}
         />

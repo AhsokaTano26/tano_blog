@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import dynamic from 'next/dynamic';
 import { api } from '@/lib/api';
@@ -25,11 +25,14 @@ export default function AdminPosts() {
   const [openError, setOpenError] = useState('');
   const [editing, setEditing] = useState<any>(undefined);
   const [search, setSearch] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const requestSequence = useRef(0);
+  const [loadError, setLoadError] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [detailPost, setDetailPost] = useState<any>(null);
   const [categories, setCategories] = useState<any[]>([]);
   const [tags, setTags] = useState<any[]>([]);
-  const [seriesList, setSeriesList] = useState<any[]>([]);
+  const seriesList: any[] = [];
   const [selectedPosts, setSelectedPosts] = useState<Set<string>>(new Set());
 
   function toggleSelectPost(id: string) {
@@ -74,23 +77,25 @@ export default function AdminPosts() {
   }
 
   async function load() {
+    const sequence = ++requestSequence.current;
     setLoading(true);
+    setLoadError('');
     try {
       const params: Record<string, string> = { page: String(page), page_size: String(pageSize) };
-      if (search) params.search = search;
+      if (searchQuery) params.search = searchQuery;
       if (statusFilter) params.status = statusFilter;
       const res = await api.admin.posts.list(params);
+      if (sequence !== requestSequence.current) return;
       setPosts(res.items);
       setTotal(res.total);
-    } catch (e) { /* empty */ }
-    setLoading(false);
+    } catch (error) { if (sequence === requestSequence.current) setLoadError(error instanceof Error ? error.message : '加载文章失败'); }
+    if (sequence === requestSequence.current) setLoading(false);
   }
 
-  useEffect(() => { load(); }, [page, pageSize, statusFilter]);
+  useEffect(() => { load(); return () => { requestSequence.current++; }; }, [page, pageSize, statusFilter, searchQuery]);
   useEffect(() => {
     api.getCategories().then(res => setCategories(res.items)).catch(() => {});
     api.getTags().then(res => setTags(res.items)).catch(() => {});
-    api.admin.series.list().then(res => setSeriesList(res.items || [])).catch(() => {});
   }, []);
 
   async function handleDelete(id: string) {
@@ -151,6 +156,7 @@ export default function AdminPosts() {
         </div>
       </div>
 
+      {loadError && <p role="alert">{loadError} <button onClick={load}>重试</button></p>}
       {/* Filters bar */}
       <div className="glass-card rounded-2xl mb-4">
         <div className="flex items-center gap-3 p-4" style={{ borderBottom: '1px solid var(--glass-border)' }}>
@@ -158,7 +164,7 @@ export default function AdminPosts() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: 'var(--text-info)' }} />
             <input type="text" placeholder="搜索文章..." value={search}
               onChange={e => setSearch(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && load()}
+              onKeyDown={e => { if (e.key === 'Enter') { setPage(1); setSearchQuery(search.trim()); } }}
               className="w-full pl-9 pr-3 py-2 rounded-xl text-sm outline-none glass-card"
               style={{ color: 'var(--text-primary)' }} />
           </div>

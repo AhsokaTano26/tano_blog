@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
 import { api } from '@/lib/api';
+import { Turnstile } from '@/components/Turnstile';
 import { Calendar, Eye, Copy, Check, BookOpen, Shield, User, Edit3, Bookmark, ArrowLeft } from 'lucide-react';
 import { ContentHeadInjection } from '@/components/HtmlInjection';
 import { ReadingProgress } from '@/components/ReadingProgress';
@@ -323,43 +324,11 @@ export default function PostClient({ slug, initialData, initialError = '', initi
       if (res.config?.turnstile_enabled === 'true' && res.config?.turnstile_sitekey && (res.config?.turnstile_modules || 'comment,link').split(',').map(s => s.trim()).includes('comment')) {
         setTurnstileEnabled(true);
         setTurnstileSitekey(res.config.turnstile_sitekey);
-        // Load Turnstile script
-        if (!document.querySelector('script[src*="turnstile"]')) {
-          const script = document.createElement('script');
-          script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js';
-          script.async = true;
-          script.defer = true;
-          document.head.appendChild(script);
-        }
       }
     }).catch(() => {});
   }, []);
 
-  // Render Turnstile widget with a ref-based approach
-  const turnstileRef = useRef<HTMLDivElement>(null);
-  const turnstileWidgetId = useRef<string | null>(null);
-  useEffect(() => {
-    if (!turnstileEnabled || !turnstileSitekey || !turnstileRef.current) return;
-    const w = window as any;
-    const check = () => {
-      if (w.turnstile) {
-        const id = w.turnstile.render(turnstileRef.current, {
-          sitekey: turnstileSitekey,
-          action: 'turnstile-spin-v2',
-          callback: (token: string) => setTurnstileToken(token),
-        });
-        turnstileWidgetId.current = id;
-      } else {
-        setTimeout(check, 200);
-      }
-    };
-    check();
-    return () => {
-      if (w.turnstile && turnstileWidgetId.current) {
-        try { w.turnstile.remove(turnstileWidgetId.current); } catch {}
-      }
-    };
-  }, [turnstileEnabled, turnstileSitekey]);
+  const [captchaAttempt, setCaptchaAttempt] = useState(0);
 
   async function handleVerifyPassword(e: React.FormEvent) {
     e.preventDefault();
@@ -385,16 +354,12 @@ export default function PostClient({ slug, initialData, initialError = '', initi
       setReplyTo(null);
       setTurnstileToken('');
       // Reset Turnstile widget
-      if (turnstileWidgetId.current && (window as any).turnstile) {
-        (window as any).turnstile.reset(turnstileWidgetId.current);
-      }
+      setCaptchaAttempt(value => value + 1);
       void commentPages.reload();
     } catch (err: any) {
       setCommentError(err.message);
       // Reset Turnstile on error too
-      if (turnstileWidgetId.current && (window as any).turnstile) {
-        (window as any).turnstile.reset(turnstileWidgetId.current);
-      }
+      setCaptchaAttempt(value => value + 1);
     }
   }
 
@@ -952,7 +917,7 @@ export default function PostClient({ slug, initialData, initialError = '', initi
               </div>
             )}
             {turnstileEnabled && (
-              <div ref={turnstileRef} />
+              <Turnstile key={captchaAttempt} sitekey={turnstileSitekey} action="turnstile-spin-v2" onToken={setTurnstileToken} />
             )}
             <button type="submit"
               className="px-6 py-2.5 rounded-xl text-sm font-medium text-white transition-all hover:opacity-90"
