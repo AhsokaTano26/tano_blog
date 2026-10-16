@@ -3,210 +3,155 @@ name: Release
 on:
   push:
     branches: [main]
-    paths:
-      - 'backend/**'
-      - 'frontend/**'
-      - 'Dockerfile'
-      - 'docker-entrypoint.sh'
-      - 'VERSION'
-      - '.github/**'
+    paths: ['backend/**', 'frontend/**', 'scripts/**', 'Dockerfile', 'docker-entrypoint.sh', 'docker-compose.yml', 'VERSION', '.github/**']
+  pull_request:
+  workflow_dispatch:
 
-# 同一分支上的发布任务顺序执行，避免两个工作流同时创建相同版本或标签。
+permissions:
+  contents: read
+
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  release:
+  verify:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: blog_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: test-only-password
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d blog_test"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      TEST_DATABASE_DSN: postgres://postgres:test-only-password@localhost:5432/blog_test?sslmode=disable
+      REQUIRE_TEST_DATABASE: '1'
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          fetch-tags: true
-
-      - name: Set up Go
-        uses: actions/setup-go@v6
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v6
         with:
           go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum
-
-      - name: Verify backend
+      - name: Verify backend with PostgreSQL
         working-directory: backend
         run: |
           go test ./...
           go vet ./...
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+          go build ./cmd/server
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - name: Verify frontend
         working-directory: frontend
         run: |
           npm ci
+          npm run test:guard
           npm test
           npm run lint
           npm run build
+          npx tsc --noEmit
+      - name: Verify release planning and process shutdown
+        working-directory: frontend
+        run: npm test -- -- ../scripts/tests/*.test.mjs
 
-      - name: Determine next version
-        id: version
+  release:
+    needs: verify
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    # All publish entry points share a lock, including manual reruns.
+    concurrency:
+      group: blog-publish
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Plan release of the verified commit
+        id: plan
         run: |
-          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
-          echo "Latest tag: $LATEST_TAG"
-          echo "LATEST_TAG=$LATEST_TAG" >> "$GITHUB_OUTPUT"
-
-          FEATS=$(git log "$LATEST_TAG..HEAD" --oneline --grep="^feat" 2>/dev/null | wc -l)
-          FIXES=$(git log "$LATEST_TAG..HEAD" --oneline --grep="^fix" 2>/dev/null | wc -l)
-
-          # Detect breaking changes: "BREAKING CHANGE:" footer or "type!:" syntax
-          BREAKING=$(git log "$LATEST_TAG..HEAD" --oneline --grep="BREAKING CHANGE" 2>/dev/null | wc -l)
-          if [ "$BREAKING" -eq 0 ]; then
-            BREAKING=$(git log "$LATEST_TAG..HEAD" --oneline --grep="!:" 2>/dev/null | wc -l)
-          fi
-
-          BASE="${LATEST_TAG#v}"
-          IFS='.' read -r MAJOR MINOR PATCH <<< "$BASE"
-
-          if [ "$BREAKING" -gt 0 ]; then
-            MAJOR=$((MAJOR + 1))
-            MINOR=0
-            PATCH=0
-          elif [ "$FEATS" -gt 0 ]; then
-            MINOR=$((MINOR + 1))
-            PATCH=0
-          elif [ "$FIXES" -gt 0 ]; then
-            PATCH=$((PATCH + 1))
+          git fetch origin main --tags
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          node scripts/release-plan.mjs
+      - name: Reserve version on the verified commit
+        if: steps.plan.outputs.release == 'true'
+        env:
+          RELEASE_VERSION: ${{ steps.plan.outputs.version }}
+          VERIFIED_SHA: ${{ steps.plan.outputs.sha }}
+        run: |
+          git config user.name github-actions
+          git config user.email actions@github.com
+          TAG="v$RELEASE_VERSION"
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            test "$(git rev-list -n 1 "$TAG")" = "$VERIFIED_SHA"
           else
-            FILE_VER="$(cat VERSION 2>/dev/null || echo '')"
-            if [ "$FILE_VER" != "$BASE" ]; then
-              echo "VERSION=$FILE_VER" >> "$GITHUB_OUTPUT"
-              echo "version=$FILE_VER" >> "$GITHUB_OUTPUT"
-              echo "Using version from VERSION file: $FILE_VER"
-            else
-              echo "VERSION=$BASE" >> "$GITHUB_OUTPUT"
-              echo "version=$BASE" >> "$GITHUB_OUTPUT"
-              echo "No changes since $LATEST_TAG, skipping release"
-            fi
+            git tag -a "$TAG" "$VERIFIED_SHA" -m "Release $TAG"
           fi
-
-          # Only set VERSION from semver calc when breaking, feat or fix found
-          if [ "$BREAKING" -gt 0 ] || [ "$FEATS" -gt 0 ] || [ "$FIXES" -gt 0 ]; then
-            NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
-            echo "VERSION=$NEW_VERSION" >> "$GITHUB_OUTPUT"
-            echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
-            echo "New version: v$NEW_VERSION"
-          fi
-
-      - name: Check if tag already exists
-        id: check
-        run: |
-          TAG="v${{ steps.version.outputs.VERSION }}"
-          if git rev-parse "$TAG" >/dev/null 2>&1; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-            echo "Tag $TAG already exists, skipping"
-          else
-            echo "exists=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Update VERSION file
-        if: steps.check.outputs.exists == 'false'
-        run: |
-          git config user.name "github-actions"
-          git config user.email "actions@github.com"
-
-          # 测试期间 main 可能被新的提交推进；先以远程分支为基准，
-          # 避免版本提交因非快进而直接失败。
-          git fetch origin main
-          git rebase origin/main
-          echo "${{ steps.version.outputs.VERSION }}" > VERSION
-          git add VERSION
-          # 仅在 VERSION 确实变化时创建提交。
-          if git diff --cached --quiet HEAD -- VERSION; then
-            echo "VERSION unchanged, skipping commit"
-          else
-            git commit -m "chore: bump version to ${{ steps.version.outputs.VERSION }} [skip ci]"
-            for attempt in 1 2 3; do
-              if git push origin HEAD:main; then
-                exit 0
-              fi
-              echo "main 在推送期间更新，正在进行第 ${attempt} 次 rebase 重试"
-              git fetch origin main
-              git rebase origin/main
-            done
-            echo "无法在三次尝试内推送 VERSION 提交"
-            exit 1
-          fi
-
-      - name: Create Git tag
-        if: steps.check.outputs.exists == 'false'
-        run: |
-          VERSION="v${{ steps.version.outputs.VERSION }}"
-          # 避免网络超时或 GitHub 5xx 后远程标签已创建、但本地未收到成功响应。
-          git fetch --tags origin
-          if git rev-parse -q --verify "refs/tags/$VERSION" >/dev/null; then
-            echo "标签 $VERSION 已存在，跳过创建"
-            exit 0
-          fi
-          git tag -a "$VERSION" -m "Release $VERSION"
-          for attempt in 1 2 3; do
-            if git push origin "refs/tags/$VERSION"; then
-              exit 0
-            fi
-            # 推送响应失败时，远程可能已经成功创建标签；先检查再重试。
-            if git ls-remote --exit-code --tags origin "refs/tags/$VERSION" >/dev/null 2>&1; then
-              echo "远程标签 $VERSION 已创建"
-              exit 0
-            fi
-            echo "标签推送失败，5 秒后进行第 ${attempt} 次重试"
-            sleep 5
-          done
-          echo "标签 $VERSION 推送失败，请稍后重新运行发布工作流"
-          exit 1
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
+          git push origin "refs/tags/$TAG"
+      - uses: docker/setup-buildx-action@v3
+        if: steps.plan.outputs.release == 'true'
+      - uses: docker/login-action@v3
+        if: steps.plan.outputs.release == 'true'
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-
+      - name: Choose image tags
+        if: steps.plan.outputs.release == 'true'
+        id: images
+        env:
+          RELEASE_VERSION: ${{ steps.plan.outputs.version }}
+          PUBLISH_LATEST: ${{ steps.plan.outputs.publishLatest }}
+        run: |
+          echo 'tags<<TAGS' >> "$GITHUB_OUTPUT"
+          echo "tano26/tano_blog:v$RELEASE_VERSION" >> "$GITHUB_OUTPUT"
+          if [ "$PUBLISH_LATEST" = 'true' ]; then
+            echo 'tano26/tano_blog:latest' >> "$GITHUB_OUTPUT"
+          fi
+          echo 'TAGS' >> "$GITHUB_OUTPUT"
+      # Always rebuild/retry artifacts for a tag on this SHA. An existing tag
+      # does not imply an image or GitHub Release was successfully published.
       - name: Build and push
-        if: steps.check.outputs.exists == 'false'
+        if: steps.plan.outputs.release == 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
           build-args: |
-            VERSION=v${{ steps.version.outputs.VERSION }}
+            VERSION=v${{ steps.plan.outputs.version }}
             BUILD_TIME=${{ github.event.head_commit.timestamp }}
-          tags: |
-            tano26/tano_blog:v${{ steps.version.outputs.VERSION }}
-            tano26/tano_blog:latest
+          tags: ${{ steps.images.outputs.tags }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
-      - name: Create GitHub Release
-        if: steps.check.outputs.exists == 'false'
+      - name: Ensure GitHub Release exists
+        if: steps.plan.outputs.release == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ steps.plan.outputs.version }}
+          PREVIOUS_TAG: ${{ steps.plan.outputs.previousTag }}
         run: |
-          VERSION="v${{ steps.version.outputs.VERSION }}"
-          PREV="${{ steps.version.outputs.LATEST_TAG }}"
-          if [ "$PREV" = "v0.0.0" ]; then
-            NOTES="$(git log --oneline --no-merges -20)"
-          else
-            NOTES="$(git log "$PREV..HEAD" --oneline --no-merges)"
+          TAG="v$RELEASE_VERSION"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            exit 0
           fi
-          gh release create "$VERSION" \
-            --title "$VERSION" \
-            --notes "$NOTES"
+          if [ -n "$PREVIOUS_TAG" ]; then
+            git log --oneline --no-merges "$PREVIOUS_TAG..HEAD" > /tmp/release-notes.md
+          else
+            git log --oneline --no-merges -20 > /tmp/release-notes.md
+          fi
+          gh release create "$TAG" --verify-tag --title "$TAG" --notes-file /tmp/release-notes.md

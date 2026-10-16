@@ -71,4 +71,5 @@ CI 的 Python/保护机制检查步骤、`.gitignore` 的 Python 缓存项及测
 
 `frontend/AGENTS.md` 已有上一轮安全说明，但被 Git 忽略，因此另存可跟踪的
 `frontend/TESTING.md` 并在 README 链接；本轮未修改已有 AGENTS.md。
-未修改 macOS 电源或 swap 配置，未提交或推送工作区修改。
+未修改 macOS 电源或 swap 配置。事故复核结束时尚未提交；后续业务修复、最终验证和提交范围见
+[系统修复记录](superpowers/plans/2026-10-16-system-audit-remediation.md)。
