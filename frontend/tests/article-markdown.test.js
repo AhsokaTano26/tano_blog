@@ -7,6 +7,22 @@ const { createRoot } = require('react-dom/client');
 const { renderToStaticMarkup } = require('react-dom/server');
 const ArticleMarkdown = require('../src/components/ArticleMarkdown.tsx').default;
 
+test('editor preview exposes source ranges for blocks, including images and aligned Markdown', () => {
+  const content = '# Heading\n\n![Photo](/photo.png)\n\n<div style="text-align: center;">\n\n**Centered** paragraph\n\n</div>';
+  const container = document.createElement('div');
+  container.innerHTML = renderToStaticMarkup(React.createElement(ArticleMarkdown, { content, variant: 'editor' }));
+  for (const selector of ['h1', 'p:has(img)', 'div p']) {
+    const block = container.querySelector(selector);
+    assert.equal(block?.hasAttribute('data-source-start'), true, `${selector} needs a source position`);
+    const source = content.slice(Number(block.dataset.sourceStart), Number(block.dataset.sourceEnd));
+    assert.equal(source.includes(block.querySelector('img') ? '![Photo]' : block.textContent), true);
+  }
+  assert.equal(container.querySelector('div p strong')?.textContent, 'Centered');
+  assert.equal(container.querySelector('div').style.textAlign, 'center');
+  container.innerHTML = renderToStaticMarkup(React.createElement(ArticleMarkdown, { content }));
+  assert.equal(container.querySelector('[data-source-start]') === null, true, 'public articles omit editor bookkeeping');
+});
+
 test('editor variant renders fenced highlighted and plain code using real Markdown components', () => {
   const html = renderToStaticMarkup(React.createElement(ArticleMarkdown, { variant: 'editor', content: [
     '```js\nconst answer = 42;\n```',

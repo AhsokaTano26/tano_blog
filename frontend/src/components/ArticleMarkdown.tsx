@@ -18,6 +18,7 @@ import { MermaidDiagram } from './MermaidDiagram';
 import { ArticleAudioPlayer } from './ArticleAudioPlayer';
 import { MarkdownAlert } from './MarkdownAlert';
 import { MarkdownImage } from './MarkdownImage';
+import { rehypeEditorPositions } from '@/lib/rehype-editor-positions';
 
 const remarkPlugins: PluggableList = [remarkGfm, remarkMath, remarkMhchem, remarkAlerts];
 const rehypePlugins: PluggableList = [
@@ -27,6 +28,7 @@ const rehypePlugins: PluggableList = [
   rehypeSlug,
   rehypeKatexWithMhchem,
 ];
+const editorRehypePlugins: PluggableList = [...rehypePlugins, rehypeEditorPositions];
 
 function CodeBlock({ children, className }: { children?: ReactNode; className?: string }) {
   const [copied, setCopied] = useState(false);
@@ -85,7 +87,7 @@ const ArticleMarkdown = memo(function ArticleMarkdown({ content, variant = 'arti
   variant?: 'article' | 'editor';
 }) {
   return (
-    <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins}
+    <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={variant === 'editor' ? editorRehypePlugins : rehypePlugins}
       components={variant === 'editor' ? editorComponents : articleComponents}>
       {content}
     </ReactMarkdown>

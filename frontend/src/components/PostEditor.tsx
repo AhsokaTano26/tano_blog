@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, useDeferredValue } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useMemo, useDeferredValue } from 'react';
 import dynamic from 'next/dynamic';
 import { api } from '@/lib/api';
 import { toDateTimeLocal, scheduledTimestamp } from '@/lib/post-settings';
 import {
   ExternalLink, X, FileText,
   ArrowLeft, Save,
-  Bold, Italic, Underline, Strikethrough, Link, Code, Quote, List, ListOrdered,
+  Bold, Italic, Underline, Strikethrough, Link, Code, Quote, List, ListOrdered, AlignLeft, AlignCenter, AlignRight,
   Image as ImageIcon, Heading1, Heading2, Heading3, LayoutGrid,
   Minus, SquareCode, Superscript, GitBranch, Table, Video, Music, Palette, Settings,
   Info, Lightbulb, CircleAlert, TriangleAlert, OctagonAlert
@@ -19,6 +19,8 @@ import { generateGalleryHtml, findGalleryInContent, createDefaultGalleryAttrs } 
 import type { GalleryAttrs } from '@/lib/gallery';
 import { generateImageHtml, findImageInContent, type ImageAttrs } from '@/lib/article-image';
 import { getClipboardImages, isImageFile, replaceUploadPlaceholder, uploadSelection } from '@/lib/editor-upload';
+import { alignSelection, selectionAlignment, type TextAlignment } from '@/lib/editor-alignment';
+import { useEditorScrollSync } from '@/lib/use-editor-scroll-sync';
 
 import PostDetailDialog from './PostDetailDialog';
 
@@ -251,49 +253,29 @@ export default function PostEditor({ post, onClose }: { post: any; onClose: () =
   const [viewMode, setViewMode] = useState<'edit' | 'preview' | 'split'>('split');
   const [showRestoreBanner, setShowRestoreBanner] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [textAlignment, setTextAlignment] = useState<TextAlignment>('left');
   const [mediaPickerType, setMediaPickerType] = useState<'image' | 'video' | 'audio' | null>(null);
   const mediaFileRef = useRef<HTMLInputElement>(null);
   const mediaPickerBtnRef = useRef<HTMLButtonElement>(null);
   const [mediaUploadCount, setMediaUploadCount] = useState(0);
   const mediaUploading = mediaUploadCount > 0;
-  const pendingUploadSelection = useRef<{ start: number; end: number; scrollTop: number } | null>(null);
+  const pendingEditorSelection = useRef<{ start: number; end: number; scrollTop: number } | null>(null);
   useLayoutEffect(() => {
-    const selection = pendingUploadSelection.current;
+    const selection = pendingEditorSelection.current;
     const editor = textareaRef.current;
     if (selection && editor && document.activeElement === editor) {
       editor.setSelectionRange(selection.start, selection.end);
       editor.scrollTop = selection.scrollTop;
     }
-    pendingUploadSelection.current = null;
+    pendingEditorSelection.current = null;
   }, [content]);
   const previewScrollRef = useRef<HTMLDivElement>(null);
-  const syncingRef = useRef<'editor' | 'preview' | null>(null);
+  const previewContentRef = useRef<HTMLDivElement>(null);
   const [imageDialog, setImageDialog] = useState<{ attrs: ImageAttrs; range?: { start: number; end: number } } | null>(null);
   const [galleryDialog, setGalleryDialog] = useState<{ attrs: GalleryAttrs; range?: { start: number; end: number } } | null>(null);
 
-  const handleEditorScroll = useCallback(() => {
-    if (!textareaRef.current || !previewScrollRef.current || syncingRef.current === 'preview') return;
-    syncingRef.current = 'editor';
-    const editor = textareaRef.current;
-    const preview = previewScrollRef.current;
-    const ratio = editor.scrollHeight > editor.clientHeight ? editor.scrollTop / (editor.scrollHeight - editor.clientHeight) : 0;
-    preview.scrollTop = ratio * (preview.scrollHeight - preview.clientHeight);
-    setTimeout(() => { syncingRef.current = null; }, 30);
-  }, []);
-
-  const handlePreviewScroll = useCallback(() => {
-    if (!previewScrollRef.current || !textareaRef.current || syncingRef.current === 'editor') return;
-    syncingRef.current = 'preview';
-    const preview = previewScrollRef.current;
-    const editor = textareaRef.current;
-    const ratio = preview.scrollHeight > preview.clientHeight ? preview.scrollTop / (preview.scrollHeight - preview.clientHeight) : 0;
-    editor.scrollTop = ratio * (editor.scrollHeight - editor.clientHeight);
-    setTimeout(() => { syncingRef.current = null; }, 30);
-  }, []);
-
-  useLayoutEffect(() => {
-    if (viewMode === 'split') handleEditorScroll();
-  }, [viewMode, deferredContent, handleEditorScroll]);
+  useEditorScrollSync({ editorRef: textareaRef, previewRef: previewScrollRef,
+    contentRef: previewContentRef, content: deferredContent, enabled: viewMode === 'split' });
 
   function generateSlug() {
     return crypto.randomUUID().slice(0, 8);
@@ -492,6 +474,17 @@ export default function PostEditor({ post, onClose }: { post: any; onClose: () =
     }, 0);
   }
 
+  function alignText(align: TextAlignment) {
+    const editor = textareaRef.current;
+    if (!editor) return;
+    const result = alignSelection(content, editor.selectionStart, editor.selectionEnd, align);
+    editor.focus({ preventScroll: true });
+    if (result.content === content) { setTextAlignment(align); return; }
+    pendingEditorSelection.current = { start: result.start, end: result.end, scrollTop: editor.scrollTop };
+    setContent(result.content);
+    setTextAlignment(align);
+  }
+
   function insertMedia(url: string, type: 'image' | 'video' | 'audio') {
     const ta = textareaRef.current;
     if (!ta) return;
@@ -517,10 +510,10 @@ export default function PostEditor({ post, onClose }: { post: any; onClose: () =
 
   function finishEditorUpload(placeholder: string, replacement: string) {
     const editor = textareaRef.current;
-    pendingUploadSelection.current = null;
+    pendingEditorSelection.current = null;
     if (editor && document.activeElement === editor) {
       const selection = uploadSelection(editor.value, placeholder, replacement, editor.selectionStart, editor.selectionEnd);
-      if (selection) pendingUploadSelection.current = { ...selection, scrollTop: editor.scrollTop };
+      if (selection) pendingEditorSelection.current = { ...selection, scrollTop: editor.scrollTop };
     }
     setContent((previous: string) => replaceUploadPlaceholder(previous, placeholder, replacement));
   }
@@ -653,6 +646,10 @@ export default function PostEditor({ post, onClose }: { post: any; onClose: () =
     { icon: Heading1, action: () => insertMarkdown('# '), title: '标题 1' },
     { icon: Heading2, action: () => insertMarkdown('## '), title: '标题 2' },
     { icon: Heading3, action: () => insertMarkdown('### '), title: '标题 3' },
+    { type: 'divider' as const },
+    { icon: AlignLeft, action: () => alignText('left'), title: '左对齐', alignment: 'left' },
+    { icon: AlignCenter, action: () => alignText('center'), title: '居中', alignment: 'center' },
+    { icon: AlignRight, action: () => alignText('right'), title: '右对齐', alignment: 'right' },
     { type: 'divider' as const },
     { icon: Link, action: () => insertMarkdown('[', '](url)'), title: '链接 (Ctrl+K)' },
     { icon: ImageIcon, action: () => setImageDialog({ attrs: { ...DEFAULT_IMAGE_ATTRS } }), title: '图片' },
@@ -885,8 +882,9 @@ export default function PostEditor({ post, onClose }: { post: any; onClose: () =
                   }
                   const Icon = btn.icon!;
                   return (
-                    <button key={i} onClick={(e) => { btn.action(); mediaPickerBtnRef.current = e.currentTarget; }} title={btn.title}
-                      className="p-1.5 rounded-lg transition-all duration-150 btn-glass hover:scale-110" style={{ color: 'var(--text-secondary)' }}>
+                    <button key={i} type="button" onMouseDown={e => e.preventDefault()} onClick={(e) => { btn.action(); mediaPickerBtnRef.current = e.currentTarget; }} title={btn.title} aria-label={btn.title}
+                      aria-pressed={'alignment' in btn ? textAlignment === btn.alignment : undefined}
+                      className="p-1.5 rounded-lg transition-all duration-150 btn-glass hover:scale-110" style={{ color: 'alignment' in btn && textAlignment === btn.alignment ? 'var(--primary)' : 'var(--text-secondary)' }}>
                       <Icon className="w-4 h-4" />
                     </button>
                   );
@@ -917,10 +915,13 @@ export default function PostEditor({ post, onClose }: { post: any; onClose: () =
                 ref={textareaRef}
                 placeholder="输入 Markdown 内容，可直接粘贴截图或拖入多张图片自动上传..."
                 value={content}
-                onChange={e => setContent(e.target.value)}
+                onChange={e => {
+                  setContent(e.target.value);
+                  setTextAlignment(selectionAlignment(e.target.value, e.target.selectionStart, e.target.selectionEnd));
+                }}
                 onKeyDown={handleKeyDown}
-                onScroll={handleEditorScroll}
                 onPaste={handleEditorPaste}
+                onSelect={e => setTextAlignment(selectionAlignment(content, e.currentTarget.selectionStart, e.currentTarget.selectionEnd))}
                 className="w-full h-full outline-none border-0 bg-transparent resize-none leading-relaxed"
                 style={{ color: 'var(--text-primary)', overflowY: 'auto' }}
               />
@@ -935,7 +936,7 @@ export default function PostEditor({ post, onClose }: { post: any; onClose: () =
           </div>
 
           {/* Live preview */}
-          {viewMode !== 'edit' && <div ref={previewScrollRef} style={{ flex: viewMode === 'split' ? '0 0 50%' : '1 1 0%', borderLeft: viewMode === 'split' ? '1px solid var(--glass-border)' : '1px solid transparent' }} className="overflow-y-auto transition-all duration-300 ease-in-out" onScroll={handlePreviewScroll}
+          {viewMode !== 'edit' && <div ref={previewScrollRef} aria-label="文章预览" style={{ flex: viewMode === 'split' ? '0 0 50%' : '1 1 0%', borderLeft: viewMode === 'split' ? '1px solid var(--glass-border)' : '1px solid transparent', overflowAnchor: 'none' }} className="overflow-y-auto transition-all duration-300 ease-in-out"
             onClick={(event) => {
               const target = event.target;
               if (!(target instanceof HTMLImageElement)) return;
@@ -944,7 +945,7 @@ export default function PostEditor({ post, onClose }: { post: any; onClose: () =
               if (target.closest('.editor-image-gallery')) handleEditGallery(target);
               else handleEditImage(target.dataset.markdownSrc || target.getAttribute('src') || '', target.alt);
             }}>
-            <div className="max-w-5xl mx-auto py-8 px-6">
+            <div ref={previewContentRef} className="max-w-5xl mx-auto py-8 px-6">
               <div className="prose prose-sm max-w-none" style={{ color: 'var(--text-primary)' }}>
                 {deferredContent ? (
                   <ArticleMarkdown content={deferredContent} variant="editor" />

@@ -42,6 +42,27 @@ async function mountEditor(t, content = '# Heading\n\n$E = mc^2$') {
   return document.querySelector('textarea[placeholder^="输入 Markdown"]');
 }
 
+test('alignment buttons format the current paragraph, switch without nesting, and persist Markdown', async t => {
+  const textarea = await mountEditor(t, 'Intro\n\n**Bold** paragraph\n\nTail');
+  const button = title => document.querySelector(`button[title="${title}"]`);
+  assert.equal(Boolean(button('居中')), true, 'the editor needs a center alignment button');
+  textarea.focus();
+  textarea.setSelectionRange(16, 16);
+  await act(async () => button('居中').click());
+  assert.match(textarea.value, /Intro\n\n<div style="text-align: center;">\n\n\*\*Bold\*\* paragraph\n\n<\/div>\n\nTail/);
+  assert.equal(document.querySelector('div[style*="text-align: center"] p strong')?.textContent, 'Bold');
+  await act(async () => button('右对齐').click());
+  assert.equal((textarea.value.match(/<div/g) || []).length, 1);
+  assert.match(textarea.value, /text-align: right/);
+  await act(async () => button('左对齐').click());
+  assert.match(textarea.value, /text-align: left/);
+  const { api } = require('../src/lib/api.ts');
+  let saved;
+  t.mock.method(api.admin.posts, 'update', async (_id, body) => { saved = body; return {}; });
+  await act(async () => [...document.querySelectorAll('button')].find(b => b.textContent.trim() === '保存').click());
+  assert.equal(saved.content, textarea.value);
+});
+
 test('opening an editor fetches its full content from a summary-only post list', async t => {
   const textarea = await mountEditor(t, '# Full article\n\nDetails omitted from the list.');
   assert.equal(textarea?.value, '# Full article\n\nDetails omitted from the list.');
@@ -119,8 +140,89 @@ test('returning from edit-only mode restores the preview scroll ratio', async t 
   await act(async () => toggle.click());
   textarea.scrollTop = 750;
   await act(async () => toggle.click());
+  await act(async () => new Promise(resolve => requestAnimationFrame(resolve)));
   const preview = document.querySelector('h1#heading').closest('.overflow-y-auto');
   assert.equal(preview.scrollTop, 1250);
+});
+
+test('split scrolling follows source blocks in both directions and recalibrates after a tall image loads', async t => {
+  const frames = new Map();
+  let sequence = 0;
+  t.mock.method(global, 'requestAnimationFrame', callback => { frames.set(++sequence, callback); return sequence; });
+  t.mock.method(global, 'cancelAnimationFrame', id => frames.delete(id));
+  const resizeObservers = [];
+  const OriginalResizeObserver = global.ResizeObserver;
+  global.ResizeObserver = class {
+    constructor(callback) { this.callback = callback; resizeObservers.push(this); }
+    observe() {}
+    disconnect() { this.disconnected = true; }
+  };
+  t.after(() => { global.ResizeObserver = OriginalResizeObserver; });
+  async function flushFrames() {
+    await act(async () => {
+      for (let count = 0; frames.size && count < 10; count++) {
+        const pending = [...frames.values()];
+        frames.clear();
+        for (const callback of pending) callback();
+      }
+    });
+    assert.equal(frames.size, 0, 'scroll synchronization must settle');
+  }
+  const textarea = await mountEditor(t, '# Heading\n\nBefore\n\n![Tall](/tall.png)\n\nAfter\n\nEnd');
+  const preview = document.querySelector('h1#heading').closest('.overflow-y-auto');
+  Object.defineProperties(textarea, { scrollHeight: { value: 1000, configurable: true }, clientHeight: { value: 200, configurable: true } });
+  Object.defineProperties(preview, { scrollHeight: { value: 3000, configurable: true }, clientHeight: { value: 200, configurable: true } });
+  let afterTop = 1400;
+  const rect = (top, height = 20) => ({ top, bottom: top + height, left: 0, right: 400, width: 400, height, x: 0, y: top });
+  t.mock.method(window.HTMLElement.prototype, 'getBoundingClientRect', function () {
+    if (this === preview) return rect(100, 200);
+    if (this.closest('[aria-label="文章预览"]') || this.hasAttribute('data-source-start')) {
+      const top = this.matches('h1') ? 0 : this.textContent === 'Before' ? 70 : this.querySelector('img, [role="img"]') ? 110 : this.textContent === 'After' ? afterTop : afterTop + 100;
+      return rect(100 + top - preview.scrollTop, this.querySelector('img') ? afterTop - 150 : 20);
+    }
+    return rect(0);
+  });
+  const originalRangeRect = window.Range.prototype.getBoundingClientRect;
+  window.Range.prototype.getBoundingClientRect = function () {
+    const y = this.startContainer.textContent.slice(0, this.startOffset).split('\n').length * 20 - 20;
+    return rect(y);
+  };
+  t.after(() => { window.Range.prototype.getBoundingClientRect = originalRangeRect; });
+  await act(async () => {
+    for (const observer of resizeObservers) observer.callback([]);
+  });
+  await flushFrames();
+  textarea.scrollTop = 120; // source line "After", immediately after a tall image
+  await act(async () => textarea.dispatchEvent(new Event('scroll')));
+  await flushFrames();
+  assert.equal(preview.scrollTop, 1400, 'source blocks must override the inaccurate whole-document ratio');
+  // Native programmatic scroll events must not bounce back into the editor.
+  await act(async () => preview.dispatchEvent(new Event('scroll')));
+  await flushFrames();
+  assert.equal(textarea.scrollTop, 120);
+  // The image decodes after the scroll; keep the same source paragraph visible.
+  afterTop = 2000;
+  await act(async () => document.querySelector('img[src="/tall.png"]').dispatchEvent(new Event('load')));
+  await flushFrames();
+  assert.equal(preview.scrollTop, 2000);
+  await act(async () => preview.dispatchEvent(new Event('scroll')));
+  await flushFrames();
+  preview.scrollTop = 2100; // "End" in the preview
+  await act(async () => preview.dispatchEvent(new Event('scroll')));
+  await flushFrames();
+  assert.equal(textarea.scrollTop, 160, 'preview scrolling must find the matching source block');
+  assert.equal(resizeObservers.length > 0, true);
+  afterTop = 800;
+  await act(async () => document.querySelector('img[src="/tall.png"]').dispatchEvent(new Event('error')));
+  await flushFrames();
+  assert.equal(preview.scrollTop, 900, 'a failed image must also recalibrate without moving the source');
+  assert.equal(textarea.scrollTop, 160);
+  assert.equal(Boolean(document.querySelector('[role="img"][aria-label*="加载失败"]')), true);
+  // mountEditor registered its cleanup first; these checks run after unmount.
+  t.after(() => {
+    assert.equal(resizeObservers.every(observer => observer.disconnected), true);
+    assert.equal(frames.size, 0, 'unmount cancels pending synchronization work');
+  });
 });
 
 test('preview clicks still open the image and gallery editors', async t => {
