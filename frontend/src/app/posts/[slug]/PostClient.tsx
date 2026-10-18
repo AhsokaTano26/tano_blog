@@ -256,6 +256,7 @@ export default function PostClient({ slug, initialData, initialError = '', initi
   const [turnstileEnabled, setTurnstileEnabled] = useState(false);
   const [turnstileSitekey, setTurnstileSitekey] = useState('');
   const [turnstileToken, setTurnstileToken] = useState('');
+  const [commentsEnabled, setCommentsEnabled] = useState<boolean | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
 
   const canRead = Boolean(post && !post.password_protected);
@@ -318,14 +319,18 @@ export default function PostClient({ slug, initialData, initialError = '', initi
     }).catch(() => {});
   }, []);
 
-  // Load Turnstile config
+  // Keep existing comments readable while applying the public submission policy.
   useEffect(() => {
+    let active = true;
     api.getPublicConfig().then(res => {
+      if (!active) return;
+      setCommentsEnabled(res.config?.comment_enabled !== 'false');
       if (res.config?.turnstile_enabled === 'true' && res.config?.turnstile_sitekey && (res.config?.turnstile_modules || 'comment,link').split(',').map(s => s.trim()).includes('comment')) {
         setTurnstileEnabled(true);
         setTurnstileSitekey(res.config.turnstile_sitekey);
       }
-    }).catch(() => {});
+    }).catch(() => { if (active) setCommentsEnabled(false); });
+    return () => { active = false; };
   }, []);
 
   const [captchaAttempt, setCaptchaAttempt] = useState(0);
@@ -345,6 +350,10 @@ export default function PostClient({ slug, initialData, initialError = '', initi
 
   async function handleComment(e: React.FormEvent) {
     e.preventDefault();
+    if (commentsEnabled !== true || post?.allow_comment === false) {
+      setCommentError('评论已关闭，已有评论仍可浏览。');
+      return;
+    }
     setCommentError('');
     setCommentSuccess('');
     try {
@@ -865,7 +874,13 @@ export default function PostClient({ slug, initialData, initialError = '', initi
               {commentSuccess}
             </div>
           )}
+          {(commentsEnabled !== true || post.allow_comment === false) && (
+            <p role="status" className="text-sm mb-3" style={{ color: 'var(--text-secondary)' }}>
+              {commentsEnabled === null ? '正在加载评论设置…' : '评论已关闭，已有评论仍可浏览。'}
+            </p>
+          )}
           <form onSubmit={handleComment} className="space-y-3 max-w-lg">
+            <fieldset disabled={commentsEnabled !== true || post.allow_comment === false} className="min-w-0 space-y-3 disabled:opacity-60">
             {/* Honeypot - hidden from humans */}
             <input type="text" name="website_confirm" value={commentForm.hp_field}
               onChange={e => setCommentForm(prev => ({ ...prev, hp_field: e.target.value }))}
@@ -882,11 +897,11 @@ export default function PostClient({ slug, initialData, initialError = '', initi
             <div className="flex gap-3">
               <input type="text" value={commentForm.nickname} onChange={e => setCommentForm({ ...commentForm, nickname: e.target.value })}
                 placeholder="昵称 *" required
-                className="flex-1 px-3 py-2.5 rounded-xl text-sm outline-none glass-card"
+                className="min-w-0 flex-1 px-3 py-2.5 rounded-xl text-sm outline-none glass-card"
                 style={{ color: 'var(--text-primary)' }} />
               <input type="email" value={commentForm.email} onChange={e => setCommentForm({ ...commentForm, email: e.target.value })}
                 placeholder="邮箱（不公开）"
-                className="flex-1 px-3 py-2.5 rounded-xl text-sm outline-none glass-card"
+                className="min-w-0 flex-1 px-3 py-2.5 rounded-xl text-sm outline-none glass-card"
                 style={{ color: 'var(--text-primary)' }} />
             </div>
             <input type="url" value={commentForm.website} onChange={e => setCommentForm({ ...commentForm, website: e.target.value })}
@@ -920,10 +935,12 @@ export default function PostClient({ slug, initialData, initialError = '', initi
               <Turnstile key={captchaAttempt} sitekey={turnstileSitekey} action="turnstile-spin-v2" onToken={setTurnstileToken} />
             )}
             <button type="submit"
+              disabled={commentsEnabled !== true || post.allow_comment === false}
               className="px-6 py-2.5 rounded-xl text-sm font-medium text-white transition-all hover:opacity-90"
               style={{ background: 'var(--primary)', boxShadow: '0 0 16px var(--primary-glow)' }}>
               提交评论
             </button>
+            </fieldset>
           </form>
         </section>
         </ScrollReveal>

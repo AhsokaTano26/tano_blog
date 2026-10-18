@@ -39,6 +39,19 @@ test('editor variant renders fenced highlighted and plain code using real Markdo
   assert.equal(container.querySelector('.article-code-header') === null, true);
 });
 
+test('editor image positions identify each actual image even inside repeated figure sources', () => {
+  const content = '![First](/same.png)\n\n<figure><img src="/same.png" alt="Second" /></figure>';
+  const container = document.createElement('div');
+  container.innerHTML = renderToStaticMarkup(React.createElement(ArticleMarkdown, { content, variant: 'editor' }));
+  const images = [...container.querySelectorAll('img')];
+  assert.equal(images.length, 2);
+  for (const [image, marker] of images.map((image, index) => [image, index ? '<img' : '![First]'])) {
+    assert.equal(image.hasAttribute('data-image-source-start'), true);
+    const start = Number(image.dataset.imageSourceStart), end = Number(image.dataset.imageSourceEnd);
+    assert.equal(content.slice(start, end).startsWith(marker), true);
+  }
+});
+
 test('article rendering preserves rich Markdown while removing unsafe HTML', () => {
   const html = renderToStaticMarkup(React.createElement(ArticleMarkdown, { content: [
     '# A heading',

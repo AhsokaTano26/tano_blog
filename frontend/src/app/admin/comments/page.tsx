@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { api } from '@/lib/api';
 import { MessageSquare, Check, X, Trash2, ExternalLink, User, CheckSquare, Square, Info, Monitor, Smartphone } from 'lucide-react';
 import { Loading } from '@/components/Loading';
@@ -203,6 +203,9 @@ export default function AdminComments() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const loadSequence = useRef(0);
+  const latestLoad = useRef<(() => Promise<void>) | null>(null);
   const [filter, setFilter] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [detailComment, setDetailComment] = useState<any>(null);
@@ -221,47 +224,65 @@ export default function AdminComments() {
   const [pageSize, setPageSize] = useState(20);
 
   async function load() {
+    const sequence = ++loadSequence.current;
     setLoading(true);
+    setLoadError('');
     try {
       if (filter === 'commenter') {
         if (commenterSearchKey === 0) {
           setCommenterResults([]);
           setCommenterTotal(0);
-          setLoading(false);
           return;
         }
-	        const cParams: Record<string, string> = {
-	          page: String(commenterPage),
-	          page_size: String(pageSize),
-	        };
-	        if (commenterEmail) cParams.email = commenterEmail;
-	        if (commenterIP) cParams.ip_address = commenterIP;
-	        const res = await api.admin.comments.list(cParams);
+        const cParams: Record<string, string> = {
+          page: String(commenterPage),
+          page_size: String(pageSize),
+        };
+        if (commenterEmail) cParams.email = commenterEmail;
+        if (commenterIP) cParams.ip_address = commenterIP;
+        const res = await api.admin.comments.list(cParams);
+        if (sequence !== loadSequence.current) return;
         setCommenterResults(res.items);
         setCommenterTotal(res.total);
       } else if (filter === 'blocked') {
         const params: Record<string, string> = { page: String(blockedPage), page_size: String(pageSize) };
         const res = await api.admin.ipBans.list(params);
+        if (sequence !== loadSequence.current) return;
         setBlockedItems(res.items);
         setBlockedTotal(res.total);
       } else {
         const params: Record<string, string> = { page: String(page), page_size: String(pageSize) };
         if (filter) params.status = filter;
         const res = await api.admin.comments.list(params);
+        if (sequence !== loadSequence.current) return;
         setItems(res.items);
         setTotal(res.total);
         setSelected(new Set());
       }
-    } catch (e) { /* empty */ }
-    setLoading(false);
+    } catch (error) {
+      if (sequence === loadSequence.current) setLoadError(error instanceof Error ? error.message : '评论加载失败，请重试');
+    } finally {
+      if (sequence === loadSequence.current) setLoading(false);
+    }
   }
 
-  useEffect(() => { load(); }, [page, pageSize, filter, commenterPage, blockedPage, commenterSearchKey]);
+  useLayoutEffect(() => {
+    latestLoad.current = load;
+    return () => { latestLoad.current = null; };
+  });
+  useEffect(() => {
+    void load();
+    return () => { loadSequence.current++; };
+  }, [page, pageSize, filter, commenterPage, blockedPage, commenterSearchKey]);
+
+  function reloadLatest() {
+    void latestLoad.current?.();
+  }
 
   async function handleStatus(id: string, status: string) {
     try {
       await api.admin.comments.updateStatus(id, status);
-      load();
+      reloadLatest();
     } catch (e) { /* empty */ }
   }
 
@@ -269,7 +290,7 @@ export default function AdminComments() {
     if (!await confirm('确定删除此评论？')) return;
     try {
       await api.admin.comments.delete(id);
-      load();
+      reloadLatest();
     } catch (e) { /* empty */ }
   }
 
@@ -294,7 +315,7 @@ export default function AdminComments() {
     if (selected.size === 0) return;
     try {
       await api.admin.comments.batchUpdateStatus(Array.from(selected), status);
-      load();
+      reloadLatest();
     } catch (e) { /* empty */ }
   }
 
@@ -337,6 +358,8 @@ export default function AdminComments() {
           )}
         </div>
       </div>
+
+      {loadError && <div role="alert" className="mb-4 text-sm" style={{ color: 'var(--color-error)' }}>{loadError}</div>}
 
       {/* Batch actions - only for comment tabs */}
       {isCommentTab && selected.size > 0 && (
@@ -437,7 +460,7 @@ export default function AdminComments() {
                       <button onClick={async () => {
                         try {
                           await api.admin.ipBans.create({ scope: "comment", ip_address: item.ip_address, reason: '管理员封禁' });
-                          load();
+                          reloadLatest();
                         } catch (e) { /* empty */ }
                       }}
                         className="btn-glass px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer flex-shrink-0"
@@ -500,7 +523,7 @@ export default function AdminComments() {
                       <button onClick={async () => {
                         try {
                           await api.admin.ipBans.remove(item.id);
-                          load();
+                          reloadLatest();
                         } catch (e) { /* empty */ }
                       }}
                         className="btn-glass px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer flex-shrink-0"
@@ -638,7 +661,7 @@ export default function AdminComments() {
       )}
 
       {detailComment && (
-        <CommentDetail comment={detailComment} onClose={() => setDetailComment(null)} onReload={load} />
+        <CommentDetail comment={detailComment} onClose={() => setDetailComment(null)} onReload={reloadLatest} />
       )}
     </div>
   );

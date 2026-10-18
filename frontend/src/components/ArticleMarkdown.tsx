@@ -74,8 +74,9 @@ const editorComponents: Components = {
   a: ({ href, children }) => (
     <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary)' }}>{children}</a>
   ),
-  img: ({ style, ...props }) => (
+  img: ({ style, node, ...props }) => (
     <MarkdownImage {...props} data-markdown-src={typeof props.src === 'string' ? props.src : undefined}
+      data-image-source-start={node?.position?.start.offset} data-image-source-end={node?.position?.end.offset}
       style={{ ...style, cursor: 'pointer' }} title="点击编辑" />
   ),
 };

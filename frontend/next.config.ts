@@ -44,6 +44,7 @@ const nextConfig: NextConfig = {
         { source: '/api/:path*', destination: `${API_UPSTREAM}/api/:path*` },
         { source: '/uploads/:path*', destination: `${API_UPSTREAM}/uploads/:path*` },
         { source: '/rss.xml', destination: `${API_UPSTREAM}/rss.xml` },
+        { source: '/robots.txt', destination: `${API_UPSTREAM}/robots.txt` },
         { source: '/sitemap.xml', destination: `${API_UPSTREAM}/sitemap.xml` },
       ],
     };

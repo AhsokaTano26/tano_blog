@@ -51,6 +51,8 @@ const DEFAULT_IMAGE_ATTRS: ImageAttrs = {
   linkUrl: '',
 };
 
+type SavedPostResponse = { post?: { id?: string; status?: string; created_at?: string; password_set?: boolean } };
+
 const WIDTH_PRESETS = [
   { label: '小', value: '50%' },
   { label: '中', value: '75%' },
@@ -216,6 +218,13 @@ function ImageEditDialog({ attrs, onSave, onClose }: {
 /* ── Full-page post editor ── */
 export default function PostEditor({ post, onClose }: { post: any; onClose: () => void }) {
   const { confirm } = useConfirm();
+  const [savedPostId, setSavedPostId] = useState<string | undefined>(post?.id);
+  const savedPostIdRef = useRef<string | undefined>(post?.id);
+  const createSucceededRef = useRef(false);
+  const savingRef = useRef(false);
+  const editVersionRef = useRef(0);
+  const statusEditVersionRef = useRef(0);
+  const passwordRef = useRef('');
   const [title, setTitle] = useState(post?.title || '');
   const [slug, setSlug] = useState(post?.slug || '');
   const [content, setContent] = useState<string>(post?.content || '');
@@ -238,9 +247,12 @@ export default function PostEditor({ post, onClose }: { post: any; onClose: () =
   const [scheduledAt, setScheduledAt] = useState(toDateTimeLocal(post?.scheduled_at));
   const [password, setPassword] = useState('');
   const [passwordHint, setPasswordHint] = useState(post?.password_hint || '');
-  const initialCreatedAt = toDateTimeLocal(post?.created_at);
-  const [createdAt, setCreatedAt] = useState(initialCreatedAt);
-  const serverPasswordSet = Boolean(post?.password_set);
+  const [serverMetadata, setServerMetadata] = useState(() => ({
+    passwordSet: Boolean(post?.password_set), createdAt: toDateTimeLocal(post?.created_at),
+  }));
+  const serverMetadataRef = useRef(serverMetadata);
+  const [createdAt, setCreatedAt] = useState(serverMetadata.createdAt);
+  const serverPasswordSet = serverMetadata.passwordSet;
   const [passwordCleared, setPasswordCleared] = useState(false);
   const [passwordNeedsReentry, setPasswordNeedsReentry] = useState(false);
   const passwordSet = serverPasswordSet && !passwordCleared;
@@ -271,8 +283,12 @@ export default function PostEditor({ post, onClose }: { post: any; onClose: () =
   }, [content]);
   const previewScrollRef = useRef<HTMLDivElement>(null);
   const previewContentRef = useRef<HTMLDivElement>(null);
-  const [imageDialog, setImageDialog] = useState<{ attrs: ImageAttrs; range?: { start: number; end: number } } | null>(null);
+  const [imageDialog, setImageDialog] = useState<{ attrs: ImageAttrs; range?: { start: number; end: number; contentSnapshot: string } } | null>(null);
   const [galleryDialog, setGalleryDialog] = useState<{ attrs: GalleryAttrs; range?: { start: number; end: number } } | null>(null);
+  const openDialogRef = useRef(false);
+  useLayoutEffect(() => {
+    openDialogRef.current = showDetailDialog || imageDialog !== null || galleryDialog !== null || mediaPickerType !== null;
+  }, [showDetailDialog, imageDialog, galleryDialog, mediaPickerType]);
 
   useEditorScrollSync({ editorRef: textareaRef, previewRef: previewScrollRef,
     contentRef: previewContentRef, content: deferredContent, enabled: viewMode === 'split' });
@@ -309,6 +325,14 @@ export default function PostEditor({ post, onClose }: { post: any; onClose: () =
     setSlug(newSlug);
   }
 
+  function changeStatus(value: string) {
+    // Saving settings can explicitly choose Draft while an older Publish is
+    // pending, even if Draft was already the local value before that request.
+    statusEditVersionRef.current++;
+    editVersionRef.current++;
+    setStatus(value);
+  }
+
   useEffect(() => {
     api.getCategories().then(res => setCategories(res.items)).catch(() => {});
     api.getTags().then(res => setTags(res.items)).catch(() => {});
@@ -316,7 +340,7 @@ export default function PostEditor({ post, onClose }: { post: any; onClose: () =
   }, []);
 
   // Auto-save key
-  const autosaveKey = post?.id ? `post_autosave_${post.id}` : 'post_autosave_new';
+  const autosaveKey = savedPostId ? `post_autosave_${savedPostId}` : 'post_autosave_new';
 
   // Check for saved draft on mount
   useEffect(() => {
@@ -334,10 +358,12 @@ export default function PostEditor({ post, onClose }: { post: any; onClose: () =
 
   // The interval remains stable while its ref tracks the latest committed edits.
   const draftRef = useRef<Record<string, any>>({});
-  useEffect(() => {
+  useLayoutEffect(() => {
+    passwordRef.current = password;
     draftRef.current = { title, slug, content, excerpt, excerptMode, coverImage, categoryId, tagIds, status, isTop,
       allowComment, authorName, selectedSeriesId, scheduledAt, createdAt, passwordHint, passwordCleared,
       passwordNeedsReentry: Boolean(password) || passwordNeedsReentry };
+    editVersionRef.current++;
   }, [title, slug, content, excerpt, excerptMode, coverImage, categoryId, tagIds, status, isTop, allowComment,
     authorName, selectedSeriesId, scheduledAt, createdAt, passwordHint, password, passwordCleared, passwordNeedsReentry]);
   useEffect(() => {
@@ -355,7 +381,7 @@ export default function PostEditor({ post, onClose }: { post: any; onClose: () =
       const saved = JSON.parse(localStorage.getItem(autosaveKey) || '{}');
       const setters: Record<string, (value: any) => void> = { title: setTitle, slug: setSlug, content: setContent,
         excerpt: setExcerpt, excerptMode: setExcerptMode, coverImage: setCoverImage, categoryId: setCategoryId,
-        tagIds: setTagIds, status: setStatus, isTop: setIsTop, allowComment: setAllowComment, authorName: setAuthorName,
+        tagIds: setTagIds, status: changeStatus, isTop: setIsTop, allowComment: setAllowComment, authorName: setAuthorName,
         selectedSeriesId: setSelectedSeriesId, scheduledAt: setScheduledAt, createdAt: setCreatedAt,
         passwordHint: setPasswordHint };
       for (const [key, setter] of Object.entries(setters)) {
@@ -379,14 +405,14 @@ export default function PostEditor({ post, onClose }: { post: any; onClose: () =
   }
 
   function loadRevisions() {
-    if (!post?.id) return;
-    api.admin.posts.revisions.list(post.id).then(res => setRevisions(res.items)).catch(() => {});
+    if (!savedPostId) return;
+    api.admin.posts.revisions.list(savedPostId).then(res => setRevisions(res.items)).catch(() => {});
   }
 
   async function handleRestoreRevision(revId: string) {
-    if (!post?.id || !await confirm('确定要恢复到此版本？当前内容将被保存为新版本。')) return;
+    if (!savedPostId || !await confirm('确定要恢复到此版本？当前内容将被保存为新版本。')) return;
     try {
-      const res = await api.admin.posts.revisions.restore(post.id, revId);
+      const res = await api.admin.posts.revisions.restore(savedPostId, revId);
       setTitle(res.post.title);
       setContent(res.post.content);
       setExcerpt(res.post.excerpt || '');
@@ -397,6 +423,11 @@ export default function PostEditor({ post, onClose }: { post: any; onClose: () =
   }
 
   async function handleSave(publishStatus?: string) {
+    if (savingRef.current) return;
+    if (createSucceededRef.current && !savedPostIdRef.current) {
+      setError('文章已保存，但响应缺少文章标识。请返回列表重新打开文章后继续保存。');
+      return;
+    }
     if (passwordNeedsReentry && !password) {
       setError('请重新输入访问密码后再保存或发布文章。');
       setShowDetailDialog(true);
@@ -414,6 +445,9 @@ export default function PostEditor({ post, onClose }: { post: any; onClose: () =
       setError('Slug 为必填项');
       return;
     }
+    savingRef.current = true;
+    const savedVersion = editVersionRef.current;
+    const savedStatusVersion = statusEditVersionRef.current;
     setSaving(true);
     setError('');
     try {
@@ -426,14 +460,14 @@ export default function PostEditor({ post, onClose }: { post: any; onClose: () =
         allow_comment: allowComment,
       };
       data.author_name = authorName;
-      if (post?.id && createdAt && createdAt !== initialCreatedAt) {
+      if (savedPostIdRef.current && createdAt && createdAt !== serverMetadataRef.current.createdAt) {
         const timestamp = new Date(createdAt);
         if (!Number.isNaN(timestamp.getTime())) data.created_at = timestamp.toISOString();
       }
       if (password) {
         data.password = password;
         data.password_hint = passwordHint;
-      } else if (passwordCleared && serverPasswordSet) {
+      } else if (passwordCleared && serverMetadataRef.current.passwordSet) {
         data.password = '';
         data.password_hint = '';
       }
@@ -443,16 +477,61 @@ export default function PostEditor({ post, onClose }: { post: any; onClose: () =
       data.password_hint = passwordHint;
       data.scheduled_at = scheduledTimestamp(scheduledAt, publishStatus || status);
 
-      if (post?.id) {
-        await api.admin.posts.update(post.id, data);
+      let response: SavedPostResponse | undefined;
+      if (savedPostIdRef.current) {
+        response = await api.admin.posts.update(savedPostIdRef.current, data) as SavedPostResponse | undefined;
       } else {
-        await api.admin.posts.create(data);
+        response = await api.admin.posts.create(data) as SavedPostResponse | undefined;
+        createSucceededRef.current = true;
+        const id = response?.post?.id;
+        if (typeof id !== 'string' || !id) throw new Error('文章已保存，但响应缺少文章标识。请返回列表重新打开文章后继续保存。');
+        savedPostIdRef.current = id;
+        setSavedPostId(id);
       }
-      localStorage.removeItem(autosaveKey);
-      onClose();
+      const hasNewerEdits = editVersionRef.current !== savedVersion;
+      const draft = { ...draftRef.current };
+      const metadata = {
+        passwordSet: typeof response?.post?.password_set === 'boolean' ? response.post.password_set :
+          typeof data.password === 'string' ? Boolean(data.password) : serverMetadataRef.current.passwordSet,
+        createdAt: toDateTimeLocal(response?.post?.created_at) ||
+          toDateTimeLocal(data.created_at) || serverMetadataRef.current.createdAt,
+      };
+      serverMetadataRef.current = metadata;
+      setServerMetadata(metadata);
+      if (draft.createdAt === createdAt && metadata.createdAt) {
+        draft.createdAt = metadata.createdAt;
+        setCreatedAt(metadata.createdAt);
+      }
+      if (typeof data.password === 'string' && passwordRef.current === password && draft.passwordCleared === passwordCleared) {
+        // Acknowledged credentials belong to the server baseline. Do not clear
+        // a newer local password or removal entered during the request.
+        setPassword('');
+        setPasswordCleared(false);
+        setPasswordNeedsReentry(false);
+        draft.passwordCleared = false;
+        draft.passwordNeedsReentry = false;
+      }
+      if (statusEditVersionRef.current === savedStatusVersion) {
+        const savedStatus = response?.post?.status;
+        draft.status = savedStatus === 'draft' || savedStatus === 'published' ? savedStatus : data.status;
+        setStatus(draft.status);
+      }
+      if (!hasNewerEdits && !openDialogRef.current) {
+        localStorage.removeItem(autosaveKey);
+        onClose();
+      } else {
+        // Persist newer edits immediately, migrating a new article's draft only
+        // after its create response has supplied the stable server identity.
+        try {
+          const currentKey = `post_autosave_${savedPostIdRef.current}`;
+          localStorage.setItem(currentKey, JSON.stringify({ ...draft, savedAt: Date.now() }));
+          if (currentKey !== autosaveKey) localStorage.removeItem(autosaveKey);
+        } catch {}
+      }
     } catch (err: any) {
       setError(err.message || '保存失败');
     }
+    savingRef.current = false;
     setSaving(false);
   }
 
@@ -571,13 +650,23 @@ export default function PostEditor({ post, onClose }: { post: any; onClose: () =
     void uploadEditorFiles(files);
   }
 
-  function handleEditImage(srcUrl: string, altText: string) {
-    const found = findImageInContent(content, srcUrl);
+  function handleEditImage(image: HTMLImageElement) {
+    if (content !== deferredContent) {
+      setError('图片预览正在更新，请稍后重新点击图片。');
+      return;
+    }
+    const srcUrl = image.dataset.markdownSrc || image.getAttribute('src') || '';
+    const start = Number(image.dataset.imageSourceStart), end = Number(image.dataset.imageSourceEnd);
+    if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end <= start) {
+      setError('无法定位图片源内容，请等待预览更新后重新点击图片。');
+      return;
+    }
+    const found = findImageInContent(content, srcUrl, { start, end });
     if (found) {
-      const merged: ImageAttrs = { ...DEFAULT_IMAGE_ATTRS, ...found.attrs, url: found.attrs.url || srcUrl, alt: found.attrs.alt ?? altText };
-      setImageDialog({ attrs: merged, range: { start: found.start, end: found.end } });
+      const merged: ImageAttrs = { ...DEFAULT_IMAGE_ATTRS, ...found.attrs, url: found.attrs.url || srcUrl, alt: found.attrs.alt ?? image.alt };
+      setImageDialog({ attrs: merged, range: { start: found.start, end: found.end, contentSnapshot: content } });
     } else {
-      setImageDialog({ attrs: { ...DEFAULT_IMAGE_ATTRS, url: srcUrl, alt: altText } });
+      setError('图片源内容已变化，请等待预览更新后重新点击图片。');
     }
   }
 
@@ -737,14 +826,14 @@ export default function PostEditor({ post, onClose }: { post: any; onClose: () =
           </button>
           <div className="h-5 w-px" style={{ background: 'var(--glass-border)' }} />
           <span className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
-            {post?.id ? '编辑文章' : '新建文章'}
+            {savedPostId ? '编辑文章' : '新建文章'}
           </span>
         </div>
         <div className="flex items-center gap-2">
-          {post?.id && status === 'draft' && (
+          {savedPostId && status === 'draft' && (
             <button onClick={async () => {
               try {
-                const res = await api.admin.posts.generatePreviewToken(post.id);
+                const res = await api.admin.posts.generatePreviewToken(savedPostId);
                 const url = `${window.location.origin}/posts/preview?token=${res.token}`;
                 await navigator.clipboard.writeText(url);
                 alert('预览链接已复制到剪贴板');
@@ -943,7 +1032,7 @@ export default function PostEditor({ post, onClose }: { post: any; onClose: () =
               event.preventDefault();
               event.stopPropagation();
               if (target.closest('.editor-image-gallery')) handleEditGallery(target);
-              else handleEditImage(target.dataset.markdownSrc || target.getAttribute('src') || '', target.alt);
+              else handleEditImage(target);
             }}>
             <div ref={previewContentRef} className="max-w-5xl mx-auto py-8 px-6">
               <div className="prose prose-sm max-w-none" style={{ color: 'var(--text-primary)' }}>
@@ -972,7 +1061,7 @@ export default function PostEditor({ post, onClose }: { post: any; onClose: () =
                 详情
                 {rightTab === 'details' && <div className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full" style={{ background: 'var(--primary)' }} />}
               </button>
-              {post?.id && (
+              {savedPostId && (
                 <button onClick={() => { setRightTab('history'); loadRevisions(); }}
                   className="flex-1 px-4 py-2.5 text-sm font-medium transition-colors relative"
                   style={{ color: rightTab === 'history' ? 'var(--primary)' : 'var(--text-info)' }}>
@@ -1008,7 +1097,7 @@ export default function PostEditor({ post, onClose }: { post: any; onClose: () =
                     <p className="text-xs font-medium mb-1" style={{ color: 'var(--text-info)' }}>词数量</p>
                     <p className="text-sm" style={{ color: 'var(--text-primary)' }}>{content.trim() ? content.trim().split(/\s+/).length.toLocaleString() : 0}</p>
                   </div>
-                  {post?.created_at && (
+                  {serverMetadata.createdAt && (
                     <div>
                       <p className="text-xs font-medium mb-1" style={{ color: 'var(--text-info)' }}>创建时间</p>
                       <input
@@ -1043,7 +1132,7 @@ export default function PostEditor({ post, onClose }: { post: any; onClose: () =
                       </a>
                     </div>
                   )}
-                  {!post?.id && (
+                  {!savedPostId && (
                     <p className="text-sm" style={{ color: 'var(--text-info)' }}>保存后可见更多详情</p>
                   )}
                 </div>
@@ -1077,7 +1166,7 @@ export default function PostEditor({ post, onClose }: { post: any; onClose: () =
 
       {showDetailDialog && (
         <PostDetailDialog
-          post={{ ...post, title, content, author_name: authorName, status, is_top: isTop, allow_comment: allowComment,
+          post={{ ...post, id: savedPostId, title, content, author_name: authorName, status, is_top: isTop, allow_comment: allowComment,
             category_id: categoryId, series_id: selectedSeriesId, tags: tagIds.map(id => ({ id })), cover_image: coverImage,
             excerpt, excerpt_mode: excerptMode, scheduled_at: scheduledAt, password, password_set: passwordSet, password_hint: passwordHint }}
           passwordNeedsReentry={passwordNeedsReentry}
@@ -1087,7 +1176,7 @@ export default function PostEditor({ post, onClose }: { post: any; onClose: () =
           onSave={async (data, mode) => {
             setExcerptMode(mode);
             if (data.author_name !== undefined) setAuthorName(data.author_name);
-            if (data.status !== undefined) setStatus(data.status);
+            if (data.status !== undefined) changeStatus(data.status);
             if (data.is_top !== undefined) setIsTop(data.is_top);
             if (data.allow_comment !== undefined) setAllowComment(data.allow_comment);
             if (data.category_id !== undefined) setCategoryId(data.category_id);
@@ -1098,7 +1187,7 @@ export default function PostEditor({ post, onClose }: { post: any; onClose: () =
             if (data.scheduled_at !== undefined) setScheduledAt(toDateTimeLocal(data.scheduled_at));
             if ('password' in data) {
               setPassword(data.password);
-              setPasswordCleared(data.password === '' && serverPasswordSet);
+              setPasswordCleared(data.password === '');
               setPasswordNeedsReentry(false);
               setPasswordHint(data.password_hint || '');
               setError('');
@@ -1115,6 +1204,10 @@ export default function PostEditor({ post, onClose }: { post: any; onClose: () =
           onSave={(newAttrs) => {
             const html = generateImageHtml(newAttrs);
             if (imageDialog.range) {
+              if (content !== imageDialog.range.contentSnapshot) {
+                setError('图片源内容已变化，请关闭对话框并重新点击图片。');
+                return;
+              }
               const newContent = content.substring(0, imageDialog.range.start) + '\n' + html + '\n' + content.substring(imageDialog.range.end);
               setContent(newContent);
             } else {

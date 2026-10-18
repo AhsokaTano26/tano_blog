@@ -1,40 +1,36 @@
+import { htmlSourceTags, markdownSource, sourceRange, type SourceRange } from './editor-markdown-source';
+
 export type TextAlignment = 'left' | 'center' | 'right';
 
-type AlignedBlock = { start: number; end: number; openingEnd: number; opening: string; align: TextAlignment };
-
-function fencedRanges(content: string) {
-  const ranges: { start: number; end: number }[] = [];
-  let opening: { start: number; marker: string } | null = null;
-  for (const match of content.matchAll(/[^\n]*(?:\n|$)/g)) {
-    const fence = match[0].match(/^ {0,3}(`{3,}|~{3,})(.*)/);
-    if (!fence) continue;
-    if (!opening) opening = { start: match.index, marker: fence[1] };
-    else if (fence[1][0] === opening.marker[0] && fence[1].length >= opening.marker.length && !fence[2].trim()) {
-      ranges.push({ start: opening.start, end: match.index + match[0].length });
-      opening = null;
-    }
-  }
-  if (opening) ranges.push({ start: opening.start, end: content.length });
-  return ranges;
-}
+type AlignedBlock = { start: number; end: number; openingEnd: number; opening: string; align: TextAlignment; styleRange: SourceRange };
+let latestAlignment: { content: string; blocks: AlignedBlock[] } | undefined;
 
 function alignedBlocks(content: string): AlignedBlock[] {
-  const stack: { start: number; openingEnd: number; opening: string; align?: TextAlignment }[] = [];
+  if (latestAlignment?.content === content) return latestAlignment.blocks;
+  if (!/<div\b/i.test(content)) {
+    latestAlignment = { content, blocks: [] };
+    return latestAlignment.blocks;
+  }
+  const stack: { start: number; openingEnd: number; opening: string; align?: TextAlignment; styleRange?: SourceRange }[] = [];
   const blocks: AlignedBlock[] = [];
-  const code = fencedRanges(content);
-  let codeIndex = 0;
   // The editor emits block HTML with blank lines so Markdown inside stays live.
-  for (const match of content.matchAll(/<\/?div\b[^>]*>/gi)) {
-    while (codeIndex < code.length && code[codeIndex].end <= match.index) codeIndex++;
-    if (code[codeIndex]?.start <= match.index) continue;
-    if (/^<\//.test(match[0])) {
+  let literalTag: string | null = null;
+  for (const tag of htmlSourceTags(content)) {
+    if (literalTag) {
+      if (tag.closing && tag.name === literalTag) literalTag = null;
+      continue;
+    }
+    if (['pre', 'code', 'script', 'style', 'textarea'].includes(tag.name) && !tag.closing) { literalTag = tag.name; continue; }
+    if (tag.name !== 'div') continue;
+    if (tag.closing) {
       const opening = stack.pop();
-      if (opening?.align) blocks.push({ ...opening, align: opening.align, end: match.index + match[0].length });
+      if (opening?.align && opening.styleRange) blocks.push({ ...opening, align: opening.align, styleRange: opening.styleRange, end: tag.end });
     } else {
-      const align = match[0].match(/\bstyle=["'][^"']*\btext-align:\s*(left|center|right)\b/i)?.[1].toLowerCase() as TextAlignment | undefined;
-      stack.push({ start: match.index, openingEnd: match.index + match[0].length, opening: match[0], align });
+      const align = tag.attrs.style?.match(/\btext-align:\s*(left|center|right)\b/i)?.[1].toLowerCase() as TextAlignment | undefined;
+      stack.push({ start: tag.start, openingEnd: tag.end, opening: tag.value, align, styleRange: tag.attributeRanges.style });
     }
   }
+  latestAlignment = { content, blocks };
   return blocks;
 }
 
@@ -44,7 +40,11 @@ export function selectionAlignment(content: string, start: number, end = start):
 
 function rewriteAlignments(content: string, blocks: AlignedBlock[], align: TextAlignment) {
   const updates = blocks.filter(block => block.align !== align)
-    .map(block => ({ ...block, replacement: block.opening.replace(/(text-align:\s*)(left|center|right)/i, `$1${align}`) }))
+    .map(block => {
+      const from = block.styleRange.start - block.start, to = block.styleRange.end - block.start;
+      const style = block.opening.slice(from, to).replace(/(text-align:\s*)(left|center|right)\b/gi, `$1${align}`);
+      return { ...block, replacement: block.opening.slice(0, from) + style + block.opening.slice(to) };
+    })
     .sort((a, b) => a.start - b.start);
   let result = content;
   for (const block of [...updates].reverse()) {
@@ -67,24 +67,12 @@ export function alignSelection(content: string, start: number, end: number, alig
     };
   }
 
-  // Never split a paragraph, fenced code block, or HTML block at the caret.
-  const blocks: { start: number; end: number }[] = [];
-  let blockStart = 0;
-  const code = fencedRanges(content);
-  let codeIndex = 0;
-  let divDepth = 0;
-  for (const match of content.matchAll(/[^\n]*(?:\n|$)/g)) {
-    const line = match[0];
-    if (!line) continue;
-    while (codeIndex < code.length && code[codeIndex].end <= match.index) codeIndex++;
-    const inCode = code[codeIndex]?.start <= match.index;
-    if (!inCode) divDepth += [...line.matchAll(/<div\b/gi)].length - [...line.matchAll(/<\/div\s*>/gi)].length;
-    if (!line.trim() && !inCode && divDepth <= 0) {
-      if (match.index > blockStart) blocks.push({ start: blockStart, end: match.index - 1 });
-      blockStart = match.index + line.length;
-    }
-  }
-  if (blockStart < content.length) blocks.push({ start: blockStart, end: content.length });
+  // The parser's complete block ranges preserve headings, lists and both code
+  // forms without treating HTML-looking text inside literals as containers.
+  const blocks = markdownSource(content).children.flatMap(node => {
+    const range = sourceRange(node);
+    return range ? [range] : [];
+  });
   let from = blocks.find(block => block.start <= start && start <= block.end)?.start ?? start;
   let to = blocks.find(block => block.start <= Math.max(start, end - 1) && Math.max(start, end - 1) <= block.end)?.end ?? end;
   // A selection crossing an existing alignment includes that whole wrapper.
