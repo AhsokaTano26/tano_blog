@@ -3,6 +3,7 @@ package handler
 import (
 	"archive/zip"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 	"tano_blog/backend/internal/model"
 )
 
@@ -22,6 +24,61 @@ const restoreTransactionKey = "internal_restore_transaction"
 type restoreJournal struct {
 	ID         string `json:"id"`
 	HadUploads bool   `json:"had_uploads"`
+}
+
+// Both restore and clear-all publish the staged tree before committing its
+// database marker. Recovery uses that marker to select the authoritative tree,
+// even when the connection disappears during Commit.
+func (h *BackupHandler) commitRestoreTransaction(ctx context.Context, tx *gorm.DB, staged bool) error {
+	if err := h.beginRestoreCommit(ctx); err != nil {
+		return err
+	}
+	// The transaction was begun without cancellation. Detach final statements
+	// too so a disconnect cannot abandon the file switch after it starts.
+	tx = tx.WithContext(context.WithoutCancel(ctx))
+	rollbackFiles := func(cause error) error {
+		rollbackErr := tx.Rollback().Error
+		if errors.Is(rollbackErr, sql.ErrTxDone) {
+			rollbackErr = nil
+		}
+		return errors.Join(cause, rollbackErr, h.RecoverInterruptedRestore())
+	}
+	if staged {
+		journal, err := h.prepareRestoreJournal()
+		if err != nil {
+			return rollbackFiles(err)
+		}
+		// Clear-all preserves site_configs, including a marker from an earlier
+		// operation. Updating it stays in the same transaction as the content.
+		if err = tx.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "key"}},
+			DoUpdates: clause.AssignmentColumns([]string{"value", "updated_at"}),
+		}).Create(&model.SiteConfig{Key: restoreTransactionKey, Value: journal.ID, Type: "string"}).Error; err != nil {
+			return rollbackFiles(err)
+		}
+		if journal.HadUploads {
+			err = os.Rename(h.uploadDir, h.uploadDir+".restore-old")
+		}
+		if err == nil {
+			err = os.Rename(h.uploadDir+".restore-stage", h.uploadDir)
+		}
+		if err == nil {
+			err = syncRestoreDirectory(filepath.Dir(h.uploadDir))
+		}
+		if err != nil {
+			return rollbackFiles(err)
+		}
+	}
+	commitErr := tx.Commit().Error
+	if staged {
+		if err := h.RecoverInterruptedRestore(); err != nil {
+			return fmt.Errorf("恢复提交状态待恢复: %w", errors.Join(commitErr, err))
+		}
+	}
+	if commitErr != nil {
+		return fmt.Errorf("提交事务失败: %w", commitErr)
+	}
+	return nil
 }
 
 // A local journal survives process termination. Its ID is committed in the same
@@ -46,8 +103,20 @@ func (h *BackupHandler) RecoverInterruptedRestoreContext(ctx context.Context) er
 	var cfg model.SiteConfig
 	recoveryCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	err = h.db.WithContext(recoveryCtx).Where("key = ?", restoreTransactionKey).First(&cfg).Error
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+	err = h.db.WithContext(recoveryCtx).Transaction(func(tx *gorm.DB) error {
+		// An uncertain Commit can still be in flight on the server. A plain
+		// MVCC read could see the preceding marker and incorrectly restore old
+		// files. Wait for marker INSERT/UPDATE locks to resolve before reading.
+		if err := tx.Exec("LOCK TABLE site_configs IN SHARE MODE").Error; err != nil {
+			return err
+		}
+		err := tx.Where("key = ?", restoreTransactionKey).First(&cfg).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil
+		}
+		return err
+	}, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+	if err != nil {
 		return err
 	}
 	current, old, stage := h.uploadDir, h.uploadDir+".restore-old", h.uploadDir+".restore-stage"

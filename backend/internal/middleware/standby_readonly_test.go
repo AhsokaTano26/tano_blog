@@ -117,3 +117,19 @@ func TestWriteFailsClosedWhenStandbyRoleCannotBeRead(t *testing.T) {
 		t.Fatalf("role read failure admitted write: status=%d wrote=%v released=%v", w.Code, wrote, released)
 	}
 }
+
+func TestClearAllBypassesSharedLeaseForItsExclusiveGate(t *testing.T) {
+	db := testutil.Database(t, &model.SiteConfig{})
+	sharedLease := false
+	router := gin.New()
+	router.Use(StandbyReadOnly(repository.NewSiteConfigRepo(db), nil, func(context.Context) (func(), error) {
+		sharedLease = true
+		return nil, context.Canceled
+	}))
+	router.POST("/api/v1/admin/restore/clear-all", func(c *gin.Context) { c.Status(http.StatusNoContent) })
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/v1/admin/restore/clear-all", nil))
+	if w.Code != http.StatusNoContent || sharedLease {
+		t.Fatalf("clear-all acquired shared lease before its exclusive gate: status=%d shared=%v", w.Code, sharedLease)
+	}
+}

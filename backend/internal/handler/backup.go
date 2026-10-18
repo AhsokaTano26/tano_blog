@@ -787,47 +787,7 @@ func (h *BackupHandler) restoreFromZipContext(ctx context.Context, zr *zip.Reade
 			return err
 		}
 	}
-	if err = h.beginRestoreCommit(ctx); err != nil {
-		return err
-	}
-	// The boundary is irreversible from the client's perspective. The SQL
-	// transaction itself was begun without cancellation; detach final statements
-	// too, while every earlier validation/query remains request-cancellable.
-	tx = tx.WithContext(context.WithoutCancel(ctx))
-	if staged {
-		journal, err := h.prepareRestoreJournal()
-		if err != nil {
-			return err
-		}
-		if err = tx.Create(&model.SiteConfig{Key: restoreTransactionKey, Value: journal.ID, Type: "string"}).Error; err != nil {
-			tx.Rollback()
-			return errors.Join(err, h.RecoverInterruptedRestore())
-		}
-		if journal.HadUploads {
-			err = os.Rename(h.uploadDir, h.uploadDir+".restore-old")
-		}
-		if err == nil {
-			err = os.Rename(h.uploadDir+".restore-stage", h.uploadDir)
-		}
-		if err == nil {
-			err = syncRestoreDirectory(filepath.Dir(h.uploadDir))
-		}
-		if err != nil {
-			tx.Rollback()
-			return errors.Join(err, h.RecoverInterruptedRestore())
-		}
-	}
-	commitErr := tx.Commit().Error
-	if staged {
-		// Resolve by the database marker even when Commit returned a transport error.
-		if err := h.RecoverInterruptedRestore(); err != nil {
-			return fmt.Errorf("恢复提交状态待恢复: %w", errors.Join(commitErr, err))
-		}
-	}
-	if commitErr != nil {
-		return fmt.Errorf("提交事务失败: %w", commitErr)
-	}
-	return nil
+	return h.commitRestoreTransaction(ctx, tx, staged)
 }
 
 // Re-read the validated table spool to apply self-references in bounded batches.
@@ -1326,7 +1286,7 @@ var clearSkipTables = map[string]bool{
 	"users": true, "site_configs": true,
 }
 
-// ClearAllData truncates content tables and removes uploaded files.
+// ClearAllData clears content and uploads under the exclusive restore gate.
 // Users and site configs are preserved.
 func (h *BackupHandler) ClearAllData(c *gin.Context) {
 	var input struct {
@@ -1337,41 +1297,23 @@ func (h *BackupHandler) ClearAllData(c *gin.Context) {
 		return
 	}
 
-	tx := h.db.Begin()
-	if tx.Error != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "无法开始清空操作"})
+	ctx, finish, ok := h.routeOperation(c, "clear")
+	if !ok {
 		return
 	}
-	for _, t := range truncateOrder {
-		if clearSkipTables[t] {
-			continue
+	defer finish()
+	if err := h.clearAllDataContext(ctx); err != nil {
+		switch {
+		case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+			c.JSON(http.StatusRequestTimeout, gin.H{"error": "清空操作已取消"})
+		case errors.Is(err, errRestoreStandby):
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "备服务器为只读模式，请在主服务器执行清空操作"})
+		default:
+			utils.LogError("清空数据失败", "error", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "清空操作失败，请检查恢复状态后重试"})
 		}
-		if err := tx.Exec(fmt.Sprintf("TRUNCATE TABLE %s CASCADE", t)).Error; err != nil {
-			tx.Rollback()
-			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("清空表 %s 失败: %v", t, err)})
-			return
-		}
-	}
-	if err := tx.Commit().Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "提交清空操作失败"})
 		return
 	}
-
-	// Also clear uploaded files
-	uploadDir := h.uploadDir
-	if !filepath.IsAbs(uploadDir) {
-		absDir, _ := filepath.Abs(uploadDir)
-		uploadDir = absDir
-	}
-	if entries, err := os.ReadDir(uploadDir); err == nil {
-		for _, entry := range entries {
-			if entry.Name() == ".sync-snapshots" {
-				continue
-			}
-			os.RemoveAll(filepath.Join(uploadDir, entry.Name()))
-		}
-	}
-
 	c.JSON(http.StatusOK, gin.H{"message": "全站数据已清空"})
 }
 

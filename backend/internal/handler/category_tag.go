@@ -10,6 +10,7 @@ import (
 	"gorm.io/gorm"
 
 	"tano_blog/backend/internal/model"
+	"tano_blog/backend/internal/repository"
 )
 
 type CategoryHandler struct {
@@ -326,7 +327,7 @@ func (h *TagHandler) Delete(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
 		return
 	}
-	if err := h.db.Delete(&model.Tag{}, id).Error; err != nil {
+	if err := repository.NewTagRepo(h.db).Delete(id); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "删除失败"})
 		return
 	}

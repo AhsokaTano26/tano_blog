@@ -28,8 +28,8 @@ func StandbyReadOnly(configRepo *repository.SiteConfigRepo, acquireWriteLease fu
 		allowOnStandby := path == "/api/v1/auth/login" || path == "/api/v1/auth/login/totp" ||
 			path == "/api/v1/auth/passkey/login/options" || path == "/api/v1/auth/passkey/login/verify" || path == "/api/v1/admin/config"
 
-		// Restore and backup acquire their own exclusive cancellable gate.
-		exclusive := c.Request.Method == http.MethodPost && (path == "/api/v1/admin/backups" || path == "/api/v1/admin/restore/upload" || path == "/api/v1/admin/restore/url" || path == "/api/v1/admin/restore/local")
+		// Restore, clear-all and backup acquire their own exclusive cancellable gate.
+		exclusive := c.Request.Method == http.MethodPost && (path == "/api/v1/admin/backups" || path == "/api/v1/admin/restore/upload" || path == "/api/v1/admin/restore/url" || path == "/api/v1/admin/restore/local" || path == "/api/v1/admin/restore/clear-all")
 		if !exclusive {
 			if len(acquireWithContext) > 0 && acquireWithContext[0] != nil {
 				release, err := acquireWithContext[0](c.Request.Context())

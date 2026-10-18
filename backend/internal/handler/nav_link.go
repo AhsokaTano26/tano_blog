@@ -1,11 +1,13 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 	"tano_blog/backend/internal/model"
 )
 
@@ -134,19 +136,50 @@ func (h *NavLinkHandler) AdminDelete(c *gin.Context) {
 func (h *NavLinkHandler) AdminReorder(c *gin.Context) {
 	h = h.withContext(c.Request.Context())
 	var input struct {
-		IDs []string `json:"ids" binding:"required"`
+		IDs []string `json:"ids" binding:"required,min=1"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
 		return
 	}
 
+	ids := make([]uuid.UUID, len(input.IDs))
+	seen := make(map[uuid.UUID]bool, len(ids))
 	for i, idStr := range input.IDs {
 		id, err := uuid.Parse(idStr)
-		if err != nil {
-			continue
+		if err != nil || seen[id] {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "导航ID无效或重复"})
+			return
 		}
-		h.db.Model(&model.NavLink{}).Where("id = ?", id).Update("sort_order", i)
+		ids[i] = id
+		seen[id] = true
+	}
+	err := h.db.Transaction(func(tx *gorm.DB) error {
+		var links []model.NavLink
+		if err := tx.Select("id").Clauses(clause.Locking{Strength: "UPDATE"}).Where("id IN ?", ids).Find(&links).Error; err != nil {
+			return err
+		}
+		if len(links) != len(ids) {
+			return gorm.ErrRecordNotFound
+		}
+		for i, id := range ids {
+			result := tx.Model(&model.NavLink{}).Where("id = ?", id).Update("sort_order", i)
+			if result.Error != nil {
+				return result.Error
+			}
+			if result.RowsAffected != 1 {
+				return gorm.ErrRecordNotFound
+			}
+		}
+		return nil
+	})
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "导航不存在"})
+		return
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "更新排序失败"})
+		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "已更新排序"})
 }
