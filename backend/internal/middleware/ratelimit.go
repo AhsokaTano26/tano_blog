@@ -9,11 +9,11 @@ package middleware
 // moderate traffic.
 
 import (
+	"net/http"
 	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"net/http"
 )
 
 type RateLimiter struct {
@@ -24,8 +24,9 @@ type RateLimiter struct {
 }
 
 type visitor struct {
-	count    int
-	lastSeen time.Time
+	count       int
+	windowStart time.Time
+	lastSeen    time.Time
 }
 
 func NewRateLimiter(limit int, window time.Duration) *RateLimiter {
@@ -53,21 +54,33 @@ func (rl *RateLimiter) cleanup() {
 }
 
 func (rl *RateLimiter) Allow(ip string) bool {
+	return rl.allowAt(ip, time.Now())
+}
+
+func (rl *RateLimiter) allowAt(ip string, now time.Time) bool {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
+	if rl.limit <= 0 {
+		return false
+	}
 	v, ok := rl.visitors[ip]
 	if !ok {
-		rl.visitors[ip] = &visitor{count: 1, lastSeen: time.Now()}
+		rl.visitors[ip] = &visitor{count: 1, windowStart: now, lastSeen: now}
 		return true
 	}
-	if time.Since(v.lastSeen) > rl.window {
+	// Activity controls cleanup only. In particular, denied requests cannot
+	// move the quota boundary and lock a continuously active client out forever.
+	v.lastSeen = now
+	if now.Sub(v.windowStart) >= rl.window {
 		v.count = 1
-		v.lastSeen = time.Now()
+		v.windowStart = now
 		return true
+	}
+	if v.count >= rl.limit {
+		return false
 	}
 	v.count++
-	v.lastSeen = time.Now()
-	return v.count <= rl.limit
+	return true
 }
 
 func RateLimit(limit int, window time.Duration) gin.HandlerFunc {

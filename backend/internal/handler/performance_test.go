@@ -57,7 +57,15 @@ func TestPublicConfigNeverContainsProtectedMusic(t *testing.T) {
 	router := gin.New()
 	router.GET("/config/public", handler.GetPublic)
 	router.GET("/config/music", handler.GetMusic)
-	token, _ := utils.GenerateResourceToken(utils.ResourceMusic, "library", "test-secret", 3600_000_000_000)
+	var passwordConfig model.SiteConfig
+	if err := db.Where("key = ?", "music_password").First(&passwordConfig).Error; err != nil {
+		t.Fatal(err)
+	}
+	credential := utils.ResourceCredentialRevision(passwordConfig.Value, passwordConfig.UpdatedAt)
+	token, err := utils.GenerateBoundResourceToken(utils.ResourceMusic, "library", credential, "test-secret", 3600_000_000_000)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, authorized := range []bool{false, true} {
 		for _, path := range []string{"/config/public", "/config/music"} {
 			req := httptest.NewRequest("GET", path, nil)

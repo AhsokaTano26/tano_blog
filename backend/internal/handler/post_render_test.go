@@ -113,7 +113,7 @@ func TestPostRenderingAndViewRecordingPreserveResourceAccess(t *testing.T) {
 	mustCreatePerformanceFixture(t, db, &protected)
 	mustCreatePerformanceFixture(t, db, &draft)
 	mustCreatePerformanceFixture(t, db, &admin)
-	access, err := utils.GenerateResourceToken(utils.ResourcePost, protected.ID.String(), "render-test-secret", time.Hour)
+	access, err := utils.GenerateBoundResourceToken(utils.ResourcePost, protected.ID.String(), protected.PasswordHash, "render-test-secret", time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}

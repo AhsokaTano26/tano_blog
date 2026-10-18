@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/csv"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/mail"
@@ -43,7 +44,7 @@ func (h *CommentHandler) requirePostAccess(c *gin.Context, post *model.Post) boo
 		return true
 	}
 	cookie, _ := c.Cookie("post_access_" + post.ID.String())
-	if utils.VerifyResourceToken(cookie, utils.ResourcePost, post.ID.String(), h.jwtSecret) {
+	if utils.VerifyBoundResourceToken(cookie, utils.ResourcePost, post.ID.String(), post.PasswordHash, h.jwtSecret) {
 		return true
 	}
 	c.JSON(http.StatusForbidden, gin.H{"error": "请先验证文章密码"})
@@ -164,6 +165,15 @@ func (h *CommentHandler) Create(c *gin.Context) {
 
 	if !post.AllowComment {
 		c.JSON(http.StatusForbidden, gin.H{"error": "此文章已关闭评论"})
+		return
+	}
+	commentEnabled, err := repository.NewSiteConfigRepo(h.db).Get("comment_enabled")
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "无法确认评论设置，请稍后重试"})
+		return
+	}
+	if commentEnabled == "false" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "站点已关闭评论"})
 		return
 	}
 

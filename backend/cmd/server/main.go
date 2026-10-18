@@ -296,7 +296,8 @@ func main() {
 				c.JSON(http.StatusUnauthorized, gin.H{"error": "密码错误"})
 				return
 			}
-			token, err := utils.GenerateResourceToken(utils.ResourceMusic, "library", cfg.JWT.Secret, 12*time.Hour)
+			credential := utils.ResourceCredentialRevision(musicConfig.Value, musicConfig.UpdatedAt)
+			token, err := utils.GenerateBoundResourceToken(utils.ResourceMusic, "library", credential, cfg.JWT.Secret, 12*time.Hour)
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "生成访问凭证失败"})
 				return

@@ -280,7 +280,7 @@ func (r *PostRepo) ListPublic(page, pageSize int, category, tag, search string) 
 	}
 	if search != "" {
 		escaped := strings.NewReplacer("\\", "\\\\", "%", "\\%", "_", "\\_").Replace(search)
-		query = query.Where("title ILIKE ? OR content ILIKE ?", "%"+escaped+"%", "%"+escaped+"%")
+		query = query.Where("posts.title ILIKE ? OR posts.excerpt ILIKE ? OR (COALESCE(posts.password_hash, '') = '' AND posts.content ILIKE ?)", "%"+escaped+"%", "%"+escaped+"%", "%"+escaped+"%")
 	}
 
 	// Evaluate expensive substring matches once, including their exact count.

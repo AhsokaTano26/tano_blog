@@ -86,13 +86,17 @@ func (h *SiteConfigHandler) GetMusic(c *gin.Context) {
 		return
 	}
 	values := make(map[string]string)
+	var musicCredential string
 	for _, cfg := range configs {
 		values[cfg.Key] = cfg.Value
+		if cfg.Key == "music_password" {
+			musicCredential = utils.ResourceCredentialRevision(cfg.Value, cfg.UpdatedAt)
+		}
 	}
 	protected := values["music_password"] != ""
 	result := gin.H{"music_password_protected": protected}
 	cookie, _ := c.Cookie("music_access")
-	if !protected || utils.VerifyResourceToken(cookie, utils.ResourceMusic, "library", h.jwtSecret) {
+	if !protected || utils.VerifyBoundResourceToken(cookie, utils.ResourceMusic, "library", musicCredential, h.jwtSecret) {
 		result["music_playlist"] = values["music_playlist"]
 		result["music_page_config"] = values["music_page_config"]
 	}

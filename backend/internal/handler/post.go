@@ -38,7 +38,7 @@ func (h *PostHandler) hasPostAccess(c *gin.Context, post *model.Post) bool {
 		return true
 	}
 	cookie, _ := c.Cookie("post_access_" + post.ID.String())
-	return utils.VerifyResourceToken(cookie, utils.ResourcePost, post.ID.String(), h.jwtSecret)
+	return utils.VerifyBoundResourceToken(cookie, utils.ResourcePost, post.ID.String(), post.PasswordHash, h.jwtSecret)
 }
 
 // ListPublic returns published posts with pagination
@@ -244,7 +244,7 @@ func (h *PostHandler) VerifyPassword(c *gin.Context) {
 	}
 
 	cookieKey := "post_access_" + post.ID.String()
-	token, err := utils.GenerateResourceToken(utils.ResourcePost, post.ID.String(), h.jwtSecret, 7*24*time.Hour)
+	token, err := utils.GenerateBoundResourceToken(utils.ResourcePost, post.ID.String(), post.PasswordHash, h.jwtSecret, 7*24*time.Hour)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "生成访问凭证失败"})
 		return

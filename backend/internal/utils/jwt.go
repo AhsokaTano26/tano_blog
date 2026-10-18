@@ -1,7 +1,11 @@
 package utils
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/binary"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -84,6 +88,8 @@ type ResourceClaims struct {
 	jwt.RegisteredClaims
 }
 
+// GenerateResourceToken is the low-level signer. Password-protected resources
+// must use GenerateBoundResourceToken with their current credential state.
 func GenerateResourceToken(resourceType, resourceID, secret string, expiration time.Duration) (string, error) {
 	now := time.Now()
 	claims := ResourceClaims{
@@ -98,6 +104,42 @@ func GenerateResourceToken(resourceType, resourceID, secret string, expiration t
 	return jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(secret))
 }
 
+// ResourceCredentialRevision includes an existing credential row's revision in
+// its private signing state. Database timestamps use microsecond precision.
+func ResourceCredentialRevision(credential string, changedAt time.Time) string {
+	return credential + "\x00" + strconv.FormatInt(changedAt.UnixMicro(), 10)
+}
+
+// resourceCredentialKey keeps passwords and hashes out of JWT claims. A change
+// to a credential produces a different signing key, revoking previous cookies.
+func resourceCredentialKey(resourceType, resourceID, credential, secret string) string {
+	mac := hmac.New(sha256.New, []byte(secret))
+	for _, field := range []string{"tano_blog_resource_credential_v1", resourceType, resourceID, credential} {
+		var size [8]byte
+		binary.BigEndian.PutUint64(size[:], uint64(len(field)))
+		_, _ = mac.Write(size[:])
+		_, _ = mac.Write([]byte(field))
+	}
+	return string(mac.Sum(nil))
+}
+
+func GenerateBoundResourceToken(resourceType, resourceID, credential, secret string, expiration time.Duration) (string, error) {
+	if resourceType == "" || resourceID == "" || credential == "" || secret == "" {
+		return "", fmt.Errorf("missing resource credential state")
+	}
+	return GenerateResourceToken(resourceType, resourceID, resourceCredentialKey(resourceType, resourceID, credential, secret), expiration)
+}
+
+// VerifyBoundResourceToken deliberately rejects legacy app-secret signatures.
+func VerifyBoundResourceToken(tokenString, resourceType, resourceID, credential, secret string) bool {
+	if resourceType == "" || resourceID == "" || credential == "" || secret == "" {
+		return false
+	}
+	return VerifyResourceToken(tokenString, resourceType, resourceID, resourceCredentialKey(resourceType, resourceID, credential, secret))
+}
+
+// VerifyResourceToken verifies a supplied signing key. Protected routes must
+// use VerifyBoundResourceToken so old credentials cannot authorize access.
 func VerifyResourceToken(tokenString, resourceType, resourceID, secret string) bool {
 	if tokenString == "" {
 		return false
@@ -108,7 +150,7 @@ func VerifyResourceToken(tokenString, resourceType, resourceID, secret string) b
 			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
 		}
 		return []byte(secret), nil
-	})
+	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}), jwt.WithExpirationRequired())
 	return err == nil &&
 		token.Valid &&
 		claims.Issuer == resourceTokenIssuer &&

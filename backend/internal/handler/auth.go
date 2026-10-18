@@ -372,6 +372,10 @@ func (h *AuthHandler) TOTPSetup(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "用户不存在"})
 		return
 	}
+	if user.TOTPEnabled {
+		c.JSON(http.StatusConflict, gin.H{"error": "已启用 TOTP，请先验证并禁用现有验证器"})
+		return
+	}
 
 	secret, qrURL, err := utils.GenerateTOTPSecret(user.Username)
 	if err != nil {
@@ -379,9 +383,17 @@ func (h *AuthHandler) TOTPSetup(c *gin.Context) {
 		return
 	}
 
-	// Store secret temporarily (not enabled yet)
-	if err := h.db.Model(&user).Update("totp_secret", secret).Error; err != nil {
+	// Only replace the pending enrollment that was read above. An enabled or
+	// concurrently replaced factor must keep its current secret.
+	result := h.db.Model(&model.User{}).
+		Where("id = ? AND totp_enabled = ? AND COALESCE(totp_secret, '') = ?", uid, false, user.TOTPSecret).
+		Update("totp_secret", secret)
+	if result.Error != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "保存密钥失败"})
+		return
+	}
+	if result.RowsAffected != 1 {
+		c.JSON(http.StatusConflict, gin.H{"error": "验证器设置已变化，请刷新后重试"})
 		return
 	}
 
@@ -411,12 +423,30 @@ func (h *AuthHandler) TOTPVerify(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "用户不存在"})
 		return
 	}
+	if user.TOTPEnabled {
+		c.JSON(http.StatusConflict, gin.H{"error": "已启用 TOTP"})
+		return
+	}
+	if user.TOTPSecret == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请先设置验证器"})
+		return
+	}
 
 	if !utils.VerifyTOTP(user.TOTPSecret, req.Code) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "验证码错误"})
 		return
 	}
-	h.db.Model(&user).Update("totp_enabled", true)
+	result := h.db.Model(&model.User{}).
+		Where("id = ? AND totp_enabled = ? AND totp_secret = ?", uid, false, user.TOTPSecret).
+		Update("totp_enabled", true)
+	if result.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "保存验证器设置失败"})
+		return
+	}
+	if result.RowsAffected != 1 {
+		c.JSON(http.StatusConflict, gin.H{"error": "验证器设置已变化，请刷新后重试"})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"message": "TOTP 已启用"})
 }
 
@@ -460,8 +490,17 @@ func (h *AuthHandler) TOTPDisable(c *gin.Context) {
 		return
 	}
 
-	h.db.Model(&model.User{}).Where("id = ?", uid).
+	result := h.db.Model(&model.User{}).
+		Where("id = ? AND COALESCE(totp_secret, '') = ? AND password_hash = ?", uid, user.TOTPSecret, user.PasswordHash).
 		Updates(map[string]interface{}{"totp_secret": "", "totp_enabled": false})
+	if result.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "保存验证器设置失败"})
+		return
+	}
+	if result.RowsAffected != 1 {
+		c.JSON(http.StatusConflict, gin.H{"error": "验证器设置已变化，请刷新后重试"})
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "TOTP 已禁用"})
 }
