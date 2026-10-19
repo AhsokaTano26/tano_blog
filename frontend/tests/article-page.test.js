@@ -28,6 +28,7 @@ async function mount(t, props, hydrate = false, strict = false) {
   const client = React.createElement(PostClient, props);
   const tree = React.createElement(AppRouterContext.Provider, { value: { push() {}, replace() {}, refresh() {}, prefetch() {} } }, strict ? React.createElement(React.StrictMode, null, client) : client);
   let root;
+  t.after(async () => { if (root) await React.act(async () => root.unmount()); element.remove(); });
   if (hydrate) {
     const browserWindow = global.window;
     try {
@@ -43,7 +44,6 @@ async function mount(t, props, hydrate = false, strict = false) {
     root = createRoot(element);
     await React.act(async () => root.render(tree));
   }
-  t.after(async () => { await React.act(async () => root.unmount()); element.remove(); });
   return element;
 }
 
@@ -52,6 +52,92 @@ async function click(text, within = document) {
   assert.ok(button, `Missing button: ${text}`);
   await React.act(async () => button.click());
 }
+
+test('article reactions reject repeated presses while pending and expose a failed request for retry', async t => {
+  prepare(t);
+  t.mock.method(api, 'recordPostView', async () => ({ reactions: { '👍': 2 }, user_emojis: [] }));
+  const pending = [];
+  t.mock.method(api, 'togglePostReaction', () => new Promise((resolve, reject) => pending.push({ resolve, reject })));
+  await mount(t, { slug: 'post', initialData: { post: article } });
+  const thumb = () => [...document.querySelectorAll('article button')].find(button => button.textContent === '👍2');
+  try {
+    await React.act(async () => { thumb().click(); thumb().click(); });
+    assert.equal(pending.length, 1, 'one pending emoji must not send two toggle requests');
+    assert.equal(thumb().disabled, true);
+    await React.act(async () => pending[0].reject(new Error('操作太频繁，请稍后再试')));
+    assert.match(document.querySelector('article [role="alert"]')?.textContent || '', /操作太频繁/);
+    assert.equal(thumb().disabled, false);
+    await React.act(async () => thumb().click());
+    await React.act(async () => pending[1].resolve({ active: true, emoji: '👍' }));
+    const selected = [...document.querySelectorAll('article [data-reaction]')].find(button => button.dataset.reaction === '👍');
+    assert.equal(selected?.getAttribute('aria-pressed'), 'true');
+    assert.match(selected?.textContent || '', /👍3/);
+  } finally {
+    await React.act(async () => pending.forEach(request => request.resolve({ active: true, emoji: '👍' })));
+  }
+});
+
+test('a late initial reaction read preserves a reaction added while that read was pending', async t => {
+  prepare(t);
+  let completeView;
+  t.mock.method(api, 'recordPostView', () => new Promise(resolve => { completeView = resolve; }));
+  t.mock.method(api, 'togglePostReaction', async () => ({ active: true, emoji: '👍' }));
+  await mount(t, { slug: 'post', initialData: { post: article, reactions: { '👍': 2 }, user_emojis: [] } });
+  try {
+    await click('👍2', document.querySelector('article'));
+    await React.act(async () => completeView({ reactions: { '👍': 4 }, user_emojis: [] }));
+    const reaction = [...document.querySelectorAll('article button')].find(button => button.textContent === '👍5');
+    assert.equal(reaction !== undefined, true, 'late baseline data must include the visitor’s newer reaction');
+    assert.equal(reaction?.getAttribute('aria-pressed'), 'true');
+  } finally { await React.act(async () => completeView({ reactions: { '👍': 4 }, user_emojis: [] })); }
+});
+
+test('article sticker reactions keep their image, name, and stored key while toggling counts', async t => {
+  prepare(t);
+  t.mock.method(api, 'recordPostView', async () => ({ reactions: { 'bd24:01': 2 }, user_emojis: [] }));
+  const submitted = [];
+  t.mock.method(api, 'togglePostReaction', async (slug, emoji) => {
+    submitted.push([slug, emoji]);
+    return { emoji, active: submitted.length === 1 };
+  });
+  await mount(t, { slug: 'post', initialData: { post: article } });
+  const button = () => document.querySelector('article [data-reaction="bd24:01"]');
+  assert.match(button().getAttribute('aria-label'), /香澄·期待/);
+  assert.equal(button().querySelector('img') !== null, true);
+  await React.act(async () => button().click());
+  assert.deepEqual(submitted, [['post', 'bd24:01']]);
+  assert.equal(button().getAttribute('aria-pressed'), 'true');
+  assert.match(button().textContent, /3$/);
+  await React.act(async () => button().click());
+  assert.equal(button().getAttribute('aria-pressed'), 'false');
+  assert.match(button().textContent, /2$/);
+});
+
+test('comment reactions prevent duplicate requests, keep counts on failure, and can be cancelled after retry', async t => {
+  prepare(t);
+  t.mock.method(api, 'getComments', async () => ({ items: [comment('root')], total: 1, page: 1, size: 20 }));
+  const requests = [];
+  t.mock.method(api, 'toggleReaction', (slug, id, emoji) => new Promise((resolve, reject) => requests.push({ slug, id, emoji, resolve, reject })));
+  await mount(t, { slug: 'post', initialData: { post: article } });
+  const row = document.querySelector('[data-comment-id="root"]');
+  const button = () => [...row.querySelectorAll('[data-reaction]')].find(item => item.dataset.reaction === '👍');
+  try {
+    await React.act(async () => { button().click(); button().click(); });
+    assert.equal(requests.length, 1);
+    assert.deepEqual([requests[0].slug, requests[0].id, requests[0].emoji], ['post', 'root', '👍']);
+    await React.act(async () => requests[0].reject(new Error('网络不可用')));
+    assert.equal(button().textContent, '👍1');
+    assert.match(row.querySelector('[role="alert"]').textContent, /网络不可用/);
+    await click('重试', row);
+    await React.act(async () => requests[1].resolve({ active: true, emoji: '👍' }));
+    assert.equal(button().textContent, '👍2');
+    assert.equal(button().getAttribute('aria-pressed'), 'true');
+    await React.act(async () => button().click());
+    await React.act(async () => requests[2].resolve({ active: false, emoji: '👍' }));
+    assert.equal(button().textContent, '👍1');
+    assert.equal(button().getAttribute('aria-pressed'), 'false');
+  } finally { await React.act(async () => requests.forEach(request => request.resolve({ active: false, emoji: '👍' }))); }
+});
 
 test('article hydration keeps server content visible without fetching the article or entire series again', async t => {
   prepare(t);
@@ -132,7 +218,7 @@ test('server-rendered article records one browser view and restores visitor reac
   assert.equal(views, 1);
   const reaction = [...document.querySelectorAll('button')].find(button => button.textContent.trim() === '👍3');
   assert.ok(reaction);
-  assert.equal(reaction.style.background, 'var(--primary-sub)');
+  assert.equal(reaction.getAttribute('aria-pressed'), 'true');
 });
 
 test('reply pages keep chronological ordering when root comments are sorted newest first', async t => {

@@ -11,7 +11,8 @@ import { ContentHeadInjection } from '@/components/HtmlInjection';
 import { ReadingProgress } from '@/components/ReadingProgress';
 import { ImageLightbox } from '@/components/ImageLightbox';
 import { Loading } from '@/components/Loading';
-import { EmojiPickerButton } from '@/components/EmojiPicker';
+import { ReactionBar } from '@/components/ReactionBar';
+import { applyReaction, type ReactionState } from '@/lib/reactions';
 import { ScrollReveal } from '@/components/ScrollReveal';
 import ArticleMarkdown from '@/components/ArticleMarkdown';
 import { CommentMarkdown } from '@/components/CommentMarkdown';
@@ -130,7 +131,7 @@ function CommentItem({ comment, depth, onReply, reactions, onReaction, slug, sor
   depth: number;
   onReply: (c: any) => void;
   reactions: Record<string, {counts: Record<string, number>, user: string[]}>;
-  onReaction: (commentId: string, emoji: string) => void;
+  onReaction: (commentId: string, emoji: string) => Promise<boolean>;
   slug: string;
   sort: string;
   onLoadReactions: (items: any[]) => void;
@@ -182,29 +183,9 @@ function CommentItem({ comment, depth, onReply, reactions, onReaction, slug, sor
             style={{ color: 'var(--primary)' }}>回复</button>
         </div>
         <p className="whitespace-pre-wrap text-sm" style={{ color: 'var(--text-secondary)' }}>{comment.content}</p>
-        {/* Reaction buttons */}
-        <div className="flex items-center gap-1 mt-2 flex-wrap">
-          {reactions?.[comment.id] && Object.entries(reactions[comment.id].counts).map(([emoji, count]) => {
-            const isActive = reactions[comment.id].user?.includes(emoji);
-            return (
-              <button
-                key={emoji}
-                onClick={() => onReaction(comment.id, emoji)}
-                className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-lg text-sm transition-all ${
-                  isActive ? 'bg-opacity-20' : 'opacity-60 hover:opacity-100'
-                }`}
-                style={{
-                  background: isActive ? 'var(--primary-sub)' : 'var(--btn-card-bg)',
-                  color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
-                }}
-              >
-                <span>{emoji}</span>
-                {count > 0 && <span className="text-xs font-medium">{count}</span>}
-              </button>
-            );
-          })}
-          <EmojiPickerButton onSelect={(emoji) => onReaction(comment.id, emoji)} />
-        </div>
+        <div className="mt-3"><ReactionBar compact label={`${comment.nickname} 的评论表情`}
+          counts={reactions[comment.id]?.counts || {}} selected={reactions[comment.id]?.user || []}
+          onToggle={emoji => onReaction(comment.id, emoji)} /></div>
       </div>
       {children.map((child: any) => (
         <div key={child.id} className="mt-2">
@@ -247,8 +228,8 @@ export default function PostClient({ slug, initialData, initialError = '', initi
   const [showPreview, setShowPreview] = useState(false);
   const [adjacentPosts, setAdjacentPosts] = useState<{ prev: any; next: any } | null>(null);
   const [seriesProgress, setSeriesProgress] = useState<{ position: number; total: number } | null>(null);
-  const [postReactions, setPostReactions] = useState<Record<string, number>>(initialData?.reactions || {});
-  const [postUserEmojis, setPostUserEmojis] = useState<string[]>(initialData?.user_emojis || []);
+  const [postReactionState, setPostReactionState] = useState<ReactionState>({ counts: initialData?.reactions || {}, user: initialData?.user_emojis || [] });
+  const completedPostReactions = useRef(new Map<string, boolean>());
   const [passwordInput, setPasswordInput] = useState('');
   const [passwordError, setPasswordError] = useState('');
   const [passwordVerifying, setPasswordVerifying] = useState(false);
@@ -276,8 +257,9 @@ export default function PostClient({ slug, initialData, initialError = '', initi
     try {
       const result = await api.getPost(slug);
       setPost(result.post);
-      setPostReactions(result.reactions || {});
-      setPostUserEmojis(result.user_emojis || []);
+      let state: ReactionState = { counts: result.reactions || {}, user: result.user_emojis || [] };
+      for (const [emoji, active] of completedPostReactions.current) state = applyReaction(state, emoji, active);
+      setPostReactionState(state);
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : '文章暂时无法加载，请重试');
     } finally { setLoading(false); }
@@ -295,8 +277,9 @@ export default function PostClient({ slug, initialData, initialError = '', initi
     if (!initialData?.post || initialData.post.password_protected || viewRecorded.current) return;
     viewRecorded.current = true;
     api.recordPostView(slug).then(result => {
-      setPostReactions(result.reactions || {});
-      setPostUserEmojis(result.user_emojis || []);
+      let state: ReactionState = { counts: result.reactions || {}, user: result.user_emojis || [] };
+      for (const [emoji, active] of completedPostReactions.current) state = applyReaction(state, emoji, active);
+      setPostReactionState(state);
     }).catch(() => {});
   }, [initialData, slug]);
 
@@ -373,57 +356,16 @@ export default function PostClient({ slug, initialData, initialError = '', initi
   }
 
   async function handleToggleReaction(commentId: string, emoji: string) {
-    try {
-      const res = await api.toggleReaction(slug, commentId, emoji);
-      setReactions(prev => {
-        const next = { ...prev };
-        const current = next[commentId] || { counts: {}, user: [] };
-        const newCounts = { ...current.counts };
-        const newUser = [...current.user];
-
-        if (res.active) {
-          // Add reaction
-          newCounts[emoji] = (newCounts[emoji] || 0) + 1;
-          if (!newUser.includes(emoji)) newUser.push(emoji);
-        } else {
-          // Remove reaction
-          newCounts[emoji] = Math.max(0, (newCounts[emoji] || 0) - 1);
-          const idx = newUser.indexOf(emoji);
-          if (idx >= 0) newUser.splice(idx, 1);
-          if (newCounts[emoji] === 0) delete newCounts[emoji];
-        }
-
-        next[commentId] = { counts: newCounts, user: newUser };
-        return next;
-      });
-    } catch (e) {
-      // Ignore reaction errors
-    }
+    const result = await api.toggleReaction(slug, commentId, emoji);
+    setReactions(previous => ({ ...previous, [commentId]: applyReaction(previous[commentId] || { counts: {}, user: [] }, emoji, result.active) }));
+    return result.active;
   }
 
   async function handleTogglePostReaction(emoji: string) {
-    try {
-      const res = await api.togglePostReaction(slug, emoji);
-      setPostReactions(prev => {
-        const next = { ...prev };
-        if (res.active) {
-          next[emoji] = (next[emoji] || 0) + 1;
-        } else {
-          next[emoji] = Math.max(0, (next[emoji] || 0) - 1);
-          if (next[emoji] === 0) delete next[emoji];
-        }
-        return next;
-      });
-      setPostUserEmojis(prev => {
-        if (res.active) {
-          return prev.includes(emoji) ? prev : [...prev, emoji];
-        } else {
-          return prev.filter(e => e !== emoji);
-        }
-      });
-    } catch (e) {
-      // Ignore reaction errors
-    }
+    const result = await api.togglePostReaction(slug, emoji);
+    completedPostReactions.current.set(emoji, result.active);
+    setPostReactionState(previous => applyReaction(previous, emoji, result.active));
+    return result.active;
   }
 
   // Extract TOC from rendered DOM (rehype-slug adds IDs to headings)
@@ -704,20 +646,7 @@ export default function PostClient({ slug, initialData, initialError = '', initi
           {/* Post reactions */}
           <ScrollReveal margin="-40px">
           <div className="border-t pt-6 mb-6" style={{ borderColor: 'var(--glass-border)' }}>
-            <div className="flex items-center gap-2 flex-wrap">
-              {Object.entries(postReactions).map(([emoji, count]) => (
-                <button key={emoji} onClick={() => handleTogglePostReaction(emoji)}
-                  className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-sm transition-all"
-                  style={{
-                    background: postUserEmojis.includes(emoji) ? 'var(--primary-sub)' : 'var(--btn-card-bg)',
-                    color: postUserEmojis.includes(emoji) ? 'var(--primary)' : 'var(--text-secondary)',
-                  }}>
-                  <span className="text-base leading-none">{emoji}</span>
-                  <span>{count}</span>
-                </button>
-              ))}
-              <EmojiPickerButton onSelect={handleTogglePostReaction} />
-            </div>
+            <ReactionBar counts={postReactionState.counts} selected={postReactionState.user} onToggle={handleTogglePostReaction} />
           </div>
           </ScrollReveal>
 
