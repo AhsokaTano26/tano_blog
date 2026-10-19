@@ -497,26 +497,26 @@ export default function AdminMedia() {
         <p className="glass-card rounded-xl px-6 py-4" style={{ color: 'var(--primary)' }}>释放文件以上传到媒体库</p>
       </div>}
       {/* Header */}
-      <div className="flex items-center justify-between mb-5">
-        <h1 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>附件</h1>
+      <div className="admin-page-heading">
+        <div><h1>附件</h1><p>集中管理文章素材，支持批量上传与拖拽添加。</p></div>
         <div className="flex items-center gap-2">
           <div className="flex rounded-lg p-0.5" style={{ background: 'var(--surface-bg)' }}>
-            <button onClick={() => setViewMode('grid')} aria-label="网格视图"
-              className="p-1.5 rounded transition-colors"
+            <button onClick={() => setViewMode('grid')} aria-label="网格视图" aria-pressed={viewMode === 'grid'}
+              className="p-2.5 rounded transition-colors"
               style={{ background: viewMode === 'grid' ? 'var(--card-bg)' : 'transparent', color: viewMode === 'grid' ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
               <Grid className="w-4 h-4" />
             </button>
-            <button onClick={() => setViewMode('list')} aria-label="列表视图"
-              className="p-1.5 rounded transition-colors"
+            <button onClick={() => setViewMode('list')} aria-label="列表视图" aria-pressed={viewMode === 'list'}
+              className="p-2.5 rounded transition-colors"
               style={{ background: viewMode === 'list' ? 'var(--card-bg)' : 'transparent', color: viewMode === 'list' ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
               <List className="w-4 h-4" />
             </button>
           </div>
-          <label className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-white cursor-pointer transition-colors ${uploading ? 'opacity-50' : ''}`}
+          <label className={`relative focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-[var(--primary)] flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-white cursor-pointer transition-colors ${uploading ? 'opacity-50' : ''}`}
             style={{ background: 'var(--primary)' }}>
             <Upload className="w-4 h-4" />
             {uploading ? `上传中${uploadProgress ? ` (${uploadProgress})` : '...'}` : '上传'}
-            <input type="file" className="hidden" onChange={handleUpload} disabled={uploading} multiple />
+            <input type="file" aria-label="上传附件" className="absolute inset-0 opacity-0 w-full cursor-pointer" onChange={handleUpload} disabled={uploading} multiple />
           </label>
         </div>
       </div>
@@ -589,26 +589,26 @@ export default function AdminMedia() {
       {/* Search + Type filter + Tag filter */}
       <div className="glass-card rounded-xl mb-4">
         <div className="flex items-center gap-3 p-4 flex-wrap" style={{ borderBottom: '1px solid var(--glass-border)' }}>
-          <div className="relative flex-1 max-w-xs">
+          <div className="relative flex-1 min-w-[170px] max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: 'var(--text-info)' }} />
-            <input type="text" placeholder="搜索文件名..." value={search}
+            <input type="text" aria-label="搜索文件名" placeholder="搜索文件名..." value={search}
               onChange={e => setSearch(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleSearch()}
               className="w-full pl-9 pr-8 py-2 rounded-xl text-sm outline-none glass-card"
               style={{ color: 'var(--text-primary)' }} />
             {search && (
-              <button onClick={() => { setSearch(''); setSearchQuery(''); setPage(1); }}
+              <button aria-label="清除文件搜索" onClick={() => { setSearch(''); setSearchQuery(''); setPage(1); }}
                 className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded transition-colors"
                 style={{ color: 'var(--text-info)' }}>
                 <X className="w-3.5 h-3.5" />
               </button>
             )}
           </div>
-          <div className="flex gap-1">
+          <div className="flex flex-wrap gap-1" role="group" aria-label="文件类型">
             {typeTabs.map(tab => {
               const Icon = tab.icon;
               return (
-                <button key={tab.key} onClick={() => { setTypeFilter(tab.key); setPage(1); }}
+                <button key={tab.key} aria-pressed={typeFilter === tab.key} onClick={() => { setTypeFilter(tab.key); setPage(1); }}
                   className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
                   style={{
                     background: typeFilter === tab.key ? 'var(--primary-sub)' : 'transparent',
@@ -718,7 +718,9 @@ export default function AdminMedia() {
         ) : loadError ? null : filtered.length === 0 ? (
           <div className="text-center py-20" style={{ color: 'var(--text-secondary)' }}>
             <Image className="w-12 h-12 mx-auto mb-3" style={{ color: 'var(--text-info)' }} />
-            <p>{search || tagFilter ? '未找到匹配文件' : '暂无文件'}</p>
+            <p>{search || tagFilter || typeFilter ? '未找到匹配文件' : '把文章素材放在这里'}</p>
+            <p className="mt-2 text-xs" style={{ color: 'var(--text-info)' }}>{search || tagFilter || typeFilter ? '试试其他关键词，或清除筛选查看全部素材。' : '点击上方上传，或将文件拖到这个页面。图片会自动生成缩略图。'}</p>
+            {(search || tagFilter || typeFilter) && <button className="mt-3 text-sm underline" style={{ color: 'var(--primary)' }} onClick={() => { setSearch(''); setSearchQuery(''); setTagFilter(''); setTypeFilter(''); setPage(1); }}>清除筛选</button>}
           </div>
         ) : viewMode === 'grid' ? (
           <div className="p-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
@@ -726,8 +728,7 @@ export default function AdminMedia() {
               const Icon = getMediaIcon(item.mime_type);
               return (
                 <div key={item.id} className="glass-card rounded-xl overflow-hidden group">
-                  <div className="relative aspect-square cursor-pointer" style={{ background: 'var(--surface-bg)' }}
-                    onClick={() => setViewerItem(item)}>
+                  <div className="relative aspect-square" style={{ background: 'var(--surface-bg)' }}>
                     {item.mime_type?.startsWith('image/') ? (
                       <ImageWithFallback src={item.thumbnail_url || item.url} fallbackSrc={item.url} alt={item.original_name || item.filename} loading="lazy" decoding="async" className="w-full h-full object-cover" />
                     ) : item.mime_type?.startsWith('video/') ? (
@@ -759,6 +760,7 @@ export default function AdminMedia() {
                         <FileText className="w-10 h-10" style={{ color: 'var(--text-info)' }} />
                       </div>
                     )}
+                    <button className="absolute inset-0 w-full h-full" aria-label={`预览 ${item.original_name || item.filename}`} onClick={() => setViewerItem(item)} />
                     <div className="absolute top-2 left-2 z-10">
                       <Checkbox checked={selectedIds.has(item.id)} onChange={() => toggleSelect(item.id)} />
                     </div>
@@ -768,7 +770,8 @@ export default function AdminMedia() {
                         图片馆
                       </div>
                     )}
-                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 pointer-events-none">
+                  </div>
+                  <div className="admin-media-actions" aria-label={`${item.original_name || item.filename} 的操作`}>
                       <button onClick={(e) => {
                         e.stopPropagation();
                         if (openLinksId === item.id) { setOpenLinksId(null); setOpenLinksEl(null); }
@@ -799,9 +802,8 @@ export default function AdminMedia() {
                         className="p-1.5 rounded-full transition-colors pointer-events-auto" style={{ background: 'var(--card-bg)', color: 'var(--color-error)' }} title="删除">
                         <Trash2 className="w-4 h-4" />
                       </button>
-                    </div>
                   </div>
-                  <div className="p-2.5">
+                  <div className="px-2.5 pb-2.5">
                     <p className="text-xs truncate" style={{ color: 'var(--text-secondary)' }} title={item.original_name || item.filename}>
                       {item.mime_type?.startsWith('audio/') && (item.title || item.artist)
                         ? [item.title, item.artist].filter(Boolean).join(' — ') || item.original_name || item.filename
@@ -848,7 +850,7 @@ export default function AdminMedia() {
                         <Checkbox checked={selectedIds.has(item.id)} onChange={() => toggleSelect(item.id)} />
                       </td>
                       <td className="px-4 py-3">
-                        <div className="cursor-pointer" onClick={() => setViewerItem(item)}>
+                        <button aria-label={`预览 ${item.original_name || item.filename}`} onClick={() => setViewerItem(item)}>
                           {item.mime_type?.startsWith('image/') ? (
                             <ImageWithFallback src={item.thumbnail_url || item.url} fallbackSrc={item.url} alt={item.original_name || item.filename} loading="lazy" decoding="async" className="w-10 h-10 rounded object-cover" />
                           ) : item.mime_type?.startsWith('video/') ? (
@@ -873,7 +875,7 @@ export default function AdminMedia() {
                               <Icon className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
                             </div>
                           )}
-                        </div>
+                        </button>
                       </td>
                       <td className="px-4 py-3 text-sm truncate max-w-[200px]" style={{ color: 'var(--text-primary)' }} title={item.original_name || item.filename}>
                         {item.mime_type?.startsWith('audio/') && (item.title || item.artist)
@@ -900,22 +902,22 @@ export default function AdminMedia() {
                             if (openLinksId === item.id) { setOpenLinksId(null); setOpenLinksEl(null); }
                             else { setOpenLinksId(item.id); setOpenLinksEl(e.currentTarget); setEditingTagsId(null); }
                           }}
-                            className="btn-glass p-1.5 rounded transition-colors" title="复制链接">
+                            className="btn-glass p-2.5 rounded transition-colors" title="复制链接">
                             <Copy className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
                           </button>
                           <button onClick={(e) => {
                             if (editingTagsId === item.id) { setEditingTagsId(null); setEditingTagsEl(null); }
                             else { setEditingTagsId(item.id); setEditingTagsEl(e.currentTarget); setOpenLinksId(null); }
                           }}
-                            className="btn-glass p-1.5 rounded transition-colors" title="编辑标签">
+                            className="btn-glass p-2.5 rounded transition-colors" title="编辑标签">
                             <Tag className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
                           </button>
                           <button onClick={() => openMetadataEditor(item)}
-                            className="btn-glass p-1.5 rounded transition-colors" title="编辑元信息">
+                            className="btn-glass p-2.5 rounded transition-colors" title="编辑元信息">
                             <FileText className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
                           </button>
                           <button onClick={() => handleDelete(item.id)}
-                            className="btn-glass p-1.5 rounded transition-colors" title="删除">
+                            className="btn-glass p-2.5 rounded transition-colors" title="删除">
                             <Trash2 className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
                           </button>
                         </div>
@@ -930,15 +932,15 @@ export default function AdminMedia() {
       </div>
 
       {/* Pagination */}
-      <div className="flex items-center justify-between text-sm mt-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 text-sm mt-4">
           <span style={{ color: 'var(--text-secondary)' }}>共 {total} 个文件{(typeFilter || tagFilter) && ` (当前筛选)`}</span>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-2">
-              <span className="text-xs" style={{ color: 'var(--text-info)' }}>每页</span>
+              <span className="text-xs whitespace-nowrap shrink-0" style={{ color: 'var(--text-info)' }}>每页</span>
               <Select value={String(pageSize)} onChange={v => { setPageSize(Number(v)); setPage(1); }}
                 options={[10, 20, 30, 50, 100].map(v => ({ value: String(v), label: String(v) }))} />
             </div>
-            <div className="flex gap-1">
+            <div className="flex flex-wrap gap-1">
               <button onClick={() => setPage(Math.max(1, page - 1))} disabled={page === 1}
                 className="px-3 py-1.5 rounded-xl btn-glass disabled:opacity-40 transition-colors"
                 style={{ color: 'var(--text-primary)' }}>上一页</button>
@@ -974,7 +976,7 @@ export default function AdminMedia() {
             <div className="relative max-w-5xl w-full max-h-full flex flex-col items-center"
               onClick={e => e.stopPropagation()}>
               {/* Close button */}
-              <button onClick={() => setViewerItem(null)}
+              <button onClick={() => setViewerItem(null)} aria-label="关闭预览"
                 className="absolute -top-10 right-0 sm:-right-10 sm:-top-10 p-2 rounded-full transition-colors hover:bg-white/10 z-10 cursor-pointer"
                 style={{ color: '#fff' }}>
                 <X className="w-6 h-6" />
@@ -1039,7 +1041,7 @@ export default function AdminMedia() {
                   </span>
                 </div>
                 <a href={item.url} target="_blank" rel="noopener noreferrer"
-                  className="flex items-center gap-1 text-xs p-1.5 rounded transition-colors hover:bg-white/10 flex-shrink-0"
+                  className="flex items-center gap-1 text-xs p-2.5 rounded transition-colors hover:bg-white/10 flex-shrink-0"
                   style={{ color: '#9ca3af' }}>
                   <ExternalLink className="w-3.5 h-3.5" />
                   {SITE_URL}{item.url}

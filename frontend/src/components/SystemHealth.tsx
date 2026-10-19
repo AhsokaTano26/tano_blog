@@ -48,7 +48,7 @@ const alertCopy: Record<string, { message: string; action: string }> = {
     action: '创建并验证一份新的完整备份，同时检查现有的备份计划。',
   },
 };
-const resultLabels: Record<string, string> = { completed: '完成', failed: '失败', cancelled: '已取消' };
+const resultLabels: Record<string, string> = { completed: '完成', failed: '失败', cancelled: '已取消', unknown: '暂无记录' };
 
 function localizeAlert(alert: HealthAlert) {
   return alertCopy[alert.code] || { message: alert.message || '检测到新的系统告警', action: alert.action || '请检查服务日志和系统配置。' };
@@ -122,13 +122,16 @@ export default function SystemHealth() {
   const latency = !metrics || idle ? '无流量' : metrics.requests.p95_ms === null ? '暂无数据' : `${metrics.requests.p95_overflow ? '> ' : '≤ '}${metrics.requests.p95_ms.toLocaleString('zh-CN')} ms`;
   const lastResult = metrics ? (resultLabels[metrics.backup.last_result] || metrics.backup.last_result || '暂无记录') : '';
 
-  return <section aria-label="系统健康" aria-busy={loading} className="glass-card rounded-xl p-5 mb-6">
-    <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+  return <section aria-label="系统健康" aria-busy={loading} className="admin-panel">
+    <div className="flex flex-wrap items-start justify-between gap-3">
       <div>
-        <h2 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>系统健康</h2>
+        <div className="health-heading"><h2>系统健康</h2>
+          <span className="health-badge" data-alert={Boolean(metrics?.alerts.length || error)}>
+            {error ? '状态待确认' : !metrics ? (loading ? '检查中' : '尚未检查') : metrics.alerts.length ? `${metrics.alerts.length} 项需关注` : idle ? '暂无流量' : '未触发告警'}
+          </span>
+        </div>
         <p className="text-xs mt-1" style={{ color: 'var(--text-info)' }}>
           最近检查：{checkedAt ? <time dateTime={checkedAt.toISOString()}>{checkedAt.toLocaleString('zh-CN', { hour12: false })}</time> : '尚未成功检查'}
-          <span className="ml-2">页面可见时每 60 秒刷新</span>
         </p>
       </div>
       <button type="button" onClick={() => void refresh()} disabled={loading} className="btn-glass px-3 py-1.5 rounded-lg text-xs disabled:opacity-50" style={{ color: 'var(--primary)' }}>
@@ -140,34 +143,35 @@ export default function SystemHealth() {
     {error && metrics && <p className="mb-3 text-xs" style={{ color: 'var(--text-secondary)' }}>当前状态尚未确认，以下保留上次成功检查的数据。</p>}
     {!metrics && <p role="status" className="text-sm" style={{ color: 'var(--text-secondary)' }}>{loading ? '正在读取系统状态…' : '等待成功检查后显示指标。'}</p>}
     {metrics && <>
-      <p className="text-xs mb-3" style={{ color: 'var(--text-info)' }}>
-        {metrics.requests.window_seconds ? `最近 ${Math.round(metrics.requests.window_seconds / 60)} 分钟` : '当前统计窗口'} · {metrics.requests.requests.toLocaleString('zh-CN')} 次请求 · P95 为响应时间区间估计
-      </p>
-      <dl className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <dl className="health-metrics">
         {[
           { label: '5xx错误率', value: errorRate },
           { label: 'P95响应时间', value: latency },
           { label: '上传磁盘余量', value: diskSpace(metrics.storage.uploads) },
           { label: '备份磁盘余量', value: diskSpace(metrics.storage.backups) },
-        ].map(metric => <div key={metric.label} className="rounded-lg p-3" style={{ background: 'var(--surface-bg)' }}>
-          <dt className="text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>{metric.label}</dt>
-          <dd className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}><output aria-label={metric.label}>{metric.value}</output></dd>
+        ].map(metric => <div key={metric.label}>
+          <dt>{metric.label}</dt>
+          <dd><output aria-label={metric.label}>{metric.value}</output></dd>
         </div>)}
       </dl>
-      <div className="flex flex-wrap gap-x-5 gap-y-1 my-4 text-xs" style={{ color: 'var(--text-secondary)' }}>
+      <details className="health-details">
+        <summary>检查与备份详情</summary>
+        <p className="mb-2">{metrics.requests.window_seconds ? `最近 ${Math.round(metrics.requests.window_seconds / 60)} 分钟` : '当前统计窗口'} · {metrics.requests.requests.toLocaleString('zh-CN')} 次请求 · P95 为响应时间区间估计。页面可见时每 60 秒刷新。</p>
+      <div className="flex flex-wrap gap-x-5 gap-y-1 mb-3 text-xs" style={{ color: 'var(--text-secondary)' }}>
         <span>最近完整备份：{metrics.backup.last_success ? dateLabel(metrics.backup.last_success) : '暂无成功记录'}{metrics.backup.success_source === 'archive_mtime' && '（按已有归档时间）'}</span>
         <span>{metrics.backup.running ? '备份或维护任务正在运行' : `最近任务结果：${lastResult}`}</span>
         <a href="/admin/backup" className="underline" style={{ color: 'var(--primary)' }}>备份管理</a>
       </div>
+      </details>
       {metrics.alerts.length === 0 ? <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
         {idle ? '当前无流量，暂不评估请求质量；没有其他触发的告警。' : '当前没有触发告警。'}
       </p> : <ul aria-label="系统告警" className="space-y-2">
         {metrics.alerts.map((alert, index) => {
           const copy = localizeAlert(alert);
           const severity = alert.severity === 'critical' || alert.severity === 'error' ? '严重' : alert.severity === 'info' ? '提示' : '注意';
-          return <li key={`${alert.code}-${index}`} className="rounded-lg p-3 text-sm" style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)' }}>
-            <p className="font-medium" style={{ color: 'var(--color-warning, var(--text-primary))' }}>{severity} · {copy.message}</p>
-            <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>{copy.action}</p>
+          return <li key={`${alert.code}-${index}`} className="health-alert" data-severity={alert.severity}>
+            <p>{severity} · {copy.message}</p>
+            <p>{copy.action}{alert.code.startsWith('backup_') && <> <a href="/admin/backup" className="underline" style={{ color: 'var(--primary)' }}>备份管理 →</a></>}</p>
           </li>;
         })}
       </ul>}

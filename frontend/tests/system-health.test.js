@@ -21,9 +21,9 @@ function metrics(overrides = {}) {
   };
 }
 
-async function mount(t) {
+async function mount(t, summary = async () => ({ posts: 0, comments: 0, media: 0, pending_comments: 0, pending_links: 0 })) {
   t.mock.method(api.admin.accessLogs, 'overview', async () => ({ stats: null, device: [], browser: [], os: [], hour: [] }));
-  t.mock.method(api.admin, 'summary', async () => ({}));
+  t.mock.method(api.admin, 'summary', summary);
   t.mock.method(api, 'getTopViewed', async () => ({ items: [] }));
   const host = document.createElement('div'); document.body.append(host);
   const root = createRoot(host);
@@ -109,4 +109,22 @@ test('metrics polling pauses while hidden, prevents overlapping requests and abo
   assert.equal(signals[1].aborted, true);
   await act(async () => { document.dispatchEvent(new Event('visibilitychange')); t.mock.timers.tick(120000); });
   assert.equal(signals.length, 2);
+});
+
+
+test('dashboard does not present failed content totals as zero and supports retry', async t => {
+  t.mock.getter(document, 'visibilityState', () => 'hidden');
+  let failed = true;
+  await mount(t, async () => {
+    if (failed) throw new Error('summary offline');
+    return { posts: 8, comments: 12, media: 5, pending_comments: 1, pending_links: 2 };
+  });
+  const total = () => document.querySelector('[aria-label="内容与访问概况"] a strong')?.textContent;
+  assert.equal(total(), '—');
+  assert.match(document.body.textContent, /summary offline/);
+  failed = false;
+  await click('重试');
+  assert.equal(total(), '8');
+  assert.match(document.body.textContent, /3 项内容等待审核/);
+  assert.equal(document.querySelector('a.admin-primary-action')?.getAttribute('href'), '/admin/posts?compose=1');
 });

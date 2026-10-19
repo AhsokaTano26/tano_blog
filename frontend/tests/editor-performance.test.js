@@ -94,16 +94,17 @@ test('changing editor metadata does not parse the article again', async t => {
 
 test('edit-only mode unmounts the preview while preserving textarea content', async t => {
   const textarea = await mountEditor(t);
-  const toggle = [...document.querySelectorAll('button')].find(button => button.textContent.trim() === '分屏');
-  await act(async () => toggle.click());
-  await act(async () => toggle.click());
+  const modes = document.querySelector('[aria-label="编辑器视图"]');
+  const edit = [...modes.querySelectorAll('button')].find(button => button.textContent === '编辑');
+  const split = [...modes.querySelectorAll('button')].find(button => button.textContent === '分屏');
+  await act(async () => edit.click());
   assert.equal(Boolean(document.querySelector('h1#heading')), false);
   assert.equal(textarea.value, '# Heading\n\n$E = mc^2$');
   const katex = require('katex');
   const calls = t.mock.method(katex, 'renderToString');
   await act(async () => input(textarea, '# Changed while hidden\n\n$x^2$'));
   assert.equal(calls.mock.callCount(), 0);
-  await act(async () => toggle.click());
+  await act(async () => split.click());
   assert.equal(document.querySelector('h1#changed-while-hidden')?.textContent, 'Changed while hidden');
 });
 
@@ -135,11 +136,12 @@ test('returning from edit-only mode restores the preview scroll ratio', async t 
   });
   t.mock.getter(window.Element.prototype, 'clientHeight', () => 500);
   const textarea = await mountEditor(t);
-  const toggle = document.querySelector('button[title="切换编辑/预览模式"]');
-  await act(async () => toggle.click());
-  await act(async () => toggle.click());
+  const modes = document.querySelector('[aria-label="编辑器视图"]');
+  const edit = [...modes.querySelectorAll('button')].find(button => button.textContent === '编辑');
+  const split = [...modes.querySelectorAll('button')].find(button => button.textContent === '分屏');
+  await act(async () => edit.click());
   textarea.scrollTop = 750;
-  await act(async () => toggle.click());
+  await act(async () => split.click());
   await act(async () => new Promise(resolve => requestAnimationFrame(resolve)));
   const preview = document.querySelector('h1#heading').closest('.overflow-y-auto');
   assert.equal(preview.scrollTop, 1250);
@@ -260,4 +262,34 @@ test('typing after deleting an upload placeholder keeps the caret at the new cha
   assert.equal(textarea.value, 'Start continued!');
   assert.equal(textarea.selectionStart, 16);
   assert.equal(textarea.selectionEnd, 16);
+});
+
+test('compact editor uses one pane and preserves content when switching preview and desktop split', async t => {
+  const original = window.matchMedia;
+  const listeners = new Set();
+  const query = { matches: true, addEventListener: (_event, callback) => listeners.add(callback), removeEventListener: (_event, callback) => listeners.delete(callback) };
+  window.matchMedia = () => query;
+  t.after(() => { window.matchMedia = original; });
+  const textarea = await mountEditor(t, '# Mobile draft');
+  const mode = name => [...document.querySelectorAll('[aria-label="编辑器视图"] button')].find(button => button.textContent === name);
+  assert.equal(Boolean(mode('分屏')), false);
+  assert.equal(document.querySelector('[aria-label="文章预览"]') === null, true);
+  await act(async () => mode('预览').click());
+  assert.equal(document.querySelector('h1#mobile-draft')?.textContent, 'Mobile draft');
+  await act(async () => mode('编辑').click());
+  assert.equal(textarea.value, '# Mobile draft');
+  await act(async () => { query.matches = false; listeners.forEach(callback => callback()); });
+  await act(async () => mode('分屏').click());
+  assert.equal(mode('分屏').getAttribute('aria-pressed'), 'true');
+  assert.equal(document.querySelector('h1#mobile-draft')?.textContent, 'Mobile draft');
+});
+
+test('advanced formatting remains available without changing the current article', async t => {
+  const textarea = await mountEditor(t, 'Keep this content');
+  assert.equal(document.querySelector('button[title="行内公式"]') === null, true);
+  await act(async () => document.querySelector('[aria-label="更多格式工具"]').click());
+  assert.equal(Boolean(document.querySelector('button[title="行内公式"]')), true);
+  assert.equal(Boolean(document.querySelector('button[title="提示块：Note"]')), true);
+  await act(async () => document.querySelector('[aria-label="收起更多工具"]').click());
+  assert.equal(textarea.value, 'Keep this content');
 });

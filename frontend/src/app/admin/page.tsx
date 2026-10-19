@@ -1,260 +1,96 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback } from 'react';
+import Link from 'next/link';
+import { ArrowUpRight, Check, FileText, Image, MessageSquare, PenLine, Upload } from 'lucide-react';
 import { api } from '@/lib/api';
-import { FileText, MessageSquare, Image, Eye, Activity, PenSquare, MessageCircle, Upload, Settings } from 'lucide-react';
-import { Loading } from '@/components/Loading';
+import { useLatestRequest } from '@/lib/request-feedback';
+import { RequestFeedback } from '@/components/RequestFeedback';
 import VisitTrendChart from '@/components/VisitTrendChart';
 import SystemHealth from '@/components/SystemHealth';
 
 export default function AdminDashboard() {
-  const [stats, setStats] = useState<any>(null);
-  const [counts, setCounts] = useState({ posts: 0, comments: 0, media: 0 });
-  const [topViewed, setTopViewed] = useState<any[]>([]);
-  const [pendingComments, setPendingComments] = useState(0);
-  const [pendingLinks, setPendingLinks] = useState(0);
-  const [categoriesCount, setCategoriesCount] = useState(0);
-  const [tagsCount, setTagsCount] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [analytics, setAnalytics] = useState<{ device: any[]; browser: any[]; os: any[]; hour: any[] } | null>(null);
-
-  useEffect(() => {
-    Promise.all([
-      api.admin.accessLogs.overview().catch(() => null),
-      api.admin.summary().catch(() => null),
-      api.getTopViewed().catch(() => ({ items: [] })),
-    ]).then(([overview, summary, topViewedRes]) => {
-      setStats(overview?.stats || null);
-      setCounts({ posts: summary?.posts || 0, comments: summary?.comments || 0, media: summary?.media || 0 });
-      setTopViewed(topViewedRes.items || []);
-      setPendingComments(summary?.pending_comments || 0);
-      setPendingLinks(summary?.pending_links || 0);
-      setCategoriesCount(summary?.categories || 0);
-      setTagsCount(summary?.tags || 0);
-      setAnalytics(overview ? { device: overview.device, browser: overview.browser, os: overview.os, hour: overview.hour } : null);
-    }).finally(() => setLoading(false));
-  }, []);
-
-  if (loading) {
-    return <Loading />;
-  }
-
-  const statCards = [
-    { label: '文章', value: counts.posts, icon: FileText, color: 'hsl(210, 60%, 55%)', bg: 'hsla(210, 60%, 50%, 0.1)' },
-    { label: '评论', value: counts.comments, icon: MessageSquare, color: 'hsl(142, 60%, 50%)', bg: 'hsla(142, 60%, 50%, 0.1)' },
-    { label: '待审核评论', value: pendingComments, icon: MessageSquare, color: 'hsl(40, 80%, 55%)', bg: 'hsla(40, 80%, 50%, 0.1)' },
-    { label: '待审核友链', value: pendingLinks, icon: MessageSquare, color: 'hsl(40, 80%, 55%)', bg: 'hsla(40, 80%, 50%, 0.1)' },
-    { label: '附件', value: counts.media, icon: Image, color: 'hsl(270, 60%, 55%)', bg: 'hsla(270, 60%, 50%, 0.1)' },
-    { label: '近30天访问量', value: stats?.total_requests || 0, icon: Eye, color: 'hsl(30, 60%, 55%)', bg: 'hsla(30, 60%, 50%, 0.1)' },
+  const overview = useLatestRequest(useCallback(() => api.admin.accessLogs.overview(), []), '访问统计加载失败');
+  const summary = useLatestRequest(useCallback(() => api.admin.summary(), []), '内容概况加载失败');
+  const popular = useLatestRequest(useCallback(() => api.getTopViewed(), []), '热门文章加载失败');
+  const stats = overview.data?.stats;
+  const counts = summary.data;
+  const value = (number: number | undefined) => number === undefined ? '—' : number.toLocaleString('zh-CN');
+  const pending = counts ? counts.pending_comments + counts.pending_links : undefined;
+  const cards = [
+    { label: '文章', value: counts?.posts, icon: FileText, href: '/admin/posts', note: '管理已发布内容与草稿' },
+    { label: '评论', value: counts?.comments, icon: MessageSquare, href: '/admin/comments', note: '查看读者的交流与反馈' },
+    { label: '附件', value: counts?.media, icon: Image, href: '/admin/media', note: '图片、视频和文件' },
+    { label: '近30天访问量', value: stats?.total_requests, icon: ArrowUpRight, href: '/admin/analytics', note: '查看完整访问统计' },
   ];
 
-  const quickActions = [
-    { label: '写文章', icon: PenSquare, href: '/admin/posts', color: 'hsl(210, 60%, 55%)' },
-    { label: '评论管理', icon: MessageCircle, href: '/admin/comments', color: 'hsl(142, 60%, 50%)' },
-    { label: '上传附件', icon: Upload, href: '/admin/media', color: 'hsl(270, 60%, 55%)' },
-    { label: '系统设置', icon: Settings, href: '/admin/settings', color: 'var(--text-secondary)' },
-  ];
-
-  return (
-    <div>
-      <h1 className="text-xl font-bold mb-5" style={{ color: 'var(--text-primary)' }}>概览</h1>
-
-      <SystemHealth />
-
-      {/* Stat cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-        {statCards.map((card) => (
-          <div key={card.label} className="glass-card rounded-xl p-5 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: card.bg }}>
-              <card.icon className="w-6 h-6" style={{ color: card.color }} />
-            </div>
-            <div>
-              <div className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>{card.value}</div>
-              <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>{card.label}</div>
-            </div>
-          </div>
-        ))}
+  return <div className="admin-dashboard">
+    <header className="admin-page-heading">
+      <div><p className="admin-eyebrow">你的创作空间</p><h1>概览</h1><p>继续写作，看看博客最近发生了什么。</p></div>
+      <div className="admin-heading-actions">
+        <Link href="/admin/media" className="admin-secondary-action"><Upload size={16} />管理附件</Link>
+        <Link href="/admin/posts?compose=1" className="admin-primary-action"><PenLine size={16} />写文章</Link>
       </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Quick access */}
-        <div className="glass-card rounded-xl p-5">
-          <h2 className="text-sm font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>快捷入口</h2>
-          <div className="grid grid-cols-2 gap-3">
-            {quickActions.map((action) => (
-              <a key={action.label} href={action.href}
-                className="flex items-center gap-3 p-3 rounded-lg btn-glass transition-colors group">
-                <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ background: action.color }}>
-                  <action.icon className="w-5 h-5 text-white" />
-                </div>
-                <span className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>{action.label}</span>
-              </a>
-            ))}
-          </div>
-        </div>
-
-        {/* Recent activity */}
-        <div className="glass-card rounded-xl p-5">
-          <h2 className="text-sm font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>最近动态</h2>
-          <div className="space-y-3">
-            {stats?.daily_counts?.slice(-5).reverse().map((day: any, i: number) => (
-              <div key={i} className="flex items-center justify-between py-2" style={{ borderBottom: '1px solid var(--glass-border)' }}>
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'var(--primary-sub)' }}>
-                    <Activity className="w-4 h-4" style={{ color: 'var(--primary)' }} />
-                  </div>
-                  <div>
-                    <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>网站访问</div>
-                    <div className="text-xs" style={{ color: 'var(--text-info)' }}>{day.date}</div>
-                  </div>
-                </div>
-                <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{day.count} 次</span>
-              </div>
-            ))}
-            {(!stats?.daily_counts || stats.daily_counts.length === 0) && (
-              <div className="text-center py-8 text-sm" style={{ color: 'var(--text-info)' }}>暂无动态</div>
-            )}
-          </div>
-        </div>
+    </header>
+    <RequestFeedback error={summary.error} onRetry={summary.reload} pending={summary.loading} />
+    <RequestFeedback error={overview.error} onRetry={overview.reload} pending={overview.loading} />
+    <section className="admin-stat-strip" aria-label="内容与访问概况" aria-busy={summary.loading || overview.loading}>
+      {cards.map(card => <Link key={card.label} href={card.href} className="admin-stat">
+        <span className="admin-stat-label"><card.icon size={16} />{card.label}<ArrowUpRight size={14} className="ml-auto" /></span>
+        <strong>{value(card.value)}</strong><span className="admin-stat-note">{card.note}</span>
+      </Link>)}
+    </section>
+    <div className="admin-review-bar">
+      <div><span className="admin-review-icon"><Check size={17} /></span><div><h2>{pending === undefined ? '待办事项' : pending > 0 ? `${pending} 项内容等待审核` : '待办已清，可以专心写作'}</h2><p>及时回应评论，维护博客与朋友的连接。</p></div></div>
+      <div className="admin-review-links">
+        <Link href="/admin/comments">待审核评论 <strong>{value(counts?.pending_comments)}</strong><ArrowUpRight size={14} /></Link>
+        <Link href="/admin/links">待审核友链 <strong>{value(counts?.pending_links)}</strong><ArrowUpRight size={14} /></Link>
       </div>
-
-      {/* Visit trend chart */}
-      <VisitTrendChart data={stats?.daily_counts ?? []} unavailable={!stats} />
-
-      {/* System info */}
-      <div className="glass-card rounded-xl p-5 mt-6">
-        <h2 className="text-sm font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>系统信息</h2>
-        <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
-          <div className="text-center p-4 rounded-lg" style={{ background: 'var(--surface-bg)' }}>
-            <div className="text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>独立 IP</div>
-            <div className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>{stats?.unique_ips || 0}</div>
-          </div>
-          <div className="text-center p-4 rounded-lg" style={{ background: 'var(--surface-bg)' }}>
-            <div className="text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>平均响应</div>
-            <div className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>{stats ? `${Math.round(stats.avg_response_ms)}ms` : '-'}</div>
-          </div>
-          <div className="text-center p-4 rounded-lg" style={{ background: 'var(--surface-bg)' }}>
-            <div className="text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>今日访问</div>
-            <div className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>{stats?.daily_counts?.slice(-1)[0]?.count || 0}</div>
-          </div>
-          <div className="text-center p-4 rounded-lg" style={{ background: 'var(--surface-bg)' }}>
-            <div className="text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>错误请求</div>
-            <div className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>{stats?.total_errors || 0}</div>
-          </div>
-        </div>
-      </div>
-
-      {/* Analytics breakdowns */}
-      {analytics && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
-          {/* Device breakdown */}
-          <div className="glass-card rounded-xl p-5">
-            <h2 className="text-sm font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>设备分布</h2>
-            <div className="space-y-2">
-              {analytics.device.slice(0, 6).map((d: any) => {
-                const total = analytics.device.reduce((s: number, x: any) => s + x.count, 0);
-                const pct = total > 0 ? Math.round((d.count / total) * 100) : 0;
-                return (
-                  <div key={d.name} className="flex items-center gap-3">
-                    <span className="text-xs w-16 truncate flex-shrink-0" style={{ color: 'var(--text-secondary)' }}>{d.name}</span>
-                    <div className="flex-1 h-4 rounded-full" style={{ background: 'var(--btn-card-bg)' }}>
-                      <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: 'var(--primary)' }} />
-                    </div>
-                    <span className="text-xs w-12 text-right" style={{ color: 'var(--text-info)' }}>{pct}%</span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Browser breakdown */}
-          <div className="glass-card rounded-xl p-5">
-            <h2 className="text-sm font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>浏览器分布</h2>
-            <div className="space-y-2">
-              {analytics.browser.slice(0, 6).map((d: any) => {
-                const total = analytics.browser.reduce((s: number, x: any) => s + x.count, 0);
-                const pct = total > 0 ? Math.round((d.count / total) * 100) : 0;
-                return (
-                  <div key={d.name} className="flex items-center gap-3">
-                    <span className="text-xs w-20 truncate flex-shrink-0" style={{ color: 'var(--text-secondary)' }}>{d.name}</span>
-                    <div className="flex-1 h-4 rounded-full" style={{ background: 'var(--btn-card-bg)' }}>
-                      <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: 'var(--primary)' }} />
-                    </div>
-                    <span className="text-xs w-12 text-right" style={{ color: 'var(--text-info)' }}>{pct}%</span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* OS breakdown */}
-          <div className="glass-card rounded-xl p-5">
-            <h2 className="text-sm font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>操作系统分布</h2>
-            <div className="space-y-2">
-              {analytics.os.slice(0, 6).map((d: any) => {
-                const total = analytics.os.reduce((s: number, x: any) => s + x.count, 0);
-                const pct = total > 0 ? Math.round((d.count / total) * 100) : 0;
-                return (
-                  <div key={d.name} className="flex items-center gap-3">
-                    <span className="text-xs w-20 truncate flex-shrink-0" style={{ color: 'var(--text-secondary)' }}>{d.name}</span>
-                    <div className="flex-1 h-4 rounded-full" style={{ background: 'var(--btn-card-bg)' }}>
-                      <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: 'var(--primary)' }} />
-                    </div>
-                    <span className="text-xs w-12 text-right" style={{ color: 'var(--text-info)' }}>{pct}%</span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Hourly distribution */}
-          <div className="glass-card rounded-xl p-5">
-            <h2 className="text-sm font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>热门时段</h2>
-            <div className="flex items-end gap-1" style={{ height: '100px' }}>
-              {Array.from({ length: 24 }, (_, h) => {
-                const found = analytics.hour.find((x: any) => x.hour === h);
-                const count = found?.count || 0;
-                const maxCount = Math.max(...analytics.hour.map((x: any) => x.count), 1);
-                const barH = Math.max(4, Math.round((count / maxCount) * 80));
-                return (
-                  <div key={h} className="flex-1 flex flex-col items-center justify-end gap-0.5" title={`${h}时: ${count}次`}>
-                    <div className="w-full rounded-t-sm transition-all" style={{ height: `${barH}px`, background: 'var(--primary)', opacity: 0.4 + (count / maxCount) * 0.6 }} />
-                  </div>
-                );
-              })}
-            </div>
-            <div className="flex mt-1">
-              <span className="text-[10px]" style={{ color: 'var(--text-info)' }}>0时</span>
-              <span className="flex-1 text-center text-[10px]" style={{ color: 'var(--text-info)' }}>12时</span>
-              <span className="text-[10px]" style={{ color: 'var(--text-info)' }}>24时</span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Popular posts */}
-      {topViewed.length > 0 && (
-        <div className="glass-card rounded-xl p-5 mt-6">
-          <h2 className="text-sm font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>热门文章</h2>
-          <div className="space-y-2">
-            {topViewed.map((post: any, i: number) => (
-              <a key={post.id} href={`/admin/posts`} className="flex items-center gap-3 p-2.5 rounded-lg transition-colors hover:opacity-80">
-                <span className="w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0"
-                  style={{ background: i < 3 ? 'var(--primary)' : 'var(--surface-bg)', color: i < 3 ? '#fff' : 'var(--text-secondary)' }}>
-                  {i + 1}
-                </span>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm truncate" style={{ color: 'var(--text-primary)' }}>{post.title}</div>
-                </div>
-                <div className="flex items-center gap-1 text-xs flex-shrink-0" style={{ color: 'var(--text-info)' }}>
-                  <Eye className="w-3.5 h-3.5" />
-                  {post.view_count || 0}
-                </div>
-              </a>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
-  );
+    <div className="admin-overview-grid">
+      <div className="min-w-0"><VisitTrendChart data={stats?.daily_counts ?? []} unavailable={!stats} />
+        <dl className="admin-traffic-summary">
+          {[
+            ['独立 IP', value(stats?.unique_ips)],
+            ['平均响应', stats ? `${Math.round(stats.avg_response_ms)} ms` : '—'],
+            ['今日访问', stats ? value(stats.daily_counts.at(-1)?.count ?? 0) : '—'],
+            ['错误请求', value(stats?.total_errors)],
+          ].map(([label, number]) => <div key={label}><dt>{label}</dt><dd>{number}</dd></div>)}
+        </dl>
+      </div>
+      <section className="admin-panel admin-popular" aria-label="热门文章">
+        <div className="admin-section-heading"><h2>读者在看</h2><Link href="/admin/posts">全部文章 <ArrowUpRight size={14} /></Link></div>
+        <p className="admin-section-note">累计浏览最多的文章</p>
+        <RequestFeedback error={popular.error} onRetry={popular.reload} pending={popular.loading} />
+        {popular.loading && !popular.data ? <p role="status" className="admin-empty-note">正在读取文章…</p> : <ol className="admin-popular-list">
+          {(popular.data?.items ?? []).slice(0, 5).map((post: { id: string; title: string; slug: string; view_count: number }, index: number) => <li key={post.id}>
+            <span className="admin-rank">{String(index + 1).padStart(2, '0')}</span>
+            <Link href={`/posts/${post.slug}`} target="_blank" rel="noopener noreferrer"><span>{post.title}</span><small>{value(post.view_count)} 次浏览</small></Link>
+            <ArrowUpRight size={14} />
+          </li>)}
+        </ol>}
+        {!popular.loading && !popular.error && !popular.data?.items.length && <p className="admin-empty-note">发布第一篇文章后，这里会显示读者关注的内容。</p>}
+        <Link href="/admin/posts?compose=1" className="admin-text-action"><PenLine size={15} />把下一个想法写下来<ArrowUpRight size={14} /></Link>
+      </section>
+    </div>
+    <SystemHealth />
+    {overview.data && <details className="admin-panel admin-audience">
+      <summary><span>访客画像</span><span>设备、浏览器、系统与活跃时段</span></summary>
+      <div className="admin-audience-grid">
+        {(['device', 'browser', 'os'] as const).map((key, index) => {
+          const items = overview.data?.[key] ?? [];
+          const total = items.reduce((sum, item) => sum + item.count, 0);
+          return <section key={key}><h3>{['设备分布', '浏览器分布', '操作系统分布'][index]}</h3>
+            {items.slice(0, 6).map(item => <div key={item.name} className="admin-distribution">
+              <span>{({ desktop: '电脑', mobile: '手机', tablet: '平板', Unknown: '未知' } as Record<string, string>)[item.name] || item.name}</span>
+              <meter min={0} max={total || 1} value={item.count} aria-label={item.name} /><span>{total ? Math.round(item.count / total * 100) : 0}%</span>
+            </div>)}{!items.length && <p className="admin-empty-note">暂无访问数据</p>}
+          </section>;
+        })}
+        <section><h3>热门时段</h3><p className="admin-section-note">按请求次数排序</p>
+          {[...(overview.data.hour ?? [])].sort((a, b) => b.count - a.count).slice(0, 4).map(item => <p key={item.hour} className="admin-hour"><span>{String(item.hour).padStart(2, '0')}:00</span><span>{value(item.count)} 次</span></p>)}
+        </section>
+      </div>
+    </details>}
+  </div>;
 }

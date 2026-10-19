@@ -10,7 +10,7 @@ import ImageEditDialog from './EditorImageDialog';
 import EditorConflictDialog from './EditorConflictDialog';
 import { toDateTimeLocal, scheduledTimestamp } from '@/lib/post-settings';
 import {
-  ExternalLink, X, FileText,
+  ExternalLink, X, FileText, MoreHorizontal,
   ArrowLeft, Save,
   Bold, Italic, Underline, Strikethrough, Link, Code, Quote, List, ListOrdered, AlignLeft, AlignCenter, AlignRight,
   Image as ImageIcon, Heading1, Heading2, Heading3, LayoutGrid,
@@ -103,10 +103,21 @@ export default function PostEditor({ post, onClose }: { post: Partial<Post> | nu
   const passwordSet = serverPasswordSet && !passwordCleared;
   const [rightTab, setRightTab] = useState<'outline' | 'history' | 'details'>('outline');
   const [revisions, setRevisions] = useState<PostRevision[]>([]);
-  const [showRightPanel, setShowRightPanel] = useState(true);
+  const [showRightPanel, setShowRightPanel] = useState(false);
+  const [showMoreTools, setShowMoreTools] = useState(false);
   const [showMarkdownReference, setShowMarkdownReference] = useState(false);
   const [showDetailDialog, setShowDetailDialog] = useState(false);
-  const [viewMode, setViewMode] = useState<'edit' | 'preview' | 'split'>('split');
+  const [preferredView, setViewMode] = useState<'edit' | 'preview' | 'split'>('split');
+  const [compact, setCompact] = useState(false);
+  useLayoutEffect(() => {
+    const query = window.matchMedia?.('(max-width: 767px)');
+    if (!query) return;
+    const update = () => setCompact(query.matches);
+    update();
+    query.addEventListener('change', update);
+    return () => query.removeEventListener('change', update);
+  }, []);
+  const viewMode = compact && preferredView === 'split' ? 'edit' : preferredView;
   const [conflict, setConflict] = useState<{ currentPost: Post; publishStatus?: 'draft' | 'published' } | null>(null);
   const baselineVersion = useRef(postVersion(post?.updated_at));
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -652,7 +663,7 @@ export default function PostEditor({ post, onClose }: { post: Partial<Post> | nu
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col" style={{ background: 'var(--color-bg)' }}>
+    <div className="post-editor fixed inset-0 z-50 flex flex-col" style={{ background: 'var(--color-bg)' }}>
       <style>{`
         @keyframes fade-scale-in {
           from { opacity: 0; transform: scale(0.95) translateY(-6px); }
@@ -666,7 +677,7 @@ export default function PostEditor({ post, onClose }: { post: Partial<Post> | nu
         .pe-slide-down { animation: slide-down 0.25s ease-out both; }
       `}</style>
       {/* Top bar */}
-      <header className="h-14 flex items-center justify-between px-4 flex-shrink-0 glass-card"
+      <header className="editor-header"
         style={{ borderBottom: '1px solid var(--glass-border)' }}>
         <div className="flex items-center gap-3">
           <button onClick={() => { void handleClose(); }} className="p-2 rounded-xl transition-colors btn-glass" style={{ color: 'var(--text-secondary)' }} title="返回列表">
@@ -677,7 +688,7 @@ export default function PostEditor({ post, onClose }: { post: Partial<Post> | nu
             {savedPostId ? '编辑文章' : '新建文章'}
           </span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="editor-header-actions flex items-center gap-2">
           {savedPostId && status === 'draft' && (
             <button onClick={async () => {
               try {
@@ -693,12 +704,10 @@ export default function PostEditor({ post, onClose }: { post: Partial<Post> | nu
               <ExternalLink className="w-4 h-4" />
             </button>
           )}
-          <button onClick={() => setViewMode(viewMode === 'edit' ? 'split' : viewMode === 'split' ? 'preview' : 'edit')}
-            className="px-3 py-2 rounded-xl transition-colors btn-glass text-xs font-medium"
-            style={{ color: 'var(--text-secondary)' }}
-            title="切换编辑/预览模式">
-            {viewMode === 'edit' ? '编辑' : viewMode === 'preview' ? '预览' : '分屏'}
-          </button>
+          <div className="editor-view-switch" role="group" aria-label="编辑器视图">
+            {([['edit', '编辑'], ['split', '分屏'], ['preview', '预览']] as const).filter(([mode]) => !compact || mode !== 'split').map(([mode, label]) =>
+              <button key={mode} type="button" aria-pressed={viewMode === mode} onClick={() => setViewMode(mode)}>{label}</button>)}
+          </div>
           <button onClick={() => setShowDetailDialog(true)}
             className="px-3 py-2 rounded-xl transition-colors btn-glass text-xs font-medium"
             style={{ color: 'var(--text-secondary)' }}
@@ -706,13 +715,14 @@ export default function PostEditor({ post, onClose }: { post: Partial<Post> | nu
             <Settings className="w-3.5 h-3.5 inline mr-1" />详情
           </button>
           <button onClick={() => setShowMarkdownReference(value => !value)}
-            className="flex items-center gap-1 px-3 py-2 rounded-xl text-sm transition-colors btn-glass"
+            className="editor-secondary flex items-center gap-1 px-3 py-2 rounded-xl text-sm transition-colors btn-glass"
             style={{ color: showMarkdownReference ? 'var(--primary)' : 'var(--text-secondary)' }}
             title="Markdown 语法参考">
             <FileText className="w-3.5 h-3.5" />语法参考
           </button>
           <button onClick={() => setShowRightPanel(!showRightPanel)}
-            className="p-2 rounded-xl transition-colors btn-glass"
+            className="editor-secondary p-2 rounded-xl transition-colors btn-glass"
+            aria-expanded={showRightPanel} aria-label="切换侧边栏"
             style={{ color: showRightPanel ? 'var(--primary)' : 'var(--text-info)' }}
             title="切换侧边栏">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -733,7 +743,7 @@ export default function PostEditor({ post, onClose }: { post: Partial<Post> | nu
         </div>
       </header>
 
-      <div role="status" aria-live="polite" className="px-6 py-2 text-xs flex-shrink-0"
+      <div role="status" aria-live="polite" className={`${mediaUploading ? '' : 'editor-upload-hint'} px-4 sm:px-6 pt-2 text-xs flex-shrink-0`}
         style={{ color: mediaUploading ? 'var(--primary)' : 'var(--text-info)' }}>
         {mediaUploading ? `正在上传 ${mediaUploadCount} 个文件，可继续编辑，完成后会自动插入原位置` : '支持粘贴截图、图片文件或拖入多张图片，自动上传并插入正文'}
       </div>
@@ -746,7 +756,7 @@ export default function PostEditor({ post, onClose }: { post: Partial<Post> | nu
         </div>
       )}
 
-      <div className="px-6 py-1 text-xs flex-shrink-0" role={persistence.storageError ? 'alert' : 'status'}
+      <div className="px-4 sm:px-6 py-2 text-xs flex-shrink-0" role={persistence.storageError ? 'alert' : 'status'}
         style={{ color: persistence.storageError ? 'var(--color-error)' : 'var(--text-info)' }}>
         {persistence.storageError ? <>{persistence.storageError} <button type="button" className="underline" onClick={persistence.retry}>重试草稿保存</button></>
           : persistence.savedAt ? '本地草稿已保存' : persistence.isDirty ? '正在保留本地草稿…' : '修改后会自动保留本地草稿'}
@@ -801,41 +811,46 @@ export default function PostEditor({ post, onClose }: { post: Partial<Post> | nu
         {/* Editor + Preview container (takes remaining space) */}
         <div className="flex-1 flex overflow-hidden">
           {/* Editor */}
-          <div style={{ opacity: viewMode === 'preview' ? 0 : 1, flex: viewMode === 'preview' ? '0 1 0%' : (viewMode === 'split' ? '0 0 50%' : '1 1 0%'), pointerEvents: viewMode === 'preview' ? 'none' : undefined }} className="flex flex-col overflow-hidden transition-all duration-300 ease-in-out">
+          <div style={{ display: viewMode === 'preview' ? 'none' : undefined, flex: viewMode === 'preview' ? '0 1 0%' : (viewMode === 'split' ? '0 0 50%' : '1 1 0%'), pointerEvents: viewMode === 'preview' ? 'none' : undefined }} className="flex flex-col overflow-hidden transition-all duration-300 ease-in-out">
             {/* Fixed header: title, slug, toolbar */}
-            <div className="max-w-5xl mx-auto w-full pt-8 px-6 flex-shrink-0">
+            <div className="max-w-5xl mx-auto w-full pt-4 sm:pt-6 px-4 sm:px-6 flex-shrink-0">
               <input
                 type="text"
-                placeholder="请输入标题"
+                aria-label="文章标题" placeholder="请输入标题"
                 value={title}
                 onChange={e => handleTitleChange(e.target.value)}
-                className="w-full text-3xl font-bold outline-none border-0 bg-transparent mb-2"
+                className="w-full text-2xl sm:text-3xl font-bold outline-none border-0 bg-transparent mb-2"
                 style={{ color: 'var(--text-primary)' }}
               />
-              <input
+              <label className="editor-field-label mb-4"><span>/posts/</span><input
                 type="text"
-                placeholder="url-slug"
+                aria-label="文章链接标识" placeholder="url-slug"
                 value={slug}
                 onChange={e => handleSlugChange(e.target.value)}
-                className="w-full text-sm outline-none border-0 bg-transparent font-mono mb-6"
+                className="w-full text-xs outline-none border-0 bg-transparent font-mono py-1"
                 style={{ color: 'var(--text-info)' }}
-              />
+              /></label>
 
               {/* Toolbar */}
-              <div className="flex items-center gap-0.5 pb-3 mb-4 flex-wrap" style={{ borderBottom: '1px solid var(--glass-border)' }}>
+              <div className="editor-toolbar" role="group" aria-label="正文格式">
                 {toolbarButtons.map((btn, i) => {
                   if ('type' in btn && btn.type === 'divider') {
-                    return <div key={`d-${i}`} className="w-px h-5 mx-1" style={{ background: 'var(--glass-border)' }} />;
+                    return null;
                   }
+                  const commonTools = ['粗体 (Ctrl+B)', '斜体 (Ctrl+I)', '标题 1', '标题 2', '左对齐', '居中', '右对齐', '链接 (Ctrl+K)', '图片', '引用', '无序列表', '有序列表', '代码块'];
+                  if (!showMoreTools && !commonTools.includes(btn.title!)) return null;
                   const Icon = btn.icon!;
                   return (
                     <button key={i} type="button" onMouseDown={e => e.preventDefault()} onClick={(e) => { btn.action(); mediaPickerBtnRef.current = e.currentTarget; }} title={btn.title} aria-label={btn.title}
                       aria-pressed={'alignment' in btn ? textAlignment === btn.alignment : undefined}
-                      className="p-1.5 rounded-lg transition-all duration-150 btn-glass hover:scale-110" style={{ color: 'alignment' in btn && textAlignment === btn.alignment ? 'var(--primary)' : 'var(--text-secondary)' }}>
+                      className="transition-colors duration-150" style={{ color: 'alignment' in btn && textAlignment === btn.alignment ? 'var(--primary)' : 'var(--text-secondary)' }}>
                       <Icon className="w-4 h-4" />
                     </button>
                   );
                 })}
+                <button type="button" aria-expanded={showMoreTools} aria-label={showMoreTools ? '收起更多工具' : '更多格式工具'} onClick={() => setShowMoreTools(value => !value)} title="公式、表格、提示块与更多格式">
+                  <MoreHorizontal size={16} /><span className="text-xs">{showMoreTools ? '收起' : '更多'}</span>
+                </button>
               </div>
 
               {/* Media picker & upload for toolbar */}
@@ -854,12 +869,13 @@ export default function PostEditor({ post, onClose }: { post: Partial<Post> | nu
             </div>
 
             {/* Scrollable textarea */}
-            <div className="flex-1 min-h-0 max-w-5xl mx-auto w-full px-6 pb-8 relative"
+            <div className="flex-1 min-h-0 max-w-5xl mx-auto w-full px-4 sm:px-6 pb-4 relative"
               onDragOver={handleEditorDragOver}
               onDragLeave={handleEditorDragLeave}
               onDrop={handleEditorDrop}>
               <textarea
                 ref={textareaRef}
+                aria-label="Markdown 正文"
                 placeholder="输入 Markdown 内容，可直接粘贴截图或拖入多张图片自动上传..."
                 value={content}
                 onChange={e => {
@@ -892,7 +908,7 @@ export default function PostEditor({ post, onClose }: { post: Partial<Post> | nu
               if (target.closest('.editor-image-gallery')) handleEditGallery(target);
               else handleEditImage(target);
             }}>
-            <div ref={previewContentRef} className="max-w-5xl mx-auto py-8 px-6">
+            <div ref={previewContentRef} className="max-w-5xl mx-auto py-5 sm:py-6 px-4 sm:px-6">
               <div className="prose prose-sm max-w-none" style={{ color: 'var(--text-primary)' }}>
                 {deferredContent ? (
                   <ArticleMarkdown content={deferredContent} variant="editor" />
@@ -905,7 +921,7 @@ export default function PostEditor({ post, onClose }: { post: Partial<Post> | nu
         </div>
 
         {/* Right sidebar */}
-        <div className="flex-shrink-0 flex flex-col overflow-hidden transition-all duration-300 ease-in-out" style={{ width: showRightPanel ? '16rem' : '0px', borderLeft: showRightPanel ? '1px solid var(--glass-border)' : '1px solid transparent', opacity: showRightPanel ? 1 : 0 }}>
+        <div className="editor-sidebar flex-shrink-0 flex flex-col overflow-hidden transition-all duration-300 ease-in-out" inert={!showRightPanel || compact} aria-hidden={!showRightPanel || compact} style={{ width: showRightPanel ? '16rem' : '0px', borderLeft: showRightPanel ? '1px solid var(--glass-border)' : '1px solid transparent', opacity: showRightPanel ? 1 : 0 }}>
             <div className="flex" style={{ borderBottom: '1px solid var(--glass-border)' }}>
               <button onClick={() => setRightTab('outline')}
                 className="flex-1 px-4 py-2.5 text-sm font-medium transition-colors relative"

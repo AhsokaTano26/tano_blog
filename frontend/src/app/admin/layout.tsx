@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import './admin.css';
 import { api } from '@/lib/api';
 import { isPublicAuthRoute } from '@/lib/auth-routes';
 import { useTheme } from '@/lib/theme';
@@ -54,6 +55,26 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [showWelcome, setShowWelcome] = useState(false);
   const [pendingCounts, setPendingCounts] = useState<Record<string, number>>({});
   const [notifCount, setNotifCount] = useState(0);
+  const drawerRef = useRef<HTMLElement>(null);
+  const menuRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!mobileSidebarOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    const trigger = menuRef.current;
+    document.body.style.overflow = 'hidden';
+    const drawer = drawerRef.current;
+    drawer?.querySelector<HTMLButtonElement>('button')?.focus();
+    function keyboard(event: KeyboardEvent) {
+      if (event.key === 'Escape') { event.preventDefault(); setMobileSidebarOpen(false); }
+      if (event.key !== 'Tab' || !drawer) return;
+      const controls = Array.from(drawer.querySelectorAll<HTMLElement>('a[href], button:not(:disabled)'));
+      const first = controls[0], last = controls.at(-1);
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    }
+    document.addEventListener('keydown', keyboard);
+    return () => { document.body.style.overflow = previousOverflow; document.removeEventListener('keydown', keyboard); trigger?.focus(); };
+  }, [mobileSidebarOpen]);
   const pathname = usePathname();
   const { theme, setTheme } = useTheme();
 
@@ -141,7 +162,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }
 
   return (
-      <div className="min-h-screen flex" style={{ background: 'var(--color-bg)' }}>
+      <div className="admin-shell min-h-screen flex" style={{ background: 'var(--color-bg)' }}>
       {/* Mobile header bar */}
       <div className="fixed top-0 left-0 right-0 h-12 flex items-center justify-between px-4 z-50 lg:hidden"
         style={{
@@ -150,7 +171,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           backdropFilter: 'blur(var(--glass-blur))',
           WebkitBackdropFilter: 'blur(var(--glass-blur))',
         }}>
-        <button onClick={() => setMobileSidebarOpen(true)}
+        <button ref={menuRef} aria-label="打开导航" aria-expanded={mobileSidebarOpen} aria-controls="admin-mobile-navigation" onClick={() => setMobileSidebarOpen(true)}
           className="p-1.5 rounded-lg hover:bg-white/10 transition-colors"
           style={{ color: 'var(--text-secondary)' }}>
           <Menu className="w-5 h-5" />
@@ -166,7 +187,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       {mobileSidebarOpen && (
         <>
           <div className="fixed inset-0 z-50 bg-black/50 lg:hidden" onClick={() => setMobileSidebarOpen(false)} />
-          <aside className="fixed top-0 left-0 h-full w-[260px] z-50 flex flex-col lg:hidden animate-slide-right"
+          <aside id="admin-mobile-navigation" ref={drawerRef} role="dialog" aria-modal="true" aria-label="后台导航" className="admin-sidebar fixed top-0 left-0 h-full w-[260px] max-w-[85vw] z-50 flex flex-col lg:hidden animate-slide-right"
             style={{
               background: 'var(--glass-bg)',
               borderRight: '1px solid var(--glass-border)',
@@ -176,7 +197,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             <div className="h-12 flex items-center justify-between px-4 flex-shrink-0"
               style={{ borderBottom: '1px solid var(--glass-border)' }}>
               <span className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>管理后台</span>
-              <button onClick={() => setMobileSidebarOpen(false)}
+              <button aria-label="关闭导航" onClick={() => setMobileSidebarOpen(false)}
                 className="p-1 rounded-lg hover:bg-white/10 transition-colors"
                 style={{ color: 'var(--text-info)' }}>
                 <X className="w-4 h-4" />
@@ -228,7 +249,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                   <span className="text-sm truncate" style={{ color: 'var(--text-primary)' }}>{user?.display_name || user?.username}</span>
                 </div>
                 <button onClick={async () => { await api.logout(); window.location.href = '/admin/login'; }}
-                  className="p-1.5 rounded-lg hover:bg-white/10 transition-colors" style={{ color: 'var(--text-info)' }}>
+                  aria-label="退出登录" className="p-1.5 rounded-lg hover:bg-white/10 transition-colors" style={{ color: 'var(--text-info)' }}>
                   <LogOut className="w-4 h-4" />
                 </button>
               </div>
@@ -238,7 +259,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       )}
 
       {/* Desktop sidebar */}
-      <aside className={`hidden lg:flex fixed top-0 left-0 h-full z-50 flex-col transition-all duration-200 ${collapsed ? 'w-[60px]' : 'w-[220px]'}`}
+      <aside className={`admin-sidebar hidden lg:flex fixed top-0 left-0 h-full z-50 flex-col transition-all duration-200 ${collapsed ? 'w-[72px]' : 'w-[220px]'}`}
         style={{
           background: 'var(--glass-bg)',
           borderRight: '1px solid var(--glass-border)',
@@ -246,9 +267,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           WebkitBackdropFilter: 'blur(var(--glass-blur))',
         }}>
         {/* Logo */}
-        <div className="h-14 flex items-center justify-between px-4 flex-shrink-0"
+        <div className={`h-14 flex items-center ${collapsed ? 'justify-center px-2' : 'justify-between px-4'} flex-shrink-0`}
           style={{ borderBottom: '1px solid var(--glass-border)' }}>
-          <NavLink href="/admin" className="flex items-center gap-2 overflow-hidden group">
+          <NavLink href="/admin" aria-label="管理后台" className={`items-center gap-2 overflow-hidden group ${collapsed ? 'hidden' : 'flex'}`}>
             <img src="/aimi.png" alt="T" className="w-8 h-8 rounded-lg object-cover flex-shrink-0 transition-transform group-hover:scale-110" />
             {!collapsed && (
               <span className="text-base font-bold truncate" style={{ color: 'var(--text-primary)' }}>管理后台</span>
@@ -264,14 +285,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto py-3 px-2">
-          <NavLink href="/"
+          <NavLink href="/" title="前台首页" aria-label="前台首页"
             className="flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-all hover:bg-white/5 cursor-pointer"
             style={{ color: 'var(--text-secondary)' }}>
             <Home className="w-4 h-4 flex-shrink-0" />
             {!collapsed && <span>前台首页</span>}
           </NavLink>
 
-          <NavLink href="/admin"
+          <NavLink href="/admin" title="概览" aria-label="概览" aria-current={pathname === '/admin' ? 'page' : undefined}
             className="flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-all hover:bg-white/5 mt-1 cursor-pointer"
             style={{
               background: pathname === '/admin' ? 'var(--primary-sub)' : 'transparent',
@@ -296,7 +317,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 const badgeCount = item.href === '/admin/comments' ? pendingCounts.comments
                   : item.href === '/admin/links' ? pendingCounts.links : 0;
                 return (
-                  <NavLink key={item.href} href={item.href}
+                  <NavLink key={item.href} href={item.href} title={collapsed ? item.label : undefined} aria-label={item.label} aria-current={isActive ? 'page' : undefined}
                     className={`flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-all mb-0.5 relative cursor-pointer ${collapsed && badgeCount > 0 ? 'relative' : ''}`}
                     style={{
                       background: isActive ? 'var(--primary-sub)' : 'transparent',
@@ -330,8 +351,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         {/* User profile */}
         <div className="p-3 flex-shrink-0" style={{ borderTop: '1px solid var(--glass-border)' }}>
           {/* Notification bell */}
-          <NavLink href="/admin/notifications"
-            className={`flex items-center ${collapsed ? 'justify-center' : 'px-1'} mb-2 relative group`}>
+          <NavLink href="/admin/notifications" aria-label={`通知，${notifCount} 条未读`} title="通知"
+            className={`flex items-center ${collapsed ? 'flex-col justify-center' : 'px-1'} mb-2 relative group`}>
             <div className="relative p-2 hover:bg-white/10 rounded-lg transition-colors btn-press">
               <Bell className="w-5 h-5" style={{ color: 'var(--text-info)' }} />
               {notifCount > 0 && (
@@ -344,7 +365,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           </NavLink>
 
           {/* Theme switcher */}
-          <div className={`flex items-center gap-1 mb-2 ${collapsed ? 'justify-center' : 'px-1'}`}>
+          <div className={`flex items-center gap-1 mb-2 ${collapsed ? 'flex-col justify-center' : 'px-1'}`}>
             {([
               { value: 'light' as const, icon: Sun, label: '日间模式' },
               { value: 'system' as const, icon: Monitor, label: '跟随系统' },
@@ -353,7 +374,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               <button key={opt.value}
                 onClick={() => setTheme(opt.value)}
                 className="p-1.5 rounded-lg transition-all btn-press"
-                title={opt.label}
+                title={opt.label} aria-label={opt.label} aria-pressed={theme === opt.value}
                 style={{
                   background: theme === opt.value ? 'var(--primary-sub)' : 'transparent',
                   color: theme === opt.value ? 'var(--primary)' : 'var(--text-info)',
@@ -389,8 +410,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       </aside>
 
       {/* Main content */}
-      <main className={`flex-1 min-w-0 transition-[margin] duration-200 animate-fade-in pt-12 lg:pt-0 ${collapsed ? 'ml-0 lg:ml-[60px]' : 'ml-0 lg:ml-[220px]'}`}>
-        <div className="p-4 sm:p-6 animate-fade-in-up" style={{ animationDelay: '0.1s' }}>
+      <main className={`flex-1 min-w-0 transition-[margin] duration-200 pt-12 lg:pt-0 ${collapsed ? 'ml-0 lg:ml-[72px]' : 'ml-0 lg:ml-[220px]'}`}>
+        <div className="mx-auto w-full max-w-[1600px] p-4 sm:p-6 lg:p-8">
           <ConfirmProvider>
             {children}
           </ConfirmProvider>
