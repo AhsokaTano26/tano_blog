@@ -1,7 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import { api } from '@/lib/api';
+import type { FriendLinkItem } from '@/lib/admin-types';
+import { useLatestRequest, useFeedbackMutation } from '@/lib/request-feedback';
+import { RequestFeedback } from '@/components/RequestFeedback';
 import { Plus, Pencil, Trash2, Check, X, Link as LinkIcon } from 'lucide-react';
 import { Loading } from '@/components/Loading';
 import { useConfirm, Select } from '@/components/ConfirmDialog';
@@ -35,39 +38,32 @@ function statusBadge(status: string) {
 
 export default function AdminLinks() {
   const { confirm } = useConfirm();
-  const [items, setItems] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('');
 
   // Edit modal state
-  const [editing, setEditing] = useState<any>(null);
+  const [editing, setEditing] = useState<FriendLinkItem | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState({ name: '', url: '', description: '', avatar: '', email: '', status: 'pending', sort_order: 0 });
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
-  const [total, setTotal] = useState(0);
 
-  async function load() {
-    setLoading(true);
-    try {
-      const params: Record<string, string> = { page: String(page), page_size: String(pageSize) };
-      if (activeTab) params.status = activeTab;
-      const res = await api.admin.links.list(params);
-      setItems(res.items);
-      setTotal(res.total);
-    } catch (e) { /* empty */ }
-    setLoading(false);
-  }
-
-  useEffect(() => { load(); }, [page, pageSize, activeTab]);
+  const { data, loading, error: loadError, reload: load } = useLatestRequest(
+    useCallback(() => api.admin.links.list({ page: String(page), page_size: String(pageSize), ...(activeTab ? { status: activeTab } : {}) }), [page, pageSize, activeTab]),
+    '加载失败，请重试',
+  );
+  const items: FriendLinkItem[] = data?.items || [];
+  const total = data?.total || 0;
+  const mutation = useFeedbackMutation();
 
   function openCreate() {
+    mutation.clearError();
     setEditing(null);
     setForm({ name: '', url: '', description: '', avatar: '', email: '', status: 'pending', sort_order: 0 });
     setShowModal(true);
   }
 
-  function openEdit(item: any) {
+  function openEdit(item: FriendLinkItem) {
+    mutation.clearError();
     setEditing(item);
     setForm({
       name: item.name || '',
@@ -82,37 +78,39 @@ export default function AdminLinks() {
   }
 
   async function handleSave() {
-    try {
-      const data: any = { ...form };
+    await mutation.run(async () => {
+      const data = { ...form };
       if (editing) {
         await api.admin.links.update(editing.id, data);
       } else {
         await api.admin.links.create(data);
       }
       setShowModal(false);
-      load();
-    } catch (e) { /* empty */ }
+      await load();
+    });
   }
 
   async function handleUpdateStatus(id: string, status: string) {
-    try {
+    await mutation.run(async () => {
       await api.admin.links.updateStatus(id, status);
-      load();
-    } catch (e) { /* empty */ }
+      await load();
+    });
   }
 
   async function handleDelete(id: string) {
-    if (!await confirm('确定删除此友链？')) return;
-    try {
+    await mutation.run(async () => {
+      if (!await confirm('确定删除此友链？')) return;
       await api.admin.links.delete(id);
-      load();
-    } catch (e) { /* empty */ }
+      await load();
+    });
   }
 
   const filtered = items;
 
   return (
     <div>
+      <RequestFeedback error={loadError} onRetry={load} pending={loading} />
+      {!showModal && <RequestFeedback error={mutation.error} />}
       <div className="flex items-center justify-between mb-5">
         <h1 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>友链管理</h1>
         <div className="flex items-center gap-2">
@@ -121,7 +119,7 @@ export default function AdminLinks() {
             style={{ color: 'var(--primary)' }}>
             导出 CSV
           </button>
-          <button onClick={openCreate}
+          <button disabled={mutation.pending} onClick={openCreate}
             className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors cursor-pointer"
             style={{ background: 'var(--primary)' }}>
             <Plus className="w-4 h-4" />添加友链
@@ -192,21 +190,21 @@ export default function AdminLinks() {
                     <div className="flex items-center justify-end gap-1">
                       {item.status === 'pending' && (
                         <>
-                          <button onClick={() => handleUpdateStatus(item.id, 'approved')}
+                          <button disabled={mutation.pending} onClick={() => handleUpdateStatus(item.id, 'approved')}
                             className="btn-glass p-1.5 rounded transition-colors cursor-pointer" title="通过">
                             <Check className="w-4 h-4" style={{ color: '#22c55e' }} />
                           </button>
-                          <button onClick={() => handleUpdateStatus(item.id, 'rejected')}
+                          <button disabled={mutation.pending} onClick={() => handleUpdateStatus(item.id, 'rejected')}
                             className="btn-glass p-1.5 rounded transition-colors cursor-pointer" title="拒绝">
                             <X className="w-4 h-4" style={{ color: '#ef4444' }} />
                           </button>
                         </>
                       )}
-                      <button onClick={() => openEdit(item)}
+                      <button disabled={mutation.pending} onClick={() => openEdit(item)}
                         className="btn-glass p-1.5 rounded transition-colors cursor-pointer" title="编辑">
                         <Pencil className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
                       </button>
-                      <button onClick={() => handleDelete(item.id)}
+                      <button disabled={mutation.pending} onClick={() => handleDelete(item.id)}
                         className="btn-glass p-1.5 rounded transition-colors cursor-pointer" title="删除">
                         <Trash2 className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
                       </button>
@@ -245,7 +243,7 @@ export default function AdminLinks() {
                     }}>{p}</button>
                 );
               })}
-              <button onClick={() => setPage(Math.min(Math.ceil(total / pageSize), page + 1))} disabled={page === Math.ceil(total / pageSize)}
+              <button onClick={() => setPage(Math.min(Math.max(1, Math.ceil(total / pageSize)), page + 1))} disabled={page >= Math.max(1, Math.ceil(total / pageSize))}
                 className="px-3 py-1.5 rounded-xl btn-glass disabled:opacity-40 transition-colors"
                 style={{ color: 'var(--text-primary)' }}>下一页</button>
             </div>
@@ -255,54 +253,55 @@ export default function AdminLinks() {
       {/* Edit/Create Modal */}
       {showModal && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.5)' }}
-          onClick={(e) => { if (e.target === e.currentTarget) setShowModal(false); }}>
+          onClick={(e) => { if (e.target === e.currentTarget && !mutation.pending) setShowModal(false); }}>
           <div className="w-full max-w-lg rounded-2xl shadow-2xl p-6" style={{ background: 'var(--card-bg)', border: '1px solid var(--glass-border)' }}>
             <h2 className="text-lg font-bold mb-4" style={{ color: 'var(--text-primary)' }}>
               {editing ? '编辑友链' : '添加友链'}
             </h2>
-            <div className="space-y-3">
+            <RequestFeedback error={mutation.error} />
+            <fieldset disabled={mutation.pending} className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>名称 *</label>
-                  <input type="text" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                  <input aria-label="名称" type="text" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
                     className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
                     style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
                 </div>
                 <div>
                   <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>URL *</label>
-                  <input type="text" value={form.url} onChange={e => setForm(f => ({ ...f, url: e.target.value }))}
+                  <input aria-label="网址" type="text" value={form.url} onChange={e => setForm(f => ({ ...f, url: e.target.value }))}
                     className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
                     style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
                 </div>
                 <div>
                   <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>头像</label>
-                  <input type="text" value={form.avatar} onChange={e => setForm(f => ({ ...f, avatar: e.target.value }))}
+                  <input aria-label="头像" type="text" value={form.avatar} onChange={e => setForm(f => ({ ...f, avatar: e.target.value }))}
                     className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
                     style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
                 </div>
                 <div>
                   <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>邮箱</label>
-                  <input type="text" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+                  <input aria-label="邮箱" type="text" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
                     className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
                     style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
                 </div>
               </div>
               <div>
                 <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>描述</label>
-                <input type="text" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+                <input aria-label="描述" type="text" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
                   className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
                   style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>排序</label>
-                  <input type="number" value={form.sort_order} onChange={e => setForm(f => ({ ...f, sort_order: parseInt(e.target.value) || 0 }))}
+                  <input aria-label="排序" type="number" value={form.sort_order} onChange={e => setForm(f => ({ ...f, sort_order: parseInt(e.target.value) || 0 }))}
                     className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
                     style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
                 </div>
                 <div>
                   <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>状态</label>
-                  <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
+                  <select aria-label="状态" value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
                     className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
                     style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }}>
                     <option value="pending">待审核</option>
@@ -311,11 +310,11 @@ export default function AdminLinks() {
                   </select>
                 </div>
               </div>
-            </div>
+            </fieldset>
             <div className="flex justify-end gap-2 mt-5">
-              <button onClick={() => setShowModal(false)}
+              <button disabled={mutation.pending} onClick={() => setShowModal(false)}
                 className="btn-glass px-4 py-2 rounded-lg text-sm cursor-pointer" style={{ color: 'var(--text-secondary)' }}>取消</button>
-              <button onClick={handleSave}
+              <button disabled={mutation.pending} onClick={handleSave}
                 className="px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors cursor-pointer"
                 style={{ background: 'var(--primary)' }}>
                 {editing ? '保存' : '添加'}

@@ -6,6 +6,7 @@ const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
   {
+    files: ["**/*.{js,jsx,mjs,ts,tsx}"],
     // Existing UI code predates the stricter React 19 lint rules. Keep these
     // visible in CI as warnings while allowing security/build checks to gate.
     rules: {
@@ -22,6 +23,11 @@ const eslintConfig = defineConfig([
       "@next/next/no-html-link-for-pages": "warn",
     },
   },
+  {
+    // Browser orchestration must load its process-group adapter before Playwright.
+    files: ["scripts/*.cjs"],
+    rules: { "@typescript-eslint/no-require-imports": "off" },
+  },
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:
@@ -29,6 +35,7 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    "test-results/**",
   ]),
 ]);
 

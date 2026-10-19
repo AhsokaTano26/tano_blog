@@ -5,6 +5,7 @@ import { api } from '@/lib/api';
 import { FileText, MessageSquare, Image, Eye, Activity, PenSquare, MessageCircle, Upload, Settings } from 'lucide-react';
 import { Loading } from '@/components/Loading';
 import VisitTrendChart from '@/components/VisitTrendChart';
+import SystemHealth from '@/components/SystemHealth';
 
 export default function AdminDashboard() {
   const [stats, setStats] = useState<any>(null);
@@ -57,6 +58,8 @@ export default function AdminDashboard() {
   return (
     <div>
       <h1 className="text-xl font-bold mb-5" style={{ color: 'var(--text-primary)' }}>概览</h1>
+
+      <SystemHealth />
 
       {/* Stat cards */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-6">

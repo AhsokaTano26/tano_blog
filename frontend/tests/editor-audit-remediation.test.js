@@ -48,11 +48,11 @@ test('a pending save preserves newer body edits and their recoverable draft', as
   const view = await mountEditor(t);
   await click('保存', view.container);
   await React.act(async () => input(view.textarea, 'Newer B'));
-  localStorage.setItem('post_autosave_saved-id', JSON.stringify({ content: 'Newer B' }));
   await React.act(async () => pending.resolve({ post: { id: 'saved-id' } }));
   assert.equal(view.closed(), 0, 'newer edits must keep the editor open');
   assert.equal(view.textarea.value, 'Newer B');
-  assert.equal(JSON.parse(localStorage.getItem('post_autosave_saved-id')).content, 'Newer B');
+  const draftKey = Object.keys(localStorage).find(key => key.startsWith('post_autosave_saved-id:'));
+  assert.equal(JSON.parse(localStorage.getItem(draftKey)).content, 'Newer B');
 });
 
 test('a pending save keeps an open settings dialog and its uncommitted edits available', async t => {

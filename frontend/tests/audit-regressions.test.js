@@ -109,16 +109,16 @@ test('regression: editor preserves a manual excerpt when saving the article', as
 
 test('regression: editor autosaves during continuous typing', async t => {
   mockEmpty(t);
-  t.mock.timers.enable({ apis: ['setInterval'] });
+  t.mock.timers.enable({ apis: ['setInterval', 'setTimeout'] });
   await mount(t, req('./src/components/PostEditor.tsx').default, { post: { id: 'p', title: 'Post', slug: 'post', content: 'Initial' }, onClose() {} });
   const textarea = document.querySelector('textarea[placeholder^="输入 Markdown"]');
   for (let i = 0; i < 12; i++) {
     await act(async () => t.mock.timers.tick(10_000));
     await act(async () => input(textarea, 'Typed for ' + ((i + 1) * 10) + ' seconds'));
   }
-  assert.match(localStorage.getItem('post_autosave_p'), /Typed for 110 seconds/);
+  assert.match(localStorage.getItem(Object.keys(localStorage).find(key => key.startsWith('post_autosave_p:'))), /Typed for 110 seconds/);
   await act(async () => t.mock.timers.tick(30_000));
-  assert.match(localStorage.getItem('post_autosave_p'), /Typed for 120 seconds/);
+  assert.match(localStorage.getItem(Object.keys(localStorage).find(key => key.startsWith('post_autosave_p:'))), /Typed for 120 seconds/);
 });
 
 test('regression: search exposes subsequent pages for more than 20 matches', async t => {
@@ -442,7 +442,7 @@ test('article audio reports load failures and can retry playback', async t => {
 for (const existing of [false, true]) {
   test(`restored ${existing ? 'existing public' : 'new'} article requires reentering its unsaved password before publishing`, async t => {
     mockEmpty(t);
-    t.mock.timers.enable({ apis: ['setInterval'] });
+    t.mock.timers.enable({ apis: ['setInterval', 'setTimeout'] });
     const submitted = [];
     t.mock.method(api.admin.posts, 'create', async data => { submitted.push(data); });
     t.mock.method(api.admin.posts, 'update', async (_id, data) => { submitted.push(data); });
@@ -453,7 +453,7 @@ for (const existing of [false, true]) {
     await act(async () => input(document.querySelector('input[type="password"]'), 'secret-before-refresh'));
     await clickText('保存设置');
     await act(async () => t.mock.timers.tick(30_000));
-    const key = existing ? 'post_autosave_password-draft' : 'post_autosave_new';
+    const key = Object.keys(localStorage).find(key => key.startsWith(existing ? 'post_autosave_password-draft:' : 'post_autosave_new:'));
     assert.doesNotMatch(localStorage.getItem(key), /secret-before-refresh/);
     await act(async () => root.render(null));
     await act(async () => root.render(view(Editor, { post, onClose() {} })));
@@ -477,7 +477,7 @@ for (const existing of [false, true]) {
 for (const clearPassword of [false, true]) {
   test(`restoring a server-protected article ${clearPassword ? 'retains an explicit password removal' : 'preserves its server password without requiring plaintext'}`, async t => {
     mockEmpty(t);
-    t.mock.timers.enable({ apis: ['setInterval'] });
+    t.mock.timers.enable({ apis: ['setInterval', 'setTimeout'] });
     let submitted;
     t.mock.method(api.admin.posts, 'update', async (_id, data) => { submitted = data; });
     const post = { id: 'protected', title: 'Protected', slug: 'protected', content: 'Private body', status: 'draft', password_set: true, updated_at: '2020-01-01T00:00:00Z' };
@@ -488,8 +488,10 @@ for (const clearPassword of [false, true]) {
       await clickText('清除密码');
       await clickText('保存设置');
     }
+    await act(async () => input(document.querySelector('textarea[placeholder^="输入 Markdown"]'), 'Edited private body'));
     await act(async () => t.mock.timers.tick(30_000));
-    assert.equal(JSON.parse(localStorage.getItem('post_autosave_protected')).passwordNeedsReentry, false);
+    const draftKey = Object.keys(localStorage).find(key => key.startsWith('post_autosave_protected:'));
+    assert.equal(JSON.parse(localStorage.getItem(draftKey)).passwordNeedsReentry, false);
     await act(async () => root.render(null));
     await act(async () => root.render(view(Editor, { post, onClose() {} })));
     await clickText('恢复');

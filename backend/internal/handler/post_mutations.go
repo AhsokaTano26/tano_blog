@@ -54,7 +54,10 @@ func parseOptionalPostID(value string) (*uuid.UUID, error) {
 	return &id, nil
 }
 func postWriteError(c *gin.Context, err error, message string) {
+	var conflict *repository.PostConflictError
 	switch {
+	case errors.As(err, &conflict):
+		c.JSON(http.StatusConflict, gin.H{"error": "文章已在其他窗口更新，请比较后再保存", "code": "post_conflict", "current_post": adminPostSnapshot(conflict.Current)})
 	case errors.Is(err, gorm.ErrRecordNotFound):
 		c.JSON(http.StatusNotFound, gin.H{"error": "文章不存在"})
 	case errors.Is(err, repository.ErrInvalidPostAssociation):
@@ -62,6 +65,25 @@ func postWriteError(c *gin.Context, err error, message string) {
 	default:
 		c.JSON(http.StatusInternalServerError, gin.H{"error": message})
 	}
+}
+
+func adminPostSnapshot(post *model.Post) interface{} {
+	return struct {
+		*model.Post
+		Content     string `json:"content"`
+		PasswordSet bool   `json:"password_set"`
+	}{Post: post, Content: post.Content, PasswordSet: post.PasswordHash != ""}
+}
+
+func expectedPostVersion(value optionalString) (*time.Time, error) {
+	if !value.Present {
+		return nil, nil
+	}
+	stamp, err := time.Parse(time.RFC3339Nano, value.Value)
+	if err != nil || stamp.IsZero() {
+		return nil, errors.New("invalid article version")
+	}
+	return &stamp, nil
 }
 
 func (h *PostHandler) Create(c *gin.Context) {
@@ -164,25 +186,31 @@ func (h *PostHandler) Update(c *gin.Context) {
 		return
 	}
 	var input struct {
-		Title        *string        `json:"title"`
-		Slug         *string        `json:"slug"`
-		Content      *string        `json:"content"`
-		Excerpt      *string        `json:"excerpt"`
-		CoverImage   *string        `json:"cover_image"`
-		Status       *string        `json:"status" binding:"omitempty,oneof=draft published"`
-		IsTop        *bool          `json:"is_top"`
-		AllowComment *bool          `json:"allow_comment"`
-		AuthorName   *string        `json:"author_name"`
-		CategoryID   optionalString `json:"category_id"`
-		TagIDs       *[]string      `json:"tag_ids"`
-		ScheduledAt  optionalString `json:"scheduled_at"`
-		SeriesID     optionalString `json:"series_id"`
-		Password     *string        `json:"password"`
-		PasswordHint *string        `json:"password_hint"`
-		CreatedAt    *string        `json:"created_at"`
+		Title             *string        `json:"title"`
+		Slug              *string        `json:"slug"`
+		Content           *string        `json:"content"`
+		Excerpt           *string        `json:"excerpt"`
+		CoverImage        *string        `json:"cover_image"`
+		Status            *string        `json:"status" binding:"omitempty,oneof=draft published"`
+		IsTop             *bool          `json:"is_top"`
+		AllowComment      *bool          `json:"allow_comment"`
+		AuthorName        *string        `json:"author_name"`
+		CategoryID        optionalString `json:"category_id"`
+		TagIDs            *[]string      `json:"tag_ids"`
+		ScheduledAt       optionalString `json:"scheduled_at"`
+		SeriesID          optionalString `json:"series_id"`
+		Password          *string        `json:"password"`
+		PasswordHint      *string        `json:"password_hint"`
+		CreatedAt         *string        `json:"created_at"`
+		ExpectedUpdatedAt optionalString `json:"expected_updated_at"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(400, gin.H{"error": "参数错误"})
+		return
+	}
+	expected, err := expectedPostVersion(input.ExpectedUpdatedAt)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "文章版本无效，请重新打开文章"})
 		return
 	}
 	if input.Password != nil && len(*input.Password) > 72 {
@@ -286,14 +314,10 @@ func (h *PostHandler) Update(c *gin.Context) {
 		updates["created_at"] = stamp
 	}
 	revision := input.Title != nil || input.Content != nil || input.Excerpt != nil
-	if err := h.repo.UpdateWithAssociations(id, updates, associations, revision); err != nil {
+	post, err := h.repo.UpdateWithVersion(id, updates, associations, revision, expected)
+	if err != nil {
 		postWriteError(c, err, "更新文章失败")
 		return
 	}
-	post, err := h.repo.GetByID(id)
-	if err != nil {
-		postWriteError(c, err, "读取文章失败")
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"post": post})
+	c.JSON(http.StatusOK, gin.H{"post": adminPostSnapshot(post)})
 }

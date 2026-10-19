@@ -507,7 +507,27 @@ func (r *PostRepo) Create(post *model.Post) error {
 }
 
 func (r *PostRepo) Update(id uuid.UUID, updates map[string]interface{}) error {
-	return r.db.Model(&model.Post{}).Where("id = ?", id).Updates(updates).Error
+	values := make(map[string]interface{}, len(updates)+1)
+	for key, value := range updates {
+		values[key] = value
+	}
+	// PostgreSQL stores microseconds. Ensure consecutive edits always get a new
+	// version, including clock rollback and explicitly restored timestamps.
+	values["updated_at"] = gorm.Expr("GREATEST(clock_timestamp(), updated_at + interval '1 microsecond')")
+	return r.db.Model(&model.Post{}).Where("id = ?", id).Updates(values).Error
+}
+
+// RotatePreviewToken changes access to a draft without changing its editable
+// contents or invalidating an editor's optimistic concurrency baseline.
+func (r *PostRepo) RotatePreviewToken(id uuid.UUID, token string) error {
+	result := r.db.Model(&model.Post{}).Where("id = ?", id).UpdateColumn("preview_token", token)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }
 
 func (r *PostRepo) BatchUpdate(ids []uuid.UUID, updates map[string]interface{}) error {

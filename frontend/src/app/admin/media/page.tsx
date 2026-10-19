@@ -1,8 +1,11 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react';
-import { createPortal } from 'react-dom';
 import { api } from '@/lib/api';
+import type { MediaItem, MediaTag } from '@/lib/admin-types';
+import { useFeedbackMutation, useLatestRequest } from '@/lib/request-feedback';
+import { RequestFeedback } from '@/components/RequestFeedback';
+import { FloatingPopover } from '@/components/FloatingPopover';
 import { Image, Upload, Trash2, Copy, Check, Grid, List, Search, X, FileText, Video, Music, File, Tag, Plus, Settings, Play, ExternalLink } from 'lucide-react';
 import { Loading } from '@/components/Loading';
 import { useConfirm, Checkbox, Select } from '@/components/ConfirmDialog';
@@ -11,7 +14,6 @@ import { ImageWithFallback } from '@/components/ImageWithFallback';
 
 const SITE_URL = typeof window !== 'undefined' ? window.location.origin : 'https://tano.asia';
 
-type MediaTag = { id: string; name: string };
 type UploadEntry = {
   id: string;
   name: string;
@@ -22,22 +24,7 @@ type UploadEntry = {
   error?: string;
 };
 type UploadTask = { entry: UploadEntry; file?: File; tagIds?: string[]; controller: AbortController };
-type MediaItem = {
-  id: string;
-  thumbnail_url?: string;
-  url: string;
-  original_name: string;
-  filename: string;
-  mime_type: string;
-  size: number;
-  created_at: string;
-  tags: MediaTag[];
-  title?: string;
-  artist?: string;
-  album?: string;
-  description?: string;
-  in_gallery?: boolean;
-};
+
 
 function getMediaType(mime: string): 'image' | 'video' | 'audio' | 'document' {
   if (mime?.startsWith('image/')) return 'image';
@@ -109,6 +96,7 @@ const typeTabs = [
 
 export default function AdminMedia() {
   const { confirm } = useConfirm();
+  const mutation = useFeedbackMutation();
   const [items, setItems] = useState<MediaItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -139,7 +127,6 @@ export default function AdminMedia() {
   tagsAnchorRef.current = editingTagsEl;
 
   // Tag state
-  const [mediaTags, setMediaTags] = useState<MediaTag[]>([]);
   const [tagFilter, setTagFilter] = useState('');
   const [showTagManager, setShowTagManager] = useState(false);
   const [newTagName, setNewTagName] = useState('');
@@ -197,15 +184,17 @@ export default function AdminMedia() {
     return () => clearTimeout(timer);
   }, [search]);
 
-  const loadTags = useCallback(async () => {
-    try {
-      const res = await api.admin.media.tags.list();
-      setMediaTags(res.items || []);
-    } catch { /* empty */ }
-  }, []);
-
-  useEffect(() => { load(); }, [load, refreshKey]);
-  useEffect(() => { loadTags(); }, [loadTags]);
+  const { data: tagData, error: tagError, loading: tagsLoading, reload: loadTags } = useLatestRequest(
+    useCallback(() => api.admin.media.tags.list(), []), '媒体标签加载失败，请重试',
+  );
+  const mediaTags: MediaTag[] = tagData?.items || [];
+  const latestLoad = useRef(load);
+  useLayoutEffect(() => {
+    latestLoad.current = load;
+    return () => { loadSequence.current++; };
+  }, [load]);
+  const reloadLatest = useCallback(() => latestLoad.current(), []);
+  useEffect(() => { void load(); }, [load, refreshKey]);
 
   useEffect(() => {
     uploadMounted.current = true;
@@ -319,14 +308,19 @@ export default function AdminMedia() {
   }
 
   async function handleDelete(id: string, anchorEl?: HTMLElement | null) {
-    if (!await confirm('确定删除此文件？', anchorEl)) return;
-    try { await api.admin.media.delete(id); load(); } catch { /* empty */ }
+    await mutation.run(async () => {
+      if (!await confirm('确定删除此文件？', anchorEl)) return;
+      await api.admin.media.delete(id);
+      await reloadLatest();
+    }, '删除文件失败，请重试');
   }
 
-  function copyValue(value: string, key: string) {
-    navigator.clipboard.writeText(value);
-    setCopiedKey(key);
-    setTimeout(() => setCopiedKey(''), 2000);
+  async function copyValue(value: string, key: string) {
+    await mutation.run(async () => {
+      await navigator.clipboard.writeText(value);
+      setCopiedKey(key);
+      setTimeout(() => setCopiedKey(''), 2000);
+    }, '复制失败，请重试或手动复制链接');
   }
 
   function formatSize(bytes: number): string {
@@ -355,46 +349,49 @@ export default function AdminMedia() {
   }
 
   async function handleBatchDelete() {
-    if (!await confirm(`确定删除选中的 ${selectedIds.size} 个文件？`)) return;
-    try {
+    await mutation.run(async () => {
+      if (!await confirm(`确定删除选中的 ${selectedIds.size} 个文件？`)) return;
       await api.admin.media.batchDelete(Array.from(selectedIds));
       setSelectedIds(new Set());
-      load();
-    } catch { /* empty */ }
+      await reloadLatest();
+    });
   }
 
   // Tag management
   async function handleCreateTag() {
-    const name = newTagName.trim();
-    if (!name) return;
-    try {
+    await mutation.run(async () => {
+      const name = newTagName.trim();
+      if (!name) return;
       await api.admin.media.tags.create(name);
       setNewTagName('');
-      loadTags();
-    } catch { /* empty */ }
+      await loadTags();
+    });
   }
 
   async function handleDeleteTag(id: string) {
-    if (!await confirm('确定删除此标签？')) return;
-    try {
+    await mutation.run(async () => {
+      if (!await confirm('确定删除此标签？')) return;
       await api.admin.media.tags.delete(id);
       if (tagFilter === id) setTagFilter('');
-      loadTags();
-    } catch { /* empty */ }
+      await loadTags();
+    });
   }
 
   async function handleToggleMediaTag(mediaId: string, tagId: string) {
-    const item = items.find(i => i.id === mediaId);
-    if (!item) return;
-    const current = item.tags.map(t => t.id);
-    const next = current.includes(tagId) ? current.filter(id => id !== tagId) : [...current, tagId];
-    try {
-      const res = await api.admin.media.updateTags(mediaId, next) as { media: MediaItem };
+    await mutation.run(async () => {
+      const item = items.find(i => i.id === mediaId);
+      if (!item) return;
+      const current = item.tags.map(t => t.id);
+      const next = current.includes(tagId) ? current.filter(id => id !== tagId) : [...current, tagId];
+      const res = await api.admin.media.updateTags(mediaId, next);
       setItems(prev => prev.map(i => i.id === mediaId ? { ...i, tags: res.media.tags || [] } : i));
-    } catch { /* empty */ }
+      await reloadLatest();
+    });
   }
 
   function openMetadataEditor(item: MediaItem) {
+    if (mutation.pending) return;
+    mutation.clearError();
     setEditingMetadataItem(item);
     setMetadataForm({
       title: item.title || '',
@@ -406,76 +403,23 @@ export default function AdminMedia() {
   }
 
   async function handleSaveMetadata() {
-    if (!editingMetadataItem) return;
-    try {
+    await mutation.run(async () => {
+      if (!editingMetadataItem) return;
       const res = await api.admin.media.updateMetadata(editingMetadataItem.id, {
         title: metadataForm.title,
         artist: metadataForm.artist,
         album: metadataForm.album,
         description: metadataForm.description,
         thumbnail_url: metadataForm.thumbnail_url,
-      }) as { media: MediaItem };
+      });
       setItems(prev => prev.map(i => i.id === editingMetadataItem.id ? { ...i, ...res.media } : i));
       setEditingMetadataItem(null);
-    } catch { /* empty */ }
+      await reloadLatest();
+    });
   }
 
   function toggleUploadTag(tagId: string) {
     setUploadTagIds(prev => prev.includes(tagId) ? prev.filter(id => id !== tagId) : [...prev, tagId]);
-  }
-
-  function FloatingPopover({ anchorRef, onClose, width, children }: {
-    anchorRef: React.RefObject<HTMLElement | null>;
-    onClose: () => void;
-    width: number;
-    children: React.ReactNode;
-  }) {
-    const popRef = useRef<HTMLDivElement>(null);
-    const [pos, setPos] = useState({ top: 0, left: 0 });
-
-    useLayoutEffect(() => {
-      const el = anchorRef.current;
-      if (!el) return;
-      const rect = el.getBoundingClientRect();
-      let left = rect.right - width;
-      if (left < 8) left = 8;
-      if (left + width > window.innerWidth - 8) left = window.innerWidth - width - 8;
-      let top = rect.bottom + 6;
-      if (top + 300 > window.innerHeight) {
-        top = rect.top - 6;
-        // Will be adjusted with translateY below
-      }
-      setPos({ top, left });
-    }, [anchorRef, width]);
-
-    useEffect(() => {
-      function handleClick(e: MouseEvent) {
-        if (popRef.current && !popRef.current.contains(e.target as Node) &&
-            anchorRef.current && !anchorRef.current.contains(e.target as Node)) {
-          onClose();
-        }
-      }
-      document.addEventListener('mousedown', handleClick);
-      return () => document.removeEventListener('mousedown', handleClick);
-    }, [onClose, anchorRef]);
-
-    return createPortal(
-      <div ref={popRef} className="fixed z-[100] rounded-xl shadow-2xl"
-        style={{
-          top: pos.top,
-          left: pos.left,
-          width,
-          background: 'var(--card-bg)',
-          border: '1px solid var(--glass-border)',
-          backdropFilter: 'blur(20px)',
-          WebkitBackdropFilter: 'blur(20px)',
-          maxHeight: '70vh',
-          overflowY: 'auto',
-        }}>
-        {children}
-      </div>,
-      document.body
-    );
   }
 
   function CopyPopoverContent({ item }: { item: MediaItem }) {
@@ -601,6 +545,8 @@ export default function AdminMedia() {
       </div>}
       {failedUploads.length > 0 && !uploading && <button onClick={retryFailedUploads}
         className="mb-3 px-3 py-2 rounded-xl text-sm btn-glass" style={{ color: 'var(--primary)' }}>重试失败文件（{failedUploads.length}）</button>}
+      {!editingMetadataItem && <RequestFeedback error={mutation.error} />}
+      <RequestFeedback error={tagError} onRetry={loadTags} pending={tagsLoading} />
       {loadError && <div role="alert" className="mb-3 text-sm" style={{ color: 'var(--color-error)' }}>
         {loadError} <button onClick={() => void load()} className="underline">重试加载</button>
       </div>}
@@ -710,12 +656,12 @@ export default function AdminMedia() {
         {showTagManager && (
           <div className="px-4 py-3" style={{ borderBottom: '1px solid var(--glass-border)' }}>
             <div className="flex items-center gap-2 mb-2">
-              <input type="text" placeholder="新标签名称..." value={newTagName}
+              <input aria-label="新标签名称" disabled={mutation.pending} type="text" placeholder="新标签名称..." value={newTagName}
                 onChange={e => setNewTagName(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleCreateTag()}
                 className="flex-1 max-w-xs px-3 py-1.5 rounded-lg text-sm outline-none glass-card"
                 style={{ color: 'var(--text-primary)' }} />
-              <button onClick={handleCreateTag}
+              <button disabled={mutation.pending} onClick={handleCreateTag}
                 className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-white"
                 style={{ background: 'var(--primary)' }}>
                 <Plus className="w-3.5 h-3.5" />
@@ -728,7 +674,7 @@ export default function AdminMedia() {
                   <div key={tag.id} className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs"
                     style={{ background: 'var(--surface-bg)', color: 'var(--text-secondary)' }}>
                     {tag.name}
-                    <button onClick={() => handleDeleteTag(tag.id)} className="ml-1 hover:opacity-70">
+                    <button disabled={mutation.pending} onClick={() => handleDeleteTag(tag.id)} className="ml-1 hover:opacity-70">
                       <X className="w-3 h-3" />
                     </button>
                   </div>
@@ -751,7 +697,7 @@ export default function AdminMedia() {
                 <Tag className="w-3.5 h-3.5" />
                 批量打标签
               </button>
-              <button onClick={handleBatchDelete}
+              <button disabled={mutation.pending} onClick={handleBatchDelete}
                 className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-white"
                 style={{ background: '#ef4444' }}>
                 <Trash2 className="w-3.5 h-3.5" />
@@ -769,7 +715,7 @@ export default function AdminMedia() {
         {/* Content */}
         {loading && items.length === 0 ? (
           <Loading />
-        ) : filtered.length === 0 ? (
+        ) : loadError ? null : filtered.length === 0 ? (
           <div className="text-center py-20" style={{ color: 'var(--text-secondary)' }}>
             <Image className="w-12 h-12 mx-auto mb-3" style={{ color: 'var(--text-info)' }} />
             <p>{search || tagFilter ? '未找到匹配文件' : '暂无文件'}</p>
@@ -1107,7 +1053,7 @@ export default function AdminMedia() {
         const item = items.find(i => i.id === openLinksId);
         if (!item) return null;
         return (
-          <FloatingPopover anchorRef={linksAnchorRef} width={320}
+          <FloatingPopover key={openLinksId} anchorRef={linksAnchorRef} width={320}
             onClose={() => { setOpenLinksId(null); setOpenLinksEl(null); }}>
             <CopyPopoverContent item={item} />
           </FloatingPopover>
@@ -1117,7 +1063,7 @@ export default function AdminMedia() {
         const item = items.find(i => i.id === editingTagsId);
         if (!item) return null;
         return (
-          <FloatingPopover anchorRef={tagsAnchorRef} width={240}
+          <FloatingPopover key={editingTagsId} anchorRef={tagsAnchorRef} width={240}
             onClose={() => { setEditingTagsId(null); setEditingTagsEl(null); }}>
             <TagEditorContent item={item} />
           </FloatingPopover>
@@ -1126,9 +1072,10 @@ export default function AdminMedia() {
       {showBatchTag && (() => {
         return (
           <FloatingPopover anchorRef={batchTagBtnRef} width={240}
-            onClose={() => { setShowBatchTag(false); setPendingBatchTagIds([]); }}>
+            onClose={() => { if (!mutation.pending) { setShowBatchTag(false); setPendingBatchTagIds([]); } }}>
             <div className="p-3">
               <div className="text-xs font-medium mb-2" style={{ color: 'var(--text-info)' }}>批量添加标签</div>
+              <RequestFeedback error={mutation.error} />
               {mediaTags.length === 0 ? (
                 <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>暂无标签</p>
               ) : (
@@ -1136,7 +1083,7 @@ export default function AdminMedia() {
                   {mediaTags.map(tag => {
                     const active = pendingBatchTagIds.includes(tag.id);
                     return (
-                      <button key={tag.id} onClick={() => setPendingBatchTagIds(prev => prev.includes(tag.id) ? prev.filter(id => id !== tag.id) : [...prev, tag.id])}
+                      <button disabled={mutation.pending} key={tag.id} onClick={() => setPendingBatchTagIds(prev => prev.includes(tag.id) ? prev.filter(id => id !== tag.id) : [...prev, tag.id])}
                         className="flex items-center gap-2 w-full px-2 py-1.5 rounded-lg text-xs transition-colors text-left"
                         style={{
                           background: active ? 'var(--primary-sub)' : 'transparent',
@@ -1153,18 +1100,18 @@ export default function AdminMedia() {
                 </div>
               )}
               <div className="flex justify-end gap-2 mt-3 pt-2" style={{ borderTop: '1px solid var(--glass-border)' }}>
-                <button onClick={() => { setShowBatchTag(false); setPendingBatchTagIds([]); }}
+                <button disabled={mutation.pending} onClick={() => { setShowBatchTag(false); setPendingBatchTagIds([]); }}
                   className="px-3 py-1.5 rounded-lg text-xs btn-glass" style={{ color: 'var(--text-secondary)' }}>取消</button>
                 <button onClick={async () => {
-                  try {
+                  await mutation.run(async () => {
                     await api.admin.media.batchUpdateTags(Array.from(selectedIds), pendingBatchTagIds);
                     setSelectedIds(new Set());
                     setShowBatchTag(false);
                     setPendingBatchTagIds([]);
-                    load();
-                  } catch { /* empty */ }
+                    await reloadLatest();
+                  });
                 }}
-                  className="px-3 py-1.5 rounded-lg text-xs font-medium text-white" style={{ background: 'var(--primary)' }}>确认</button>
+                  disabled={mutation.pending} className="px-3 py-1.5 rounded-lg text-xs font-medium text-white" style={{ background: 'var(--primary)' }}>确认</button>
               </div>
             </div>
           </FloatingPopover>
@@ -1178,17 +1125,18 @@ export default function AdminMedia() {
         return (
           <div className="fixed inset-0 z-[200] flex items-center justify-center p-4"
             style={{ background: 'rgba(0,0,0,0.6)' }}
-            onClick={() => setEditingMetadataItem(null)}>
-            <div className="w-full max-w-lg rounded-xl p-5 space-y-4 glass-card"
+            onClick={() => { if (!mutation.pending) setEditingMetadataItem(null); }}>
+            <div role="dialog" aria-modal="true" aria-label="编辑元信息" className="w-full max-w-lg rounded-xl p-5 space-y-4 glass-card"
               onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between">
                 <h3 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>编辑元信息</h3>
-                <button onClick={() => setEditingMetadataItem(null)} className="p-1 rounded hover:bg-white/10">
+                <button aria-label="关闭元信息编辑" disabled={mutation.pending} onClick={() => setEditingMetadataItem(null)} className="p-1 rounded hover:bg-white/10">
                   <X className="w-4 h-4" style={{ color: 'var(--text-secondary)' }} />
                 </button>
               </div>
 
-              <div className="space-y-3">
+              <RequestFeedback error={mutation.error} />
+              <fieldset disabled={mutation.pending} className="space-y-3">
                 {/* Cover image */}
                 <div className="pb-3" style={{ borderBottom: '1px solid var(--glass-border)' }}>
                   <label className="block text-xs font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>封面图</label>
@@ -1221,7 +1169,7 @@ export default function AdminMedia() {
                 {/* Title */}
                 <div>
                   <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>标题</label>
-                  <input type="text" value={metadataForm.title}
+                  <input type="text" aria-label="媒体标题" disabled={mutation.pending} value={metadataForm.title}
                     onChange={e => setMetadataForm(p => ({ ...p, title: e.target.value }))}
                     placeholder={type === 'audio' ? '歌曲名' : type === 'video' ? '视频标题' : '标题'}
                     className="w-full px-3 py-2 rounded-lg text-sm outline-none glass-card"
@@ -1231,7 +1179,7 @@ export default function AdminMedia() {
                 {/* Artist */}
                 <div>
                   <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>作者</label>
-                  <input type="text" value={metadataForm.artist}
+                  <input type="text" aria-label="艺术家" disabled={mutation.pending} value={metadataForm.artist}
                     onChange={e => setMetadataForm(p => ({ ...p, artist: e.target.value }))}
                     placeholder={type === 'audio' ? '歌手/乐队名' : '视频作者'}
                     className="w-full px-3 py-2 rounded-lg text-sm outline-none glass-card"
@@ -1241,7 +1189,7 @@ export default function AdminMedia() {
                 {/* Album */}
                 <div>
                   <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>专辑</label>
-                  <input type="text" value={metadataForm.album}
+                  <input type="text" aria-label="专辑" disabled={mutation.pending} value={metadataForm.album}
                     onChange={e => setMetadataForm(p => ({ ...p, album: e.target.value }))}
                     placeholder="专辑名"
                     className="w-full px-3 py-2 rounded-lg text-sm outline-none glass-card"
@@ -1251,7 +1199,7 @@ export default function AdminMedia() {
                 {/* Description */}
                 <div>
                   <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>描述</label>
-                  <textarea value={metadataForm.description}
+                  <textarea aria-label="媒体描述" disabled={mutation.pending} value={metadataForm.description}
                     onChange={e => setMetadataForm(p => ({ ...p, description: e.target.value }))}
                     placeholder="简要描述"
                     rows={3}
@@ -1269,13 +1217,16 @@ export default function AdminMedia() {
                     <button
                       onClick={async (e) => {
                         e.stopPropagation();
-                        try {
+                        await mutation.run(async () => {
                           const res = await api.admin.gallery.toggle(item.url, item.original_name || item.filename);
                           setItems(previous => previous.map(media => media.url === item.url ? { ...media, in_gallery: res.in_gallery } : media));
                           setEditingMetadataItem(previous => previous?.url === item.url ? { ...previous, in_gallery: res.in_gallery } : previous);
-                        } catch { /* empty */ }
+                          await reloadLatest();
+                        });
                       }}
                       className={`relative w-11 h-6 rounded-full transition-colors ${item.in_gallery ? 'bg-green-500' : 'bg-gray-600'}`}
+                      disabled={mutation.pending}
+                      aria-label="图片馆展示"
                       role="switch"
                       aria-checked={Boolean(item.in_gallery)}
                     >
@@ -1283,12 +1234,12 @@ export default function AdminMedia() {
                     </button>
                   </div>
                 )}
-              </div>
+              </fieldset>
 
               <div className="flex justify-end gap-2 pt-2">
-                <button onClick={() => setEditingMetadataItem(null)}
+                <button disabled={mutation.pending} onClick={() => setEditingMetadataItem(null)}
                   className="px-4 py-2 rounded-lg text-sm btn-glass" style={{ color: 'var(--text-secondary)' }}>取消</button>
-                <button onClick={handleSaveMetadata}
+                <button disabled={mutation.pending} onClick={handleSaveMetadata}
                   className="px-4 py-2 rounded-lg text-sm font-medium text-white" style={{ background: 'var(--primary)' }}>保存</button>
               </div>
             </div>

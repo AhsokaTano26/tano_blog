@@ -12,6 +12,11 @@ import (
 
 var ErrInvalidPostAssociation = errors.New("invalid post association")
 
+// PostConflictError carries the locked server snapshot that rejected a stale edit.
+type PostConflictError struct{ Current *model.Post }
+
+func (e *PostConflictError) Error() string { return "article was modified by another editor" }
+
 // PostAssociations distinguishes omitted relationships from explicitly cleared ones.
 type PostAssociations struct {
 	Tags      *[]uuid.UUID
@@ -38,10 +43,26 @@ func (r *PostRepo) CreateWithAssociations(post *model.Post, associations PostAss
 }
 
 func (r *PostRepo) UpdateWithAssociations(id uuid.UUID, updates map[string]interface{}, associations PostAssociations, saveRevision bool) error {
-	return r.db.Transaction(func(tx *gorm.DB) error {
+	_, err := r.UpdateWithVersion(id, updates, associations, saveRevision, nil)
+	return err
+}
+
+// UpdateWithVersion returns the accepted snapshot from inside the transaction.
+// Fetching after commit could acknowledge a different writer's newer version.
+func (r *PostRepo) UpdateWithVersion(id uuid.UUID, updates map[string]interface{}, associations PostAssociations, saveRevision bool, expected *time.Time) (*model.Post, error) {
+	var saved *model.Post
+	err := r.db.Transaction(func(tx *gorm.DB) error {
 		var current model.Post
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&current, id).Error; err != nil {
 			return err
+		}
+		repo := NewPostRepo(tx)
+		if expected != nil && !expected.Equal(current.UpdatedAt) {
+			latest, err := repo.GetByID(id)
+			if err != nil {
+				return err
+			}
+			return &PostConflictError{Current: latest}
 		}
 		status := current.Status
 		if next, ok := updates["status"].(string); ok {
@@ -59,12 +80,17 @@ func (r *PostRepo) UpdateWithAssociations(id uuid.UUID, updates map[string]inter
 				return err
 			}
 		}
-		repo := NewPostRepo(tx)
 		if err := repo.Update(id, updates); err != nil {
 			return err
 		}
-		return repo.applyAssociations(id, associations)
+		if err := repo.applyAssociations(id, associations); err != nil {
+			return err
+		}
+		var err error
+		saved, err = repo.GetByID(id)
+		return err
 	})
+	return saved, err
 }
 
 func (r *PostRepo) applyAssociations(id uuid.UUID, associations PostAssociations) error {

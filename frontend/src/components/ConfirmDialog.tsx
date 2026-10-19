@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 
 interface ConfirmState {
   message: string;
@@ -15,12 +16,15 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
 
   const confirm = useCallback((message: string, anchorEl?: HTMLElement | null) => {
     return new Promise<boolean>(resolve => {
-      const target = anchorEl || (document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null);
+      // Textareas can fill the viewport; attaching a dialog below them hides
+      // every action. Only infer a button anchor, otherwise use the modal.
+      const target = anchorEl || (document.activeElement instanceof window.HTMLButtonElement ? document.activeElement : null);
       const rect = target?.getBoundingClientRect();
+      const fits = rect && rect.right >= 8 && rect.right + 320 <= window.innerWidth - 8 && rect.bottom + 200 <= window.innerHeight - 8;
       setState({
         message,
         resolve,
-        anchorRect: rect ? { top: rect.bottom + 4, left: rect.right } : undefined,
+        anchorRect: fits ? { top: rect.bottom + 4, left: rect.right } : undefined,
       });
     });
   }, []);
@@ -38,7 +42,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
   return (
     <ConfirmContext.Provider value={confirm}>
       {children}
-      {state && (
+      {state && createPortal(
         <>
           {/* Backdrop only for centered mode */}
           {!state.anchorRect && (
@@ -48,8 +52,8 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
           )}
           {state.anchorRect ? (
             // Anchor-positioned popover
-            <div className="fixed z-[300] animate-fade-in"
-              style={{ top: state.anchorRect.top, left: state.anchorRect.left }}>
+            <div role="alertdialog" aria-label="确认操作" className="fixed z-[300] animate-fade-in"
+              style={{ top: state.anchorRect.top, left: state.anchorRect.left, width: 320, maxHeight: `calc(100dvh - ${state.anchorRect.top + 8}px)`, overflowY: 'auto' }}>
               <div className="rounded-2xl p-5 shadow-2xl"
                 style={{ background: 'var(--card-bg)', border: '1px solid var(--glass-border)', backdropFilter: 'blur(24px)', minWidth: '220px' }}>
                 <p className="text-sm mb-5" style={{ color: 'var(--text-primary)' }}>{state.message}</p>
@@ -67,7 +71,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
             // Centered modal
             <div className="fixed inset-0 z-[300] flex items-center justify-center p-4"
               onClick={(e) => { if (e.target === e.currentTarget) handleCancel(); }}>
-              <div className="w-full max-w-sm rounded-2xl p-6 shadow-2xl animate-fade-scale-in"
+              <div role="alertdialog" aria-modal="true" aria-label="确认操作" className="w-full max-w-sm max-h-[85dvh] overflow-y-auto rounded-2xl p-6 shadow-2xl animate-fade-scale-in"
                 style={{ background: 'var(--card-bg)', border: '1px solid var(--glass-border)', backdropFilter: 'blur(24px)' }}>
                 <p className="text-sm mb-6" style={{ color: 'var(--text-primary)' }}>{state.message}</p>
                 <div className="flex justify-end gap-2">
@@ -81,7 +85,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
               </div>
             </div>
           )}
-        </>
+        </>, document.body
       )}
     </ConfirmContext.Provider>
   );

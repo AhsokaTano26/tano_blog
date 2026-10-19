@@ -1,20 +1,19 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback } from 'react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
+import type { TaxonomyItem } from '@/lib/admin-types';
+import { useLatestRequest } from '@/lib/request-feedback';
+import { RequestFeedback } from '@/components/RequestFeedback';
 import { Tags, Hash, ArrowLeft } from 'lucide-react';
 import { Loading } from '@/components/Loading';
 
 export default function TagsPage() {
-  const [items, setItems] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    api.getTags().then(res => {
-      setItems(res.items || []);
-    }).catch(() => {}).finally(() => setLoading(false));
-  }, []);
+  const { data, loading, error, reload } = useLatestRequest(
+    useCallback(() => api.getTags(), []), '加载失败，请重试',
+  );
+  const items: TaxonomyItem[] = data?.items || [];
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-12">
@@ -34,7 +33,7 @@ export default function TagsPage() {
         </div>
         <div>
           <h1 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>全部标签</h1>
-          {!loading && (
+          {!loading && !error && (
             <p className="text-xs mt-0.5" style={{ color: 'var(--text-info)' }}>共 {items.length} 个标签</p>
           )}
         </div>
@@ -42,6 +41,8 @@ export default function TagsPage() {
 
       {loading ? (
         <Loading />
+      ) : error ? (
+        <RequestFeedback error={error} onRetry={reload} />
       ) : items.length === 0 ? (
         <div className="text-center py-20 card-base rounded-2xl" style={{ color: 'var(--text-secondary)' }}>
           <Tags className="w-12 h-12 mx-auto mb-3 opacity-30" />
@@ -49,7 +50,7 @@ export default function TagsPage() {
         </div>
       ) : (
         <div className="flex flex-wrap gap-2.5">
-          {items.map((tag: any) => (
+          {items.map((tag: TaxonomyItem) => (
             <Link key={tag.id} href={`/tags/${tag.slug}`}
               className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-medium transition-all hover:scale-105"
               style={{

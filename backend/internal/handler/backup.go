@@ -26,6 +26,7 @@ import (
 	"gorm.io/gorm"
 
 	"tano_blog/backend/internal/model"
+	"tano_blog/backend/internal/monitoring"
 	"tano_blog/backend/internal/utils"
 )
 
@@ -63,6 +64,7 @@ type BackupHandler struct {
 	backupDir         string
 	operationMu       sync.Mutex
 	operation         BackupProgress
+	health            monitoring.BackupHealth
 	cancelOperation   context.CancelFunc
 	acquireBackupGate func(context.Context) (func(), error)
 	requireRecovery   func()
@@ -72,6 +74,7 @@ func NewBackupHandler(db *gorm.DB, uploadDir, backupDir string) *BackupHandler {
 	uploadDir, _ = filepath.Abs(uploadDir)
 	h := &BackupHandler{db: db, uploadDir: uploadDir, backupDir: backupDir}
 	os.MkdirAll(backupDir, 0755)
+	h.discoverBackupHealth()
 	return h
 }
 
@@ -144,6 +147,7 @@ func (h *BackupHandler) beginOperation(parent context.Context, phase string) (co
 	ctx, cancel := context.WithCancel(parent)
 	h.cancelOperation = cancel
 	h.operation = BackupProgress{Running: true, Phase: phase}
+	h.startHealth(phase)
 	return ctx, func(err error) {
 		cancel()
 		h.operationMu.Lock()
@@ -158,6 +162,7 @@ func (h *BackupHandler) beginOperation(parent context.Context, phase string) (co
 			h.operation.Phase = "failed"
 			h.operation.Error = "操作失败"
 		}
+		h.finishHealth(phase, err)
 	}, true
 }
 

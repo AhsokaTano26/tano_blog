@@ -17,6 +17,7 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     services:
       postgres:
         image: postgres:16-alpine
@@ -43,6 +44,7 @@ jobs:
           go test ./...
           go vet ./...
           go build ./cmd/server
+          go build -o browserfixture ./cmd/browserfixture
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -53,6 +55,9 @@ jobs:
           python-version: '3.12'
       - name: Verify frontend
         working-directory: frontend
+        env:
+          API_UPSTREAM_URL: http://127.0.0.1:18080
+          NEXT_PUBLIC_API_URL: ''
         run: |
           npm ci
           npm run test:guard
@@ -63,6 +68,21 @@ jobs:
       - name: Verify release planning and process shutdown
         working-directory: frontend
         run: npm test -- -- ../scripts/tests/*.test.mjs
+      - name: Install real-browser test runtimes
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium webkit
+      - name: Verify production UI in Chromium and WebKit
+        working-directory: frontend
+        timeout-minutes: 6
+        run: npm run test:browser
+      - name: Preserve browser regression evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-regression-evidence
+          path: frontend/test-results/browser/
+          retention-days: 7
+          if-no-files-found: ignore
 
   release:
     needs: verify

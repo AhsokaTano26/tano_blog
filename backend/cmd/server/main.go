@@ -27,6 +27,7 @@ import (
 	"tano_blog/backend/internal/handler"
 	"tano_blog/backend/internal/middleware"
 	"tano_blog/backend/internal/model"
+	"tano_blog/backend/internal/monitoring"
 	"tano_blog/backend/internal/repository"
 	"tano_blog/backend/internal/service"
 	"tano_blog/backend/internal/utils"
@@ -166,6 +167,10 @@ func main() {
 	r := gin.New()
 	// Keep only small multipart parts in memory; larger uploads spill to temp files.
 	r.MaxMultipartMemory = 32 << 20
+	requestMetrics := monitoring.NewRecorder()
+	monitorConfig := monitoring.LoadConfig()
+	// This wrapper observes status codes after Recovery has handled any panic.
+	r.Use(middleware.RequestMetrics(requestMetrics))
 	r.Use(gin.Recovery())
 	r.Use(middleware.RequestBudget(cfg.Server.RequestTimeout, cfg.Server.UploadTimeout))
 	accessWriter := middleware.NewAccessLogWriter(db, 2048)
@@ -437,7 +442,19 @@ func main() {
 				admin.GET("/backup/status", backupHandler.BackupStatus)
 				admin.POST("/backup/cancel", backupHandler.CancelBackup)
 				admin.GET("/metrics", func(c *gin.Context) {
-					c.JSON(http.StatusOK, gin.H{"database": sqlDB.Stats(), "access_log_pending": accessWriter.Pending(), "access_log_dropped": accessWriter.Dropped()})
+					now := time.Now()
+					requests := requestMetrics.Snapshot(now)
+					storage := map[string]monitoring.DiskStatus{
+						"uploads": monitoring.ProbeDisk(cfg.Upload.Dir),
+						"backups": monitoring.ProbeDisk(cfg.BackupDir),
+					}
+					backup := backupHandler.HealthSnapshot()
+					c.JSON(http.StatusOK, gin.H{
+						"database": sqlDB.Stats(), "access_log_pending": accessWriter.Pending(), "access_log_dropped": accessWriter.Dropped(),
+						"requests": requests, "storage": storage, "backup": backup,
+						"alerts":     monitoring.EvaluateAlerts(monitorConfig, requests, storage, backup, now),
+						"thresholds": monitorConfig,
+					})
 				})
 				admin.GET("/backups", backupHandler.ListBackups)
 				admin.POST("/backups", backupHandler.CreateBackup)

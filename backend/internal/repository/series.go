@@ -109,8 +109,15 @@ func (r *SeriesRepo) Update(id uuid.UUID, updates map[string]interface{}) error 
 }
 
 func (r *SeriesRepo) Delete(id uuid.UUID) error {
-	return r.db.Transaction(func(tx *gorm.DB) error {
+	return r.withLockedSeriesMembers(id, nil, true, func(tx *gorm.DB, members []model.PostSeries) error {
 		if err := tx.Where("series_id = ?", id).Delete(&model.PostSeries{}).Error; err != nil {
+			return err
+		}
+		ids := make([]uuid.UUID, 0, len(members))
+		for _, member := range members {
+			ids = append(ids, member.PostID)
+		}
+		if err := advanceSeriesMemberVersions(tx, ids); err != nil {
 			return err
 		}
 		return tx.Delete(&model.Series{}, id).Error
@@ -128,7 +135,14 @@ func (r *SeriesRepo) ListPosts(seriesID uuid.UUID) ([]model.Post, error) {
 }
 
 func (r *SeriesRepo) SetPosts(seriesID uuid.UUID, postIDs []uuid.UUID) error {
-	return r.db.Transaction(func(tx *gorm.DB) error {
+	if len(uniqueUUIDs(postIDs)) != len(postIDs) {
+		return ErrInvalidPostAssociation
+	}
+	return r.withLockedSeriesMembers(seriesID, postIDs, false, func(tx *gorm.DB, members []model.PostSeries) error {
+		changed := changedSeriesMembers(members, postIDs)
+		if len(changed) == 0 {
+			return nil
+		}
 		if err := tx.Where("series_id = ?", seriesID).Delete(&model.PostSeries{}).Error; err != nil {
 			return err
 		}
@@ -137,7 +151,7 @@ func (r *SeriesRepo) SetPosts(seriesID uuid.UUID, postIDs []uuid.UUID) error {
 				return err
 			}
 		}
-		return nil
+		return advanceSeriesMemberVersions(tx, changed)
 	})
 }
 

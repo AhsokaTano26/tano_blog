@@ -1,53 +1,51 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import { api } from '@/lib/api';
+import type { TaxonomyItem } from '@/lib/admin-types';
+import { useLatestRequest, useFeedbackMutation } from '@/lib/request-feedback';
+import { RequestFeedback } from '@/components/RequestFeedback';
 import { Plus, Pencil, Trash2, Tags } from 'lucide-react';
 import { Loading } from '@/components/Loading';
 import { useConfirm, Select } from '@/components/ConfirmDialog';
 
 export default function AdminTags() {
   const { confirm } = useConfirm();
-  const [items, setItems] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
   const [name, setName] = useState('');
   const [sortOrder, setSortOrder] = useState(0);
-  const [editing, setEditing] = useState<any>(null);
+  const [editing, setEditing] = useState<TaxonomyItem | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
-  const [total, setTotal] = useState(0);
 
-  async function load() {
-    setLoading(true);
-    try {
-      const res = await api.admin.tags.list({ page: String(page), page_size: String(pageSize) });
-      setItems(res.items);
-      setTotal(res.total);
-    } catch (e) { /* empty */ }
-    setLoading(false);
-  }
-
-  useEffect(() => { load(); }, [page, pageSize]);
+  const { data, loading, error: loadError, reload: load } = useLatestRequest(
+    useCallback(() => api.admin.tags.list({ page: String(page), page_size: String(pageSize) }), [page, pageSize]),
+    '加载失败，请重试',
+  );
+  const items: TaxonomyItem[] = data?.items || [];
+  const total = data?.total || 0;
+  const mutation = useFeedbackMutation();
 
   async function handleSave() {
-    try {
+    await mutation.run(async () => {
       if (editing) await api.admin.tags.update(editing.id, { name, sort_order: sortOrder });
       else await api.admin.tags.create({ name, sort_order: sortOrder });
       setEditing(null); setName(''); setSortOrder(0);
-      load();
-    } catch (e) { /* empty */ }
+      await load();
+    });
   }
 
   async function handleDelete(id: string) {
-    if (!await confirm('确定删除此标签？')) return;
-    try {
+    await mutation.run(async () => {
+      if (!await confirm('确定删除此标签？')) return;
       await api.admin.tags.delete(id);
-      load();
-    } catch (e) { /* empty */ }
+      await load();
+    });
   }
 
   return (
     <div>
+      <RequestFeedback error={loadError} onRetry={load} pending={loading} />
+      <RequestFeedback error={mutation.error} />
       <div className="flex items-center justify-between mb-5">
         <h1 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>标签</h1>
       </div>
@@ -56,17 +54,17 @@ export default function AdminTags() {
       <div className="glass-card rounded-xl p-5 mb-4">
         <h2 className="text-sm font-semibold mb-3" style={{ color: 'var(--text-primary)' }}>{editing ? '编辑标签' : '添加标签'}</h2>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
-          <input type="text" placeholder="名称" value={name} onChange={e => setName(e.target.value)}
+          <input disabled={mutation.pending} aria-label="名称" type="text" placeholder="名称" value={name} onChange={e => setName(e.target.value)}
             className="px-3 py-2.5 rounded-lg text-sm outline-none" style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
-          <input type="number" placeholder="排序（数字越小越靠前）" value={sortOrder} onChange={e => setSortOrder(Number(e.target.value))}
+          <input disabled={mutation.pending} aria-label="排序（数字越小越靠前）" type="number" placeholder="排序（数字越小越靠前）" value={sortOrder} onChange={e => setSortOrder(Number(e.target.value))}
             className="px-3 py-2.5 rounded-lg text-sm outline-none" style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
         </div>
         <div className="flex gap-2">
-          <button onClick={handleSave} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors cursor-pointer" style={{ background: 'var(--primary)' }}>
+          <button disabled={mutation.pending} onClick={handleSave} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors cursor-pointer" style={{ background: 'var(--primary)' }}>
             <Plus className="w-4 h-4" />
             {editing ? '更新' : '添加'}
           </button>
-          {editing && <button onClick={() => { setEditing(null); setName(''); }}
+          {editing && <button disabled={mutation.pending} onClick={() => { setEditing(null); setName(''); }}
             className="btn-glass px-4 py-2 rounded-lg text-sm" style={{ color: 'var(--text-secondary)' }}>取消</button>}
         </div>
       </div>
@@ -75,7 +73,7 @@ export default function AdminTags() {
       <div className="glass-card rounded-xl overflow-hidden">
         {loading ? (
           <Loading />
-        ) : items.length === 0 ? (
+        ) : loadError && items.length === 0 ? null : items.length === 0 ? (
           <div className="text-center py-12" style={{ color: 'var(--text-secondary)' }}>
             <Tags className="w-10 h-10 mx-auto mb-2" style={{ color: 'var(--text-info)' }} />
             <p>暂无标签</p>
@@ -104,7 +102,7 @@ export default function AdminTags() {
                         className="btn-glass p-1.5 rounded transition-colors" title="编辑">
                         <Pencil className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
                       </button>
-                      <button onClick={() => handleDelete(item.id)}
+                      <button disabled={mutation.pending} onClick={() => handleDelete(item.id)}
                         className="btn-glass p-1.5 rounded transition-colors" title="删除">
                         <Trash2 className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
                       </button>
@@ -143,7 +141,7 @@ export default function AdminTags() {
                     }}>{p}</button>
                 );
               })}
-              <button onClick={() => setPage(Math.min(Math.ceil(total / pageSize), page + 1))} disabled={page === Math.ceil(total / pageSize)}
+              <button onClick={() => setPage(Math.min(Math.max(1, Math.ceil(total / pageSize)), page + 1))} disabled={page >= Math.max(1, Math.ceil(total / pageSize))}
                 className="px-3 py-1.5 rounded-xl btn-glass disabled:opacity-40 transition-colors"
                 style={{ color: 'var(--text-primary)' }}>下一页</button>
             </div>

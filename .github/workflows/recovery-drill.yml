@@ -1,0 +1,64 @@
+name: Isolated recovery drill
+
+on:
+  schedule:
+    - cron: '17 3 * * 1'
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'backend/internal/handler/backup*.go'
+      - 'backend/internal/model/**'
+      - 'backend/internal/testutil/**'
+      - '.github/workflows/recovery-drill.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: recovery-drill-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: recovery_drill
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: disposable-drill-password
+        ports: ['5432:5432']
+        options: >-
+          --memory=512m --cpus=1
+          --health-cmd "pg_isready -U postgres -d recovery_drill"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      TEST_DATABASE_DSN: postgres://postgres:disposable-drill-password@localhost:5432/recovery_drill?sslmode=disable
+      REQUIRE_TEST_DATABASE: '1'
+      GOMAXPROCS: '2'
+      GOMEMLIMIT: 384MiB
+      GIN_MODE: release
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - name: Restore database and media into disposable schemas
+        working-directory: backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout --signal=TERM --kill-after=15s 8m \
+            go test -p 1 ./internal/handler -run '^TestRecoveryDrill$' -count=1 -timeout=6m -v \
+            | tee recovery-drill.log
+      - name: Retain recovery evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: recovery-drill-${{ github.run_id }}
+          path: backend/recovery-drill.log
+          retention-days: 14
+          if-no-files-found: ignore

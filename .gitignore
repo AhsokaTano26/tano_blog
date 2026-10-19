@@ -3,12 +3,14 @@ backend/tmp/
 backend/uploads/
 backend/.next/
 backend/server
+backend/browserfixture
 backend/main
 backend/backups/
 
 # Node
 frontend/.next/
 frontend/node_modules/
+frontend/test-results/
 frontend/scripts/__pycache__/
 frontend/CLAUDE.md
 frontend/AGENTS.md

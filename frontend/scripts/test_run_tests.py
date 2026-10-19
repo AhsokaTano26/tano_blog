@@ -11,6 +11,7 @@ from unittest import mock
 from types import SimpleNamespace
 
 import run_tests as guard
+import run_browser_tests as browser_guard
 
 RUNNER = Path(__file__).with_name('run_tests.py')
 suite_lock = None
@@ -30,6 +31,21 @@ def tearDownModule():
 
 
 class CommandTests(unittest.TestCase):
+    def test_explicit_browser_command_uses_same_guard_and_working_directory(self):
+        args = SimpleNamespace(lock_file=None, node_args=[], timeout_seconds=1, memory_mib=96)
+        child = mock.Mock(pid=12345)
+        child.poll.return_value = 7
+        child.returncode = 7
+        with tempfile.TemporaryDirectory() as directory:
+            args.lock_file = Path(directory) / 'browser.lock'
+            with mock.patch.object(guard, 'group_memory', return_value=0), \
+                    mock.patch.object(guard, 'mac_footprint_reader', return_value=lambda _pid: 0), \
+                    mock.patch.object(guard.subprocess, 'Popen', return_value=child) as spawn, \
+                    mock.patch.object(guard, 'stop_group') as stop:
+                self.assertEqual(guard.run(args, command=['node', 'browser.cjs']), 7)
+                spawn.assert_called_once_with(['node', 'browser.cjs'], cwd=guard.ROOT, start_new_session=True)
+                stop.assert_called_once_with(child)
+
     def test_forwarded_options_cannot_override_safety_flags(self):
         for option in ('--test-concurrency=8', '--test-concurrency',
                        '--max-old-space-size=8192', '--max_old_space_size=8192',
@@ -108,6 +124,50 @@ class CommandTests(unittest.TestCase):
                     stop.assert_called_once_with(child)
         finally:
             guard.requested_signal = previous
+
+
+class BrowserArtifactTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+
+    def read_result(self, directory):
+        import json
+        return json.loads((directory / 'results.json').read_text())
+
+    def test_runs_keep_separate_artifacts_and_begin_as_running(self):
+        first = browser_guard.begin_artifacts(self.root, 'e2e_first', 'chromium')
+        second = browser_guard.begin_artifacts(self.root, 'e2e_second', 'webkit')
+        self.assertNotEqual(first, second)
+        self.assertEqual(first, self.root / 'e2e_first')
+        self.assertEqual(self.read_result(first)['run_id'], 'e2e_first')
+        self.assertEqual(self.read_result(second)['status'], 'running')
+        self.assertIsNone(self.read_result(second)['exit_code'])
+
+    def test_watchdog_failure_preserves_completed_checks_and_records_exit(self):
+        import json
+        directory = browser_guard.begin_artifacts(self.root, 'e2e_killed', 'all')
+        (directory / 'results.json').write_text(json.dumps({
+            'status': 'running', 'checks': [{'name': 'login', 'passed': True}],
+        }))
+        self.assertEqual(browser_guard.finish_artifacts(directory, 'e2e_killed', 'all', 137), 137)
+        result = self.read_result(directory)
+        self.assertEqual(result['status'], 'failed')
+        self.assertEqual(result['exit_code'], 137)
+        self.assertEqual(result['checks'], [{'name': 'login', 'passed': True}])
+        self.assertIn('memory', result['failure'])
+
+    def test_zero_exit_requires_explicit_pass_and_cleanup_failure_overrides_pass(self):
+        import json
+        directory = browser_guard.begin_artifacts(self.root, 'e2e_complete', 'chromium')
+        self.assertEqual(browser_guard.finish_artifacts(directory, 'e2e_complete', 'chromium', 0), 1)
+        self.assertEqual(self.read_result(directory)['status'], 'failed')
+        (directory / 'results.json').write_text(json.dumps({'status': 'running', 'browser_status': 'passed', 'checks': []}))
+        self.assertEqual(browser_guard.finish_artifacts(directory, 'e2e_complete', 'chromium', 0), 0)
+        self.assertEqual(self.read_result(directory)['status'], 'passed')
+        self.assertEqual(browser_guard.finish_artifacts(directory, 'e2e_complete', 'chromium', 1), 1)
+        self.assertEqual(self.read_result(directory)['status'], 'failed')
 
 
 class GuardTests(unittest.TestCase):
@@ -201,6 +261,25 @@ require('node:test')('blocked', () => {{
         self.assertTrue(marker.exists(), 'fixture must have started its descendant')
         pid = int(marker.read_text())
         self.assert_stopped(pid)
+
+    def test_browser_scope_keeps_detached_launch_inside_cleanup_group(self):
+        marker = self.directory / 'browser-child.pid'
+        scope = RUNNER.with_name('browser-process-scope.cjs')
+        source = f"""
+require({str(scope)!r});
+const {{ spawn }} = require('node:child_process');
+const fs = require('node:fs');
+require('node:test')('browser launch scope', () => {{
+  const child = spawn(process.execPath, ['-e', 'setTimeout(() => process.exit(0), 4000)'], {{ detached: true, stdio: 'ignore' }});
+  fs.writeFileSync({str(marker)!r}, String(child.pid));
+  const end = Date.now() + 4000;
+  while (Date.now() < end) {{}}
+}});
+"""
+        result = self.run_fixture(source, '--timeout-seconds', '0.8')
+        self.assertEqual(result.returncode, 124, result.stderr)
+        self.assertTrue(marker.exists())
+        self.assert_stopped(int(marker.read_text()))
 
     def assert_stopped(self, pid):
         for _ in range(30):

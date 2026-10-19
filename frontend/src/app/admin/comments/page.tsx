@@ -1,8 +1,11 @@
 'use client';
 
-import { useState, useEffect, useLayoutEffect, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { api } from '@/lib/api';
-import { MessageSquare, Check, X, Trash2, ExternalLink, User, CheckSquare, Square, Info, Monitor, Smartphone } from 'lucide-react';
+import type { AdminCommentItem, CommentRevision, IpBanItem } from '@/lib/admin-types';
+import { useFeedbackMutation } from '@/lib/request-feedback';
+import { RequestFeedback } from '@/components/RequestFeedback';
+import { MessageSquare, Check, X, Trash2, ExternalLink, User, CheckSquare, Square, Info } from 'lucide-react';
 import { Loading } from '@/components/Loading';
 import { useConfirm, Select } from '@/components/ConfirmDialog';
 
@@ -30,24 +33,25 @@ function parseUA(ua: string) {
   return { browser, os, device };
 }
 
-function CommentDetail({ comment, onClose, onReload }: { comment: any; onClose: () => void; onReload: () => void }) {
+function CommentDetail({ comment, onClose, onReload }: { comment: AdminCommentItem; onClose: () => void; onReload: () => void }) {
   const { browser, os, device } = parseUA(comment.user_agent || '');
-  const DeviceIcon = device === 'mobile' ? Smartphone : device === 'tablet' ? Monitor : Monitor;
   const [isEditing, setIsEditing] = useState(false);
   const [editContent, setEditContent] = useState(comment.content);
-  const [revisions, setRevisions] = useState<any[]>([]);
+  const [revisions, setRevisions] = useState<CommentRevision[]>([]);
   const [showRevisions, setShowRevisions] = useState(false);
-  const [loadingRevisions, setLoadingRevisions] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const mutation = useFeedbackMutation();
+  const revisionFeedback = useFeedbackMutation();
+  const [savedContent, setSavedContent] = useState(comment.content);
+  const saving = mutation.pending;
+  const loadingRevisions = revisionFeedback.pending;
 
   async function handleSave() {
-    setSaving(true);
-    try {
+    await mutation.run(async () => {
       await api.admin.comments.update(comment.id, { content: editContent });
+      setSavedContent(editContent);
       setIsEditing(false);
       onReload();
-    } catch (e) { /* empty */ }
-    setSaving(false);
+    }, '评论保存失败，请重试');
   }
 
   async function handleLoadRevisions() {
@@ -55,30 +59,30 @@ function CommentDetail({ comment, onClose, onReload }: { comment: any; onClose: 
       setShowRevisions(!showRevisions);
       return;
     }
-    setLoadingRevisions(true);
-    try {
+    await revisionFeedback.run(async () => {
       const res = await api.admin.comments.revisions(comment.id);
       setRevisions(res.items);
       setShowRevisions(true);
-    } catch (e) { /* empty */ }
-    setLoadingRevisions(false);
+    }, '历史版本加载失败，请重试');
   }
 
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.5)' }}
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="w-full max-w-lg max-h-[80vh] overflow-y-auto rounded-2xl shadow-2xl p-6"
+      onClick={(e) => { if (e.target === e.currentTarget && !saving) onClose(); }}>
+      <div role="dialog" aria-modal="true" aria-label="评论详情" className="w-full max-w-lg max-h-[80vh] overflow-y-auto rounded-2xl shadow-2xl p-6"
         style={{ background: 'var(--card-bg)', border: '1px solid var(--glass-border)' }}>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-bold flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
             <Info className="w-5 h-5" />
             评论详情
           </h2>
-          <button onClick={onClose} className="p-1 rounded-lg btn-glass transition-colors" style={{ color: 'var(--text-secondary)' }}>
+          <button aria-label="关闭评论详情" disabled={saving} onClick={onClose} className="p-1 rounded-lg btn-glass transition-colors" style={{ color: 'var(--text-secondary)' }}>
             <X className="w-5 h-5" />
           </button>
         </div>
 
+        <RequestFeedback error={mutation.error} />
+        <RequestFeedback error={revisionFeedback.error} onRetry={handleLoadRevisions} pending={loadingRevisions} />
         <div className="space-y-3">
           <div className="flex items-center gap-3 pb-3" style={{ borderBottom: '1px solid var(--glass-border)' }}>
             <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: 'var(--primary-sub)' }}>
@@ -94,18 +98,18 @@ function CommentDetail({ comment, onClose, onReload }: { comment: any; onClose: 
 
           {isEditing ? (
             <div>
-              <textarea value={editContent} onChange={e => setEditContent(e.target.value)}
+              <textarea aria-label="评论内容" disabled={saving} value={editContent} onChange={e => setEditContent(e.target.value)}
                 className="w-full px-3 py-2 rounded-lg text-sm resize-y min-h-[100px]"
                 style={{ background: 'var(--card-bg)', color: 'var(--text-primary)', border: '1px solid var(--glass-border)' }} />
             </div>
           ) : (
             <div>
-              <p className="text-sm whitespace-pre-wrap" style={{ color: 'var(--text-secondary)' }}>{comment.content}</p>
+              <p className="text-sm whitespace-pre-wrap" style={{ color: 'var(--text-secondary)' }}>{savedContent}</p>
             </div>
           )}
 
           {/* Edited indicator */}
-          {comment.edited_count > 0 && (
+          {(comment.edited_count || 0) > 0 && (
             <div className="text-xs" style={{ color: 'var(--text-info)' }}>
               已编辑 {comment.edited_count} 次{comment.edited_at ? ' · ' + new Date(comment.edited_at).toLocaleString('zh-CN') : ''}
             </div>
@@ -113,7 +117,7 @@ function CommentDetail({ comment, onClose, onReload }: { comment: any; onClose: 
 
           {/* Action buttons */}
           <div className="flex items-center gap-2 pt-1">
-            <button onClick={() => { setIsEditing(!isEditing); setEditContent(comment.content); }}
+            <button disabled={saving} onClick={() => { mutation.clearError(); setIsEditing(!isEditing); setEditContent(savedContent); }}
               className="btn-glass px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer"
               style={{ color: 'var(--primary)' }}>
               {isEditing ? '取消' : '编辑'}
@@ -125,7 +129,7 @@ function CommentDetail({ comment, onClose, onReload }: { comment: any; onClose: 
                 {saving ? '保存中...' : '保存'}
               </button>
             )}
-            <button onClick={handleLoadRevisions}
+            <button disabled={loadingRevisions} onClick={handleLoadRevisions}
               className="btn-glass px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer"
               style={{ color: 'var(--primary)' }}>
               历史版本
@@ -199,7 +203,8 @@ function DetailField({ label, value, mono }: { label: string; value: string; mon
 
 export default function AdminComments() {
   const { confirm } = useConfirm();
-  const [items, setItems] = useState<any[]>([]);
+  const mutation = useFeedbackMutation();
+  const [items, setItems] = useState<AdminCommentItem[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -208,22 +213,23 @@ export default function AdminComments() {
   const latestLoad = useRef<(() => Promise<void>) | null>(null);
   const [filter, setFilter] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [detailComment, setDetailComment] = useState<any>(null);
+  const [detailComment, setDetailComment] = useState<AdminCommentItem | null>(null);
 
   // Commenter search & blocked state
   const [commenterEmail, setCommenterEmail] = useState('');
   const [commenterIP, setCommenterIP] = useState('');
+  const [commenterQuery, setCommenterQuery] = useState({ email: '', ip: '' });
   const [commenterSearchKey, setCommenterSearchKey] = useState(0);
-  const [commenterResults, setCommenterResults] = useState<any[]>([]);
+  const [commenterResults, setCommenterResults] = useState<AdminCommentItem[]>([]);
   const [commenterTotal, setCommenterTotal] = useState(0);
   const [commenterPage, setCommenterPage] = useState(1);
 
-  const [blockedItems, setBlockedItems] = useState<any[]>([]);
+  const [blockedItems, setBlockedItems] = useState<IpBanItem[]>([]);
   const [blockedTotal, setBlockedTotal] = useState(0);
   const [blockedPage, setBlockedPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
 
-  async function load() {
+  const load = useCallback(async () => {
     const sequence = ++loadSequence.current;
     setLoading(true);
     setLoadError('');
@@ -238,8 +244,8 @@ export default function AdminComments() {
           page: String(commenterPage),
           page_size: String(pageSize),
         };
-        if (commenterEmail) cParams.email = commenterEmail;
-        if (commenterIP) cParams.ip_address = commenterIP;
+        if (commenterQuery.email) cParams.email = commenterQuery.email;
+        if (commenterQuery.ip) cParams.ip_address = commenterQuery.ip;
         const res = await api.admin.comments.list(cParams);
         if (sequence !== loadSequence.current) return;
         setCommenterResults(res.items);
@@ -264,34 +270,35 @@ export default function AdminComments() {
     } finally {
       if (sequence === loadSequence.current) setLoading(false);
     }
-  }
+  }, [filter, commenterSearchKey, commenterPage, pageSize, commenterQuery, blockedPage, page]);
 
   useLayoutEffect(() => {
     latestLoad.current = load;
     return () => { latestLoad.current = null; };
-  });
+  }, [load]);
   useEffect(() => {
+    setSelected(new Set());
     void load();
     return () => { loadSequence.current++; };
-  }, [page, pageSize, filter, commenterPage, blockedPage, commenterSearchKey]);
+  }, [load]);
 
   function reloadLatest() {
     void latestLoad.current?.();
   }
 
   async function handleStatus(id: string, status: string) {
-    try {
+    await mutation.run(async () => {
       await api.admin.comments.updateStatus(id, status);
       reloadLatest();
-    } catch (e) { /* empty */ }
+    });
   }
 
   async function handleDelete(id: string) {
-    if (!await confirm('确定删除此评论？')) return;
-    try {
+    await mutation.run(async () => {
+      if (!await confirm('确定删除此评论？')) return;
       await api.admin.comments.delete(id);
       reloadLatest();
-    } catch (e) { /* empty */ }
+    });
   }
 
   function toggleSelect(id: string) {
@@ -312,11 +319,11 @@ export default function AdminComments() {
   }
 
   async function handleBatchStatus(status: string) {
-    if (selected.size === 0) return;
-    try {
+    await mutation.run(async () => {
+      if (selected.size === 0) return;
       await api.admin.comments.batchUpdateStatus(Array.from(selected), status);
       reloadLatest();
-    } catch (e) { /* empty */ }
+    });
   }
 
   const handleExport = () => {
@@ -339,6 +346,7 @@ export default function AdminComments() {
   const isCommentTab = !['commenter', 'blocked'].includes(filter);
 
   const handleCommenterSearch = () => {
+    setCommenterQuery({ email: commenterEmail, ip: commenterIP });
     setCommenterSearchKey(k => k + 1);
     setCommenterPage(1);
   };
@@ -359,18 +367,19 @@ export default function AdminComments() {
         </div>
       </div>
 
-      {loadError && <div role="alert" className="mb-4 text-sm" style={{ color: 'var(--color-error)' }}>{loadError}</div>}
+      <RequestFeedback error={loadError} onRetry={reloadLatest} pending={loading} />
+      <RequestFeedback error={mutation.error} />
 
       {/* Batch actions - only for comment tabs */}
       {isCommentTab && selected.size > 0 && (
         <div className="glass-card rounded-xl mb-4 px-4 py-3 flex items-center gap-3">
           <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>已选 {selected.size} 条</span>
-          <button onClick={() => handleBatchStatus('approved')}
+          <button disabled={mutation.pending} onClick={() => handleBatchStatus('approved')}
             className="btn-glass px-3 py-1.5 rounded-lg text-xs font-medium"
             style={{ color: 'hsl(142, 60%, 50%)' }}>
             批量批准
           </button>
-          <button onClick={() => handleBatchStatus('rejected')}
+          <button disabled={mutation.pending} onClick={() => handleBatchStatus('rejected')}
             className="btn-glass px-3 py-1.5 rounded-lg text-xs font-medium"
             style={{ color: 'hsl(0, 60%, 50%)' }}>
             批量拒绝
@@ -398,13 +407,13 @@ export default function AdminComments() {
             <div className="flex items-end gap-3 mb-4">
               <div className="flex-1">
                 <label className="text-xs mb-1 block" style={{ color: 'var(--text-info)' }}>邮箱</label>
-                <input type="text" value={commenterEmail} onChange={e => setCommenterEmail(e.target.value)}
+                <input type="text" aria-label="搜索评论者邮箱" value={commenterEmail} onChange={e => setCommenterEmail(e.target.value)}
                   placeholder="输入邮箱搜索" className="w-full px-3 py-2 rounded-lg text-sm"
                   style={{ background: 'var(--card-bg)', color: 'var(--text-primary)', border: '1px solid var(--glass-border)' }} />
               </div>
               <div className="flex-1">
                 <label className="text-xs mb-1 block" style={{ color: 'var(--text-info)' }}>IP 地址</label>
-                <input type="text" value={commenterIP} onChange={e => setCommenterIP(e.target.value)}
+                <input type="text" aria-label="搜索评论者 IP" value={commenterIP} onChange={e => setCommenterIP(e.target.value)}
                   placeholder="输入IP地址搜索" className="w-full px-3 py-2 rounded-lg text-sm"
                   style={{ background: 'var(--card-bg)', color: 'var(--text-primary)', border: '1px solid var(--glass-border)' }} />
               </div>
@@ -418,7 +427,7 @@ export default function AdminComments() {
             {/* Results */}
             {loading ? (
               <Loading />
-            ) : commenterResults.length === 0 ? (
+            ) : loadError ? null : commenterResults.length === 0 ? (
               <div className="text-center py-16" style={{ color: 'var(--text-secondary)' }}>
                 <User className="w-12 h-12 mx-auto mb-3" style={{ color: 'var(--text-info)' }} />
                 <p>{commenterSearchKey === 0 ? '请搜索邮箱或IP地址' : '未找到评论'}</p>
@@ -457,11 +466,12 @@ export default function AdminComments() {
                           <span>IP: {item.ip_address || '-'}</span>
                         </div>
                       </div>
-                      <button onClick={async () => {
-                        try {
-                          await api.admin.ipBans.create({ scope: "comment", ip_address: item.ip_address, reason: '管理员封禁' });
+                      <button disabled={mutation.pending || !item.ip_address} onClick={async () => {
+                        await mutation.run(async () => {
+                          if (!item.ip_address) return;
+                          await api.admin.ipBans.create({ scope: "comment", ip_address: item.ip_address || '', reason: '管理员封禁' });
                           reloadLatest();
-                        } catch (e) { /* empty */ }
+                        });
                       }}
                         className="btn-glass px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer flex-shrink-0"
                         style={{ color: 'hsl(0, 60%, 50%)' }}>
@@ -497,7 +507,7 @@ export default function AdminComments() {
           <div>
             {loading ? (
               <Loading />
-            ) : blockedItems.length === 0 ? (
+            ) : loadError ? null : blockedItems.length === 0 ? (
               <div className="text-center py-20" style={{ color: 'var(--text-secondary)' }}>
                 <MessageSquare className="w-12 h-12 mx-auto mb-3" style={{ color: 'var(--text-info)' }} />
                 <p>暂无封禁记录</p>
@@ -520,11 +530,11 @@ export default function AdminComments() {
                           <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>原因: {item.reason}</p>
                         )}
                       </div>
-                      <button onClick={async () => {
-                        try {
+                      <button disabled={mutation.pending} onClick={async () => {
+                        await mutation.run(async () => {
                           await api.admin.ipBans.remove(item.id);
                           reloadLatest();
-                        } catch (e) { /* empty */ }
+                        });
                       }}
                         className="btn-glass px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer flex-shrink-0"
                         style={{ color: 'var(--primary)' }}>
@@ -538,7 +548,7 @@ export default function AdminComments() {
           </div>
         ) : loading ? (
           <Loading />
-        ) : items.length === 0 ? (
+        ) : loadError ? null : items.length === 0 ? (
           <div className="text-center py-20" style={{ color: 'var(--text-secondary)' }}>
             <MessageSquare className="w-12 h-12 mx-auto mb-3" style={{ color: 'var(--text-info)' }} />
             <p>暂无评论</p>
@@ -547,7 +557,7 @@ export default function AdminComments() {
           <div>
             {/* Select all header */}
             <div className="px-5 py-2 flex items-center gap-2" style={{ borderBottom: '1px solid var(--glass-border)' }}>
-              <button onClick={toggleSelectAll} className="p-0.5" style={{ color: 'var(--text-info)' }}>
+              <button aria-label="选择全部评论" aria-pressed={items.length > 0 && selected.size === items.length} onClick={toggleSelectAll} className="p-0.5" style={{ color: 'var(--text-info)' }}>
                 {selected.size === items.length && items.length > 0 ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
               </button>
               <span className="text-xs" style={{ color: 'var(--text-info)' }}>全选</span>
@@ -556,7 +566,7 @@ export default function AdminComments() {
               <div key={item.id} className="px-5 py-4 transition-colors" style={{ borderBottom: '1px solid var(--glass-border)' }}>
                 <div className="flex items-start gap-3">
                   {/* Checkbox */}
-                  <button onClick={() => toggleSelect(item.id)} className="p-0.5 mt-1 flex-shrink-0" style={{ color: selected.has(item.id) ? 'var(--primary)' : 'var(--text-info)' }}>
+                  <button aria-label={`选择 ${item.nickname} 的评论`} aria-pressed={selected.has(item.id)} onClick={() => toggleSelect(item.id)} className="p-0.5 mt-1 flex-shrink-0" style={{ color: selected.has(item.id) ? 'var(--primary)' : 'var(--text-info)' }}>
                     {selected.has(item.id) ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
                   </button>
                   {/* Avatar */}
@@ -606,18 +616,18 @@ export default function AdminComments() {
                       <Info className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
                     </button>
                     {item.status !== 'approved' && (
-                      <button onClick={() => handleStatus(item.id, 'approved')}
+                      <button disabled={mutation.pending} onClick={() => handleStatus(item.id, 'approved')}
                         className="btn-glass p-1.5 rounded transition-colors" title="批准" aria-label="批准评论">
                         <Check className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
                       </button>
                     )}
                     {item.status !== 'rejected' && (
-                      <button onClick={() => handleStatus(item.id, 'rejected')}
+                      <button disabled={mutation.pending} onClick={() => handleStatus(item.id, 'rejected')}
                         className="btn-glass p-1.5 rounded transition-colors" title="拒绝" aria-label="拒绝评论">
                         <X className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
                       </button>
                     )}
-                    <button onClick={() => handleDelete(item.id)}
+                    <button disabled={mutation.pending} onClick={() => handleDelete(item.id)}
                       className="btn-glass p-1.5 rounded transition-colors" title="删除" aria-label="删除评论">
                       <Trash2 className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
                     </button>

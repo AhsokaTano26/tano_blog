@@ -1,6 +1,17 @@
+import type { TaxonomyItem, SeriesItem, NavLinkItem, FriendLinkItem, IpBanItem, AdminCommentItem, CommentRevision, MediaItem, MediaTag } from './admin-types';
 import { isPublicAuthRoute } from './auth-routes';
 import { uploadFilename } from './editor-upload';
 import { uploadForm, type UploadOptions } from './upload';
+import type { Post, PostMutation, PostRevision } from './post-types';
+import type { SystemMetrics } from './system-health-types';
+export type { Post, PostMutation, PostRevision } from './post-types';
+
+export class ApiError extends Error {
+  constructor(message: string, public readonly status: number, public readonly code?: string, public readonly currentPost?: Post) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
 
@@ -10,11 +21,11 @@ interface FetchOptions extends RequestInit {
 }
 
 // Browser-only cache: never share cookie-dependent data across server requests.
-const publicRequests = new Map<string, { expires: number; promise: Promise<any> }>();
+const publicRequests = new Map<string, { expires: number; promise: Promise<unknown> }>();
 function publicRequest<T>(path: string, ttl = 60_000): Promise<T> {
   if (typeof window === 'undefined') return request<T>(path);
   const cached = publicRequests.get(path);
-  if (cached && cached.expires > Date.now()) return cached.promise;
+  if (cached && cached.expires > Date.now()) return cached.promise as Promise<T>;
   const promise = request<T>(path).catch(error => {
     publicRequests.delete(path);
     throw error;
@@ -69,11 +80,15 @@ async function request<T>(path: string, options: FetchOptions = {}): Promise<T> 
     }
 
     let errMsg = `HTTP ${res.status}`;
+    let code: string | undefined;
+    let currentPost: Post | undefined;
     try {
       const err = await res.json();
-      if (err.error) errMsg = err.error;
+      if (typeof err?.error === 'string') errMsg = err.error;
+      if (typeof err?.code === 'string') code = err.code;
+      if (err?.current_post && typeof err.current_post.id === 'string') currentPost = err.current_post;
     } catch {}
-    throw new Error(errMsg);
+    throw new ApiError(errMsg, res.status, code, currentPost);
   }
 
   if (isMutating && (path.startsWith('/api/v1/admin/') || path.startsWith('/api/v1/auth/'))) publicRequests.clear();
@@ -110,13 +125,13 @@ export const api = {
 
   // Categories
   getCategories: () =>
-    publicRequest<{ items: any[] }>('/api/v1/categories'),
+    publicRequest<{ items: TaxonomyItem[] }>('/api/v1/categories'),
   getCategory: (slug: string, params?: Record<string, string>) =>
     request<{ category: any; posts: any[]; total: number; page: number; size: number }>(`/api/v1/categories/${slug}`, { params }),
 
   // Tags
   getTags: () =>
-    publicRequest<{ items: any[] }>('/api/v1/tags'),
+    publicRequest<{ items: TaxonomyItem[] }>('/api/v1/tags'),
   getTag: (slug: string, params?: Record<string, string>) =>
     request<{ tag: any; posts: any[]; total: number; page: number; size: number }>(`/api/v1/tags/${slug}`, { params }),
 
@@ -149,7 +164,7 @@ export const api = {
 
   // Series
   getSeries: () =>
-    publicRequest<{ items: any[] }>('/api/v1/series'),
+    publicRequest<{ items: SeriesItem[] }>('/api/v1/series'),
   getSeriesBySlug: (slug: string, params?: Record<string, string>) =>
     request<{ series: any; total: number; page: number; size: number }>(`/api/v1/series/${slug}`, { params }),
   getSeriesProgress: (slug: string, postSlug: string) =>
@@ -165,11 +180,11 @@ export const api = {
 
   // Friend links
   getLinks: () =>
-    request<{ items: any[] }>('/api/v1/links'),
+    request<{ items: FriendLinkItem[] }>('/api/v1/links'),
   applyLink: (data: any) =>
     request('/api/v1/links/apply', { method: 'POST', body: JSON.stringify(data) }),
   getNavLinks: () =>
-    request<{ items: any[] }>('/api/v1/nav-links'),
+    request<{ items: NavLinkItem[] }>('/api/v1/nav-links'),
 
   // Gallery
   getGalleryImages: (params?: Record<string, string>) =>
@@ -236,16 +251,17 @@ export const api = {
 
   // Admin
   admin: {
+    metrics: (signal?: AbortSignal) => request<SystemMetrics>('/api/v1/admin/metrics', { signal }),
     summary: () => publicRequest<{ posts: number; comments: number; media: number; categories: number; tags: number; pending_comments: number; pending_links: number }>('/api/v1/admin/summary', 5000),
     posts: {
       list: (params?: Record<string, string>) =>
-        request<{ items: any[]; total: number; page: number; size: number }>('/api/v1/admin/posts', { params }),
+        request<{ items: Post[]; total: number; page: number; size: number }>('/api/v1/admin/posts', { params }),
       get: (id: string) =>
-        request<{ post: any }>(`/api/v1/admin/posts/${id}`),
-      create: (data: any) =>
-        request('/api/v1/admin/posts', { method: 'POST', body: JSON.stringify(data) }),
-      update: (id: string, data: any) =>
-        request(`/api/v1/admin/posts/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+        request<{ post: Post }>(`/api/v1/admin/posts/${id}`),
+      create: (data: PostMutation) =>
+        request<{ post: Post }>('/api/v1/admin/posts', { method: 'POST', body: JSON.stringify(data) }),
+      update: (id: string, data: PostMutation) =>
+        request<{ post: Post }>(`/api/v1/admin/posts/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
       delete: (id: string) =>
         request(`/api/v1/admin/posts/${id}`, { method: 'DELETE' }),
       updateStatus: (id: string, status: string) =>
@@ -258,9 +274,9 @@ export const api = {
         request('/api/v1/admin/posts/batch-delete', { method: 'POST', body: JSON.stringify({ ids }) }),
       revisions: {
         list: (postId: string) =>
-          request<{ items: any[] }>(`/api/v1/admin/posts/${postId}/revisions`),
-        restore: (postId: string, revId: string) =>
-          request<{ post: any }>(`/api/v1/admin/posts/${postId}/revisions/${revId}/restore`, { method: 'POST' }),
+          request<{ items: PostRevision[] }>(`/api/v1/admin/posts/${postId}/revisions`),
+        restore: (postId: string, revId: string, expectedUpdatedAt?: string) =>
+          request<{ post: Post }>(`/api/v1/admin/posts/${postId}/revisions/${revId}/restore`, { method: 'POST', body: JSON.stringify({ expected_updated_at: expectedUpdatedAt }) }),
       },
       generatePreviewToken: (postId: string) =>
         request<{ token: string }>(`/api/v1/admin/posts/${postId}/preview-token`, { method: 'POST' }),
@@ -274,14 +290,14 @@ export const api = {
     },
     categories: {
       list: (params?: Record<string, string>) =>
-        request<{ items: any[]; total: number; page: number; size: number }>('/api/v1/admin/categories', { params }),
+        request<{ items: TaxonomyItem[]; total: number; page: number; size: number }>('/api/v1/admin/categories', { params }),
       create: (data: any) => request('/api/v1/admin/categories', { method: 'POST', body: JSON.stringify(data) }),
       update: (id: string, data: any) => request(`/api/v1/admin/categories/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
       delete: (id: string) => request(`/api/v1/admin/categories/${id}`, { method: 'DELETE' }),
     },
     tags: {
       list: (params?: Record<string, string>) =>
-        request<{ items: any[]; total: number; page: number; size: number }>('/api/v1/admin/tags', { params }),
+        request<{ items: TaxonomyItem[]; total: number; page: number; size: number }>('/api/v1/admin/tags', { params }),
       create: (data: any) => request('/api/v1/admin/tags', { method: 'POST', body: JSON.stringify(data) }),
       update: (id: string, data: any) => request(`/api/v1/admin/tags/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
       delete: (id: string) => request(`/api/v1/admin/tags/${id}`, { method: 'DELETE' }),
@@ -292,11 +308,11 @@ export const api = {
     },
     comments: {
       list: (params?: Record<string, string>) =>
-        request<{ items: any[]; total: number; page: number; size: number }>('/api/v1/admin/comments', { params }),
+        request<{ items: AdminCommentItem[]; total: number; page: number; size: number }>('/api/v1/admin/comments', { params }),
       update: (id: string, data: { content: string }) =>
         request(`/api/v1/admin/comments/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
       revisions: (id: string) =>
-        request<{ items: any[] }>(`/api/v1/admin/comments/${id}/revisions`),
+        request<{ items: CommentRevision[] }>(`/api/v1/admin/comments/${id}/revisions`),
       updateStatus: (id: string, status: string) =>
         request(`/api/v1/admin/comments/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
       batchUpdateStatus: (ids: string[], status: string) =>
@@ -310,7 +326,7 @@ export const api = {
     },
     media: {
       list: (params?: Record<string, string>) =>
-        request<{ items: any[]; total: number; page: number; size: number }>('/api/v1/admin/media', { params }),
+        request<{ items: MediaItem[]; total: number; page: number; size: number }>('/api/v1/admin/media', { params }),
       delete: (id: string) =>
         request(`/api/v1/admin/media/${id}`, { method: 'DELETE' }),
       batchDelete: (ids: string[]) =>
@@ -324,11 +340,11 @@ export const api = {
         return uploadForm<{ media: { id: string; url: string; filename: string; thumbnail_url?: string } }>(`${API_BASE}/api/v1/admin/upload`, form, getCSRFToken(), options);
       },
       updateTags: (id: string, tagIds: string[]) =>
-        request(`/api/v1/admin/media/${id}/tags`, { method: 'PUT', body: JSON.stringify({ tag_ids: tagIds }) }),
+        request<{ media: MediaItem }>(`/api/v1/admin/media/${id}/tags`, { method: 'PUT', body: JSON.stringify({ tag_ids: tagIds }) }),
       updateMetadata: (id: string, data: Record<string, string>) =>
-        request(`/api/v1/admin/media/${id}/metadata`, { method: 'PUT', body: JSON.stringify(data) }),
+        request<{ media: MediaItem }>(`/api/v1/admin/media/${id}/metadata`, { method: 'PUT', body: JSON.stringify(data) }),
       tags: {
-        list: () => request<{ items: any[] }>('/api/v1/admin/media/tags'),
+        list: () => request<{ items: MediaTag[] }>('/api/v1/admin/media/tags'),
         create: (name: string) => request('/api/v1/admin/media/tags', { method: 'POST', body: JSON.stringify({ name }) }),
         delete: (id: string) => request(`/api/v1/admin/media/tags/${id}`, { method: 'DELETE' }),
       },
@@ -347,7 +363,7 @@ export const api = {
       request<{ latest: string; changelog?: string[] }>('/api/v1/admin/check-version' + (version ? `?version=${version}` : '')),
     series: {
       list: (params?: Record<string, string>) =>
-        request<{ items: any[]; total: number; page: number; size: number }>('/api/v1/admin/series', { params }),
+        request<{ items: SeriesItem[]; total: number; page: number; size: number }>('/api/v1/admin/series', { params }),
       create: (data: any) => request('/api/v1/admin/series', { method: 'POST', body: JSON.stringify(data) }),
       update: (id: string, data: any) => request(`/api/v1/admin/series/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
       delete: (id: string) => request(`/api/v1/admin/series/${id}`, { method: 'DELETE' }),
@@ -431,7 +447,7 @@ export const api = {
     },
     navLinks: {
       list: () =>
-        request<{ items: any[] }>('/api/v1/admin/nav-links'),
+        request<{ items: NavLinkItem[] }>('/api/v1/admin/nav-links'),
       create: (data: any) =>
         request('/api/v1/admin/nav-links', { method: 'POST', body: JSON.stringify(data) }),
       update: (id: string, data: any) =>
@@ -443,7 +459,7 @@ export const api = {
     },
     ipBans: {
       list: (params?: Record<string, string>) =>
-        request<{ items: any[]; total: number; page: number; size: number }>('/api/v1/admin/ip-bans', { params }),
+        request<{ items: IpBanItem[]; total: number; page: number; size: number }>('/api/v1/admin/ip-bans', { params }),
       create: (data: { ip_address: string; scope: string; reason?: string; expires_at?: string }) =>
         request('/api/v1/admin/ip-bans', { method: 'POST', body: JSON.stringify(data) }),
       remove: (id: string) =>
@@ -455,7 +471,7 @@ export const api = {
     },
     links: {
       list: (params?: Record<string, string>) =>
-        request<{ items: any[]; total: number; page: number; size: number }>('/api/v1/admin/links', { params }),
+        request<{ items: FriendLinkItem[]; total: number; page: number; size: number }>('/api/v1/admin/links', { params }),
       create: (data: any) =>
         request('/api/v1/admin/links', { method: 'POST', body: JSON.stringify(data) }),
       update: (id: string, data: any) =>

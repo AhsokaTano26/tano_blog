@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"sort"
 	"strconv"
 	"time"
 
@@ -284,8 +285,8 @@ func (h *PostHandler) GeneratePreviewToken(c *gin.Context) {
 	}
 
 	token := uuid.New().String()
-	if err := h.repo.Update(id, map[string]interface{}{"preview_token": token}); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "生成预览链接失败"})
+	if err := h.repo.RotatePreviewToken(id, token); err != nil {
+		postWriteError(c, err, "生成预览链接失败")
 		return
 	}
 
@@ -462,34 +463,7 @@ func (h *PostHandler) AdminGet(c *gin.Context) {
 		return
 	}
 
-	// Add password_set for frontend (password_hash is json:"-")
-	passwordSet := post.PasswordHash != ""
-	c.JSON(http.StatusOK, gin.H{
-		"post": map[string]interface{}{
-			"password_set":  passwordSet,
-			"id":            post.ID,
-			"title":         post.Title,
-			"slug":          post.Slug,
-			"content":       post.Content,
-			"excerpt":       post.Excerpt,
-			"cover_image":   post.CoverImage,
-			"status":        post.Status,
-			"is_top":        post.IsTop,
-			"allow_comment": post.AllowComment,
-			"author_name":   post.AuthorName,
-			"author_id":     post.AuthorID,
-			"editor_id":     post.EditorID,
-			"category_id":   post.CategoryID,
-			"published_at":  post.PublishedAt,
-			"created_at":    post.CreatedAt,
-			"updated_at":    post.UpdatedAt,
-			"password_hint": post.PasswordHint,
-			"category":      post.Category,
-			"author":        post.Author,
-			"tags":          post.Tags,
-			"series":        post.Series,
-		},
-	})
+	c.JSON(http.StatusOK, gin.H{"post": adminPostSnapshot(post)})
 }
 
 // AdminList returns all posts (including drafts) for admin
@@ -558,6 +532,9 @@ func (h *PostHandler) BatchDelete(c *gin.Context) {
 		ids = append(ids, id)
 	}
 
+	// Each delete commits independently. Visit posts in the same UUID order
+	// used by operations that lock several articles in one transaction.
+	sort.Slice(ids, func(i, j int) bool { return ids[i].String() < ids[j].String() })
 	for _, id := range ids {
 		if err := h.repo.Delete(id); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "批量删除失败"})
@@ -695,39 +672,35 @@ func (h *PostHandler) RestoreRevision(c *gin.Context) {
 		return
 	}
 
-	editorID, _ := uuid.Parse(c.GetString("user_id"))
-
-	// Save current state as a new revision before restoring
-	currentPost, err := h.repo.GetByID(rev.PostID)
+	postID, err := uuid.Parse(c.Param("id"))
+	if err != nil || rev.PostID != postID {
+		c.JSON(http.StatusNotFound, gin.H{"error": "修订版本不属于此文章"})
+		return
+	}
+	var input struct {
+		ExpectedUpdatedAt optionalString `json:"expected_updated_at"`
+	}
+	if c.Request.ContentLength != 0 {
+		if err := c.ShouldBindJSON(&input); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "文章版本无效"})
+			return
+		}
+	}
+	expected, err := expectedPostVersion(input.ExpectedUpdatedAt)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "文章不存在"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "文章版本无效"})
 		return
 	}
-
-	revision := &model.PostRevision{
-		ID:       uuid.New(),
-		PostID:   currentPost.ID,
-		Title:    currentPost.Title,
-		Content:  currentPost.Content,
-		Excerpt:  currentPost.Excerpt,
-		EditorID: &editorID,
-	}
-	h.repo.SaveRevision(revision)
-
-	// Restore
+	editorID, _ := uuid.Parse(c.GetString("user_id"))
 	updates := map[string]interface{}{
-		"title":     rev.Title,
-		"content":   rev.Content,
-		"excerpt":   rev.Excerpt,
-		"editor_id": editorID,
+		"title": rev.Title, "content": rev.Content, "excerpt": rev.Excerpt, "editor_id": editorID,
 	}
-	if err := h.repo.Update(rev.PostID, updates); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "恢复失败"})
+	post, err := h.repo.UpdateWithVersion(rev.PostID, updates, repository.PostAssociations{}, true, expected)
+	if err != nil {
+		postWriteError(c, err, "恢复失败")
 		return
 	}
-
-	post, _ := h.repo.GetByID(rev.PostID)
-	c.JSON(http.StatusOK, gin.H{"post": post})
+	c.JSON(http.StatusOK, gin.H{"post": adminPostSnapshot(post)})
 }
 
 // CalendarPosts returns posts grouped by date for the calendar view

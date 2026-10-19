@@ -1,7 +1,10 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '@/lib/api';
+import type { FriendLinkItem } from '@/lib/admin-types';
+import { useLatestRequest, requestError } from '@/lib/request-feedback';
+import { RequestFeedback } from '@/components/RequestFeedback';
 import { Turnstile } from '@/components/Turnstile';
 import { ImageWithFallback } from '@/components/ImageWithFallback';
 import { ExternalLink, Link as LinkIcon, Send, CheckCircle } from 'lucide-react';
@@ -9,9 +12,11 @@ import { Loading } from '@/components/Loading';
 import { ScrollReveal } from '@/components/ScrollReveal';
 
 export default function LinksPage() {
-  const [links, setLinks] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const { data, loading, error, reload } = useLatestRequest(
+    useCallback(() => api.getLinks(), []), '友链加载失败，请重试',
+  );
+  const links: FriendLinkItem[] = data?.items || [];
+  const submittingRef = useRef(false);
 
   // Form state
   const [form, setForm] = useState({ name: '', url: '', description: '', avatar: '', email: '' });
@@ -26,22 +31,17 @@ export default function LinksPage() {
   const [captchaAttempt, setCaptchaAttempt] = useState(0);
 
   useEffect(() => {
-    api.getLinks().then(res => {
-      setLinks(res.items);
-    }).catch(() => {
-      setError('加载失败');
-    }).finally(() => setLoading(false));
-
     api.getPublicConfig().then(res => {
       if (res.config?.turnstile_enabled === 'true' && res.config?.turnstile_sitekey && (res.config?.turnstile_modules || 'comment,link').split(',').map(s => s.trim()).includes('link')) {
         setTurnstileEnabled(true);
         setTurnstileSitekey(res.config.turnstile_sitekey);
       }
-    }).catch(() => {});
+    }).catch(() => { /* Optional display configuration; the server enforces captcha policy. */ });
   }, []);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (submittingRef.current) return;
     setFormError('');
 
     if (!form.name.trim()) { setFormError('请输入网站名称'); return; }
@@ -49,17 +49,17 @@ export default function LinksPage() {
     try { new URL(form.url.startsWith('http') ? form.url : 'https://' + form.url); }
     catch { setFormError('请输入有效的网站地址'); return; }
 
+    submittingRef.current = true;
     setSubmitting(true);
     api.applyLink({ ...form, cf_turnstile_response: turnstileToken }).then(() => {
       setSubmitted(true);
       setForm({ name: '', url: '', description: '', avatar: '', email: '' });
     }).catch((e) => {
-      setFormError(e.message || '提交失败，请稍后重试');
+      setFormError(requestError(e, '提交失败，请稍后重试'));
       setCaptchaAttempt(value => value + 1);
-    }).finally(() => setSubmitting(false));
+    }).finally(() => { submittingRef.current = false; setSubmitting(false); });
   }
 
-  if (loading) return <Loading />;
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
@@ -76,11 +76,8 @@ export default function LinksPage() {
       </ScrollReveal>
 
       {/* Link list */}
-      {error ? (
-        <div className="text-center py-12">
-          <p style={{ color: 'var(--text-secondary)' }}>{error}</p>
-          <button onClick={() => window.location.reload()} className="mt-2 text-sm btn-glass px-4 py-2 rounded-lg cursor-pointer" style={{ color: 'var(--primary)' }}>重试</button>
-        </div>
+      {loading ? <Loading /> : error ? (
+        <RequestFeedback error={error} onRetry={reload} />
       ) : links.length === 0 ? (
         <div className="text-center py-12">
           <LinkIcon className="w-10 h-10 mx-auto mb-2" style={{ color: 'var(--text-info)' }} />

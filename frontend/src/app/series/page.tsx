@@ -1,21 +1,20 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback } from 'react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
+import type { SeriesItem } from '@/lib/admin-types';
+import { useLatestRequest } from '@/lib/request-feedback';
+import { RequestFeedback } from '@/components/RequestFeedback';
 import { Bookmark, ChevronRight, ArrowLeft } from 'lucide-react';
 import { Loading } from '@/components/Loading';
 import { ImageWithFallback } from '@/components/ImageWithFallback';
 
 export default function SeriesPage() {
-  const [items, setItems] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    api.getSeries().then(res => {
-      setItems(res.items || []);
-    }).catch(() => {}).finally(() => setLoading(false));
-  }, []);
+  const { data, loading, error, reload } = useLatestRequest(
+    useCallback(() => api.getSeries(), []), '加载失败，请重试',
+  );
+  const items: SeriesItem[] = data?.items || [];
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-12">
@@ -35,7 +34,7 @@ export default function SeriesPage() {
         </div>
         <div>
           <h1 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>全部系列</h1>
-          {!loading && (
+          {!loading && !error && (
             <p className="text-xs mt-0.5" style={{ color: 'var(--text-info)' }}>共 {items.length} 个系列</p>
           )}
         </div>
@@ -43,6 +42,8 @@ export default function SeriesPage() {
 
       {loading ? (
         <Loading />
+      ) : error ? (
+        <RequestFeedback error={error} onRetry={reload} />
       ) : items.length === 0 ? (
         <div className="text-center py-20 card-base rounded-2xl" style={{ color: 'var(--text-secondary)' }}>
           <Bookmark className="w-12 h-12 mx-auto mb-3 opacity-30" />
@@ -50,7 +51,7 @@ export default function SeriesPage() {
         </div>
       ) : (
         <div className="flex flex-col gap-3">
-          {items.map((s: any) => (
+          {items.map((s: SeriesItem) => (
             <Link key={s.id} href={`/series/${s.slug}`}
               className="flex flex-col rounded-xl overflow-hidden transition-all hover:scale-[1.01]"
               style={{

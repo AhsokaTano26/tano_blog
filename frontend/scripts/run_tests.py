@@ -152,12 +152,14 @@ def stop_group(child):
         time.sleep(0.05)
 
 
-def run(args):
+def run(args, *, command=None):
     if sys.platform not in ('darwin', 'linux'):
         raise RuntimeError('the test watchdog supports macOS and Linux')
     # Keep this inode: unlinking an advisory lock can permit overlapping owners.
     with test_lock(args.lock_file or DEFAULT_LOCK) as lock:
-        command = node_command(args.node_args)
+        # Only trusted Python entry points supply a command. The public unit-test
+        # CLI still rejects unsafe Node flags and always serializes test files.
+        command = node_command(args.node_args) if command is None else command
         footprint = mac_footprint_reader() if sys.platform == 'darwin' else None
         # Check monitoring access before starting a potentially unsafe workload.
         group_memory(-1, footprint)

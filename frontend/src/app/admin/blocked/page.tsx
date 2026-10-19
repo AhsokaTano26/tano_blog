@@ -1,8 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { api } from '@/lib/api';
-import { Ban, Trash2, Plus, ShieldOff, Globe, Settings } from 'lucide-react';
+import type { IpBanItem } from '@/lib/admin-types';
+import { useLatestRequest, useFeedbackMutation } from '@/lib/request-feedback';
+import { RequestFeedback } from '@/components/RequestFeedback';
+import { Trash2, Plus, ShieldOff, Globe, Settings } from 'lucide-react';
 import { Loading } from '@/components/Loading';
 import { useConfirm, Select } from '@/components/ConfirmDialog';
 
@@ -32,11 +35,8 @@ export default function AdminBlocked() {
   const [tab, setTab] = useState<'ip' | 'auto'>('ip');
 
   // IP ban list
-  const [items, setItems] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
-  const [total, setTotal] = useState(0);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ ip_address: '', reason: '', scopes: [] as string[], expires_at: '' });
   const [formError, setFormError] = useState('');
@@ -45,52 +45,50 @@ export default function AdminBlocked() {
   const [autoConfig, setAutoConfig] = useState<Record<string, string>>({});
   const [autoScope, setAutoScope] = useState<string[]>([]);
 
-  async function load() {
-    setLoading(true);
-    try {
-      const res = await api.admin.ipBans.list({ page: String(page), page_size: String(pageSize) });
-      setItems(res.items || []);
-      setTotal(res.total);
-    } catch (e) { /* empty */ }
-    setLoading(false);
-  }
-
-  useEffect(() => { load(); }, [page, pageSize]);
+  const { data, loading, error: loadError, reload: load } = useLatestRequest(
+    useCallback(() => api.admin.ipBans.list({ page: String(page), page_size: String(pageSize) }), [page, pageSize]),
+    '加载失败，请重试',
+  );
+  const items: IpBanItem[] = data?.items || [];
+  const total = data?.total || 0;
+  const mutation = useFeedbackMutation();
 
   function openCreate() {
+    mutation.clearError();
     setForm({ ip_address: '', reason: '', scopes: [], expires_at: '' });
     setFormError('');
     setShowForm(true);
   }
 
   async function handleCreate() {
-    if (!form.ip_address) {
-      setFormError('请填写IP地址');
-      return;
-    }
-    if (form.scopes.length === 0) {
-      setFormError('请选择至少一个封禁范围');
-      return;
-    }
-    try {
+    await mutation.run(async () => {
+      setFormError('');
+      if (!form.ip_address) {
+        setFormError('请填写IP地址');
+        return;
+      }
+      if (form.scopes.length === 0) {
+        setFormError('请选择至少一个封禁范围');
+        return;
+      }
       await api.admin.ipBans.create({
         ip_address: form.ip_address,
         scope: form.scopes.join(','),
         reason: form.reason || undefined,
-        expires_at: form.expires_at || undefined,
+        expires_at: form.expires_at ? new Date(form.expires_at).toISOString() : undefined,
       });
       setShowForm(false);
-      setPage(1);
-      load();
-    } catch (e) { /* empty */ }
+      if (page === 1) await load();
+      else setPage(1);
+    });
   }
 
   async function handleDelete(id: string) {
-    if (!await confirm('确定解封？')) return;
-    try {
+    await mutation.run(async () => {
+      if (!await confirm('确定解封？')) return;
       await api.admin.ipBans.remove(id);
-      load();
-    } catch (e) { /* empty */ }
+      await load();
+    });
   }
 
   function toggleScope(scopeId: string) {
@@ -102,25 +100,24 @@ export default function AdminBlocked() {
     }));
   }
 
-  async function loadConfig() {
-    try {
-      const cfg = await api.admin.ipBans.getConfig();
-      setAutoConfig(cfg);
-      setAutoScope((cfg.ip_ban_auto_scope || 'login').split(',').filter(Boolean));
-    } catch (e) { /* empty */ }
-  }
+  const configRequest = useLatestRequest(
+    useCallback(() => api.admin.ipBans.getConfig(), []), '自动封禁配置加载失败，请重试',
+  );
+  const [configNotice, setConfigNotice] = useState('');
+  useEffect(() => {
+    if (!configRequest.data) return;
+    setAutoConfig(configRequest.data);
+    setAutoScope((configRequest.data.ip_ban_auto_scope || 'login').split(',').filter(Boolean));
+  }, [configRequest.data]);
 
   async function saveConfig() {
-    try {
-      await api.admin.ipBans.updateConfig({
-        ...autoConfig,
-        ip_ban_auto_scope: autoScope.join(','),
-      });
-      alert('配置已保存');
-    } catch (e) { /* empty */ }
+    if (!configRequest.data || configRequest.loading || configRequest.error) return;
+    setConfigNotice('');
+    await mutation.run(async () => {
+      await api.admin.ipBans.updateConfig({ ...autoConfig, ip_ban_auto_scope: autoScope.join(',') });
+      setConfigNotice('配置已保存');
+    }, '配置保存失败，请重试');
   }
-
-  useEffect(() => { loadConfig(); }, []);
 
   function toggleAutoScope(scopeId: string) {
     setAutoScope(s => s.includes(scopeId) ? s.filter(x => x !== scopeId) : [...s, scopeId]);
@@ -130,10 +127,12 @@ export default function AdminBlocked() {
 
   return (
     <div>
+      <RequestFeedback error={loadError} onRetry={load} pending={loading} />
+      {!showForm && <RequestFeedback error={mutation.error} />}
       <div className="flex items-center justify-between mb-5">
         <h1 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>封禁管理</h1>
         {tab === 'ip' && (
-          <button onClick={openCreate}
+          <button disabled={mutation.pending} onClick={openCreate}
             className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium text-white transition-colors cursor-pointer"
             style={{ background: 'var(--primary)' }}>
             <Plus className="w-4 h-4" />新增封禁
@@ -150,7 +149,7 @@ export default function AdminBlocked() {
           const Icon = t.icon;
           const active = tab === t.key;
           return (
-            <button key={t.key} onClick={() => setTab(t.key as any)}
+            <button key={t.key} onClick={() => setTab(t.key as 'ip' | 'auto')}
               className="flex items-center gap-2 px-5 py-3 text-sm font-medium transition-colors relative cursor-pointer"
               style={{ color: active ? 'var(--primary)' : 'var(--text-secondary)' }}>
               <Icon className="w-4 h-4" />
@@ -164,7 +163,7 @@ export default function AdminBlocked() {
       {/* IP Ban Tab */}
       {tab === 'ip' && (
         <>
-          {loading ? <Loading /> : items.length === 0 ? (
+          {loading ? <Loading /> : loadError && items.length === 0 ? null : items.length === 0 ? (
             <div className="text-center py-20" style={{ color: 'var(--text-secondary)' }}>
               <ShieldOff className="w-12 h-12 mx-auto mb-3 opacity-30" />
               <p>暂无封禁记录</p>
@@ -221,7 +220,7 @@ export default function AdminBlocked() {
                         </td>
                         <td className="px-4 py-3 text-right">
                           {!expired && (
-                            <button onClick={() => handleDelete(item.id)}
+                            <button disabled={mutation.pending} onClick={() => handleDelete(item.id)}
                               className="btn-glass p-1.5 rounded-lg transition-colors cursor-pointer" title="解封">
                               <Trash2 className="w-4 h-4" style={{ color: 'var(--color-error)' }} />
                             </button>
@@ -274,12 +273,14 @@ export default function AdminBlocked() {
       {/* Auto-ban Config Tab */}
       {tab === 'auto' && (
         <div className="glass-card rounded-xl p-5" style={{ border: '1px solid var(--glass-border)' }}>
+          <RequestFeedback error={configRequest.error} onRetry={configRequest.reload} pending={configRequest.loading} />
+          {configNotice && <p role="status" className="mb-3 text-sm">{configNotice}</p>}
           <h2 className="text-lg font-bold mb-4" style={{ color: 'var(--text-primary)' }}>自动封禁配置</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <div>
               <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>启用自动封禁</label>
               <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" checked={autoConfig.ip_ban_auto_enabled === 'true'}
+                <input type="checkbox" disabled={mutation.pending || configRequest.loading || !!configRequest.error} checked={autoConfig.ip_ban_auto_enabled === 'true'}
                   onChange={e => setAutoConfig(c => ({ ...c, ip_ban_auto_enabled: e.target.checked ? 'true' : 'false' }))}
                   className="rounded" />
                 <span className="text-sm" style={{ color: 'var(--text-primary)' }}>已启用</span>
@@ -287,21 +288,21 @@ export default function AdminBlocked() {
             </div>
             <div>
               <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>失败阈值（次）</label>
-              <input type="number" value={autoConfig.ip_ban_auto_threshold || '10'}
+              <input type="number" disabled={mutation.pending || configRequest.loading || !!configRequest.error} aria-label="失败阈值（次）" value={autoConfig.ip_ban_auto_threshold || '10'}
                 onChange={e => setAutoConfig(c => ({ ...c, ip_ban_auto_threshold: e.target.value }))}
                 className="w-full px-3 py-2 rounded-lg text-sm outline-none"
                 style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
             </div>
             <div>
               <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>计数窗口（秒）</label>
-              <input type="number" value={autoConfig.ip_ban_auto_window || '300'}
+              <input type="number" disabled={mutation.pending || configRequest.loading || !!configRequest.error} aria-label="计数窗口（秒）" value={autoConfig.ip_ban_auto_window || '300'}
                 onChange={e => setAutoConfig(c => ({ ...c, ip_ban_auto_window: e.target.value }))}
                 className="w-full px-3 py-2 rounded-lg text-sm outline-none"
                 style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
             </div>
             <div>
               <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>封禁时长（秒）</label>
-              <input type="number" value={autoConfig.ip_ban_auto_duration || '1800'}
+              <input type="number" disabled={mutation.pending || configRequest.loading || !!configRequest.error} aria-label="封禁时长（秒）" value={autoConfig.ip_ban_auto_duration || '1800'}
                 onChange={e => setAutoConfig(c => ({ ...c, ip_ban_auto_duration: e.target.value }))}
                 className="w-full px-3 py-2 rounded-lg text-sm outline-none"
                 style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
@@ -312,7 +313,7 @@ export default function AdminBlocked() {
                 {MODULES.map(m => (
                   <label key={m.id} className="flex items-center gap-1.5 text-sm cursor-pointer"
                     style={{ color: 'var(--text-primary)' }}>
-                    <input type="checkbox" checked={autoScope.includes(m.id)}
+                    <input type="checkbox" disabled={mutation.pending || configRequest.loading || !!configRequest.error} checked={autoScope.includes(m.id)}
                       onChange={() => toggleAutoScope(m.id)}
                       className="rounded" />
                     {m.label}
@@ -322,7 +323,7 @@ export default function AdminBlocked() {
             </div>
           </div>
           <div className="flex justify-end mt-4">
-            <button onClick={saveConfig}
+            <button disabled={mutation.pending || configRequest.loading || !!configRequest.error || !configRequest.data} onClick={saveConfig}
               className="px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors cursor-pointer"
               style={{ background: 'var(--primary)' }}>
               保存配置
@@ -334,18 +335,19 @@ export default function AdminBlocked() {
       {/* Create Ban Modal */}
       {showForm && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.5)' }}
-          onClick={(e) => { if (e.target === e.currentTarget) setShowForm(false); }}>
+          onClick={(e) => { if (e.target === e.currentTarget && !mutation.pending) setShowForm(false); }}>
           <div className="w-full max-w-lg rounded-xl shadow-2xl p-6" style={{ background: 'var(--card-bg)', border: '1px solid var(--glass-border)' }}>
             <h2 className="text-lg font-bold mb-4" style={{ color: 'var(--text-primary)' }}>新增封禁</h2>
+            <RequestFeedback error={mutation.error} />
             {formError && (
-              <div className="mb-4 px-4 py-2.5 rounded-lg text-sm" style={{ background: 'var(--card-bg)', color: 'hsl(0, 60%, 55%)', border: '1px solid hsla(0, 60%, 55%, 0.2)' }}>
+              <div role="alert" className="mb-4 px-4 py-2.5 rounded-lg text-sm" style={{ background: 'var(--card-bg)', color: 'hsl(0, 60%, 55%)', border: '1px solid hsla(0, 60%, 55%, 0.2)' }}>
                 {formError}
               </div>
             )}
-            <div className="space-y-4">
+            <fieldset disabled={mutation.pending} className="space-y-4">
               <div>
                 <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>IP 地址</label>
-                <input type="text" value={form.ip_address} onChange={e => setForm(f => ({ ...f, ip_address: e.target.value }))}
+                <input type="text" aria-label="IP 地址" value={form.ip_address} onChange={e => setForm(f => ({ ...f, ip_address: e.target.value }))}
                   placeholder="输入IP地址"
                   className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
                   style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
@@ -366,23 +368,23 @@ export default function AdminBlocked() {
               </div>
               <div>
                 <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>原因</label>
-                <input type="text" value={form.reason} onChange={e => setForm(f => ({ ...f, reason: e.target.value }))}
+                <input type="text" aria-label="封禁原因" value={form.reason} onChange={e => setForm(f => ({ ...f, reason: e.target.value }))}
                   placeholder="封禁原因（选填）"
                   className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
                   style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
               </div>
               <div>
                 <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>过期时间</label>
-                <input type="datetime-local" value={form.expires_at} onChange={e => setForm(f => ({ ...f, expires_at: e.target.value }))}
+                <input type="datetime-local" aria-label="过期时间" value={form.expires_at} onChange={e => setForm(f => ({ ...f, expires_at: e.target.value }))}
                   className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
                   style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
                 <p className="text-xs mt-1" style={{ color: 'var(--text-info)' }}>留空表示永不过期</p>
               </div>
-            </div>
+            </fieldset>
             <div className="flex justify-end gap-2 mt-5">
-              <button onClick={() => setShowForm(false)}
+              <button disabled={mutation.pending} onClick={() => setShowForm(false)}
                 className="btn-glass px-4 py-2 rounded-lg text-sm cursor-pointer" style={{ color: 'var(--text-secondary)' }}>取消</button>
-              <button onClick={handleCreate}
+              <button disabled={mutation.pending} onClick={handleCreate}
                 className="px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors cursor-pointer"
                 style={{ background: 'var(--color-error)' }}>
                 封禁

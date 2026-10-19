@@ -1,20 +1,23 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { X } from 'lucide-react';
-import { api } from '@/lib/api';
+import { api, type Post, type PostMutation } from '@/lib/api';
 import { toDateTimeLocal, scheduledTimestamp, type ExcerptMode } from '@/lib/post-settings';
 import { Checkbox, Select } from './ConfirmDialog';
 import { MediaField } from './MediaField';
 import { SeriesSelect } from './SeriesSelect';
 
+type SettingsPost = Omit<Partial<Post>, 'tags'> & { tags?: { id: string }[]; series_id?: string; excerpt_mode?: ExcerptMode; password?: string };
+type NamedOption = { id: string; name: string };
+
 export default function PostDetailDialog({ post, categories, tags, seriesList, passwordNeedsReentry = false, onSave, onClose }: {
-  post: any;
-  categories: any[];
-  tags: any[];
-  seriesList: any[];
+  post: SettingsPost;
+  categories: NamedOption[];
+  tags: NamedOption[];
+  seriesList: NamedOption[];
   passwordNeedsReentry?: boolean;
-  onSave: (data: any, excerptMode: ExcerptMode) => Promise<void>;
+  onSave: (data: PostMutation, excerptMode: ExcerptMode) => Promise<void>;
   onClose: () => void;
 }) {
   const [authorName, setAuthorName] = useState(post?.author_name || '');
@@ -22,7 +25,7 @@ export default function PostDetailDialog({ post, categories, tags, seriesList, p
   const [scheduledAt, setScheduledAt] = useState(toDateTimeLocal(post?.scheduled_at));
   const [categoryId, setCategoryId] = useState(post?.category_id ?? post?.category?.id ?? '');
   const [selectedSeriesId, setSelectedSeriesId] = useState(post?.series_id ?? post?.series?.[0]?.id ?? '');
-  const [tagIds, setTagIds] = useState<string[]>(post?.tags?.map((t: any) => t.id) || []);
+  const [tagIds, setTagIds] = useState<string[]>(post?.tags?.map(t => t.id) || []);
   const [coverImage, setCoverImage] = useState(post?.cover_image || '');
   const [excerpt, setExcerpt] = useState(post?.excerpt || '');
   const [excerptMode, setExcerptMode] = useState<'manual' | 'auto'>(post?.excerpt_mode || (post?.excerpt ? 'manual' : 'auto'));
@@ -32,6 +35,7 @@ export default function PostDetailDialog({ post, categories, tags, seriesList, p
   const [passwordHint, setPasswordHint] = useState(post?.password_hint || '');
   const [passwordSet, setPasswordSet] = useState(post?.password_set || false);
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
   const [error, setError] = useState('');
   const [aiGenerating, setAiGenerating] = useState(false);
 
@@ -54,15 +58,16 @@ export default function PostDetailDialog({ post, categories, tags, seriesList, p
   }
 
   async function handleSave() {
-    if (saving) return;
+    if (savingRef.current) return;
     if (passwordNeedsReentry && !password) {
       setError('请重新输入访问密码，本地草稿不会保存密码明文。');
       return;
     }
+    savingRef.current = true;
     setSaving(true);
     setError('');
     try {
-      const data: any = {
+      const data: PostMutation = {
         author_name: authorName,
         status,
         is_top: isTop,
@@ -84,10 +89,12 @@ export default function PostDetailDialog({ post, categories, tags, seriesList, p
       }
       await onSave(data, excerptMode);
       onClose();
-    } catch (err: any) {
-      setError(err.message || '保存失败');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '保存失败');
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
     }
-    setSaving(false);
   }
 
   const inputStyle = {
@@ -104,15 +111,15 @@ export default function PostDetailDialog({ post, categories, tags, seriesList, p
           <h2 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
             {post?.title ? `设置：${post.title.slice(0, 30)}` : '文章详情与设置'}
           </h2>
-          <button onClick={onClose} className="p-1.5 rounded-lg transition-colors btn-glass" style={{ color: 'var(--text-info)' }}>
+          <button onClick={onClose} disabled={saving} className="p-1.5 rounded-lg transition-colors btn-glass disabled:opacity-50" style={{ color: 'var(--text-info)' }} aria-label="关闭文章设置">
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-5">
+        <fieldset disabled={saving} className="flex-1 min-w-0 overflow-y-auto p-6 space-y-5">
           {error && (
-            <div className="px-4 py-2.5 rounded-xl text-sm" style={{ color: 'var(--color-error)', background: 'var(--glass-bg)' }}>
+            <div role="alert" className="px-4 py-2.5 rounded-xl text-sm" style={{ color: 'var(--color-error)', background: 'var(--glass-bg)' }}>
               {error}
             </div>
           )}
@@ -229,8 +236,8 @@ export default function PostDetailDialog({ post, categories, tags, seriesList, p
                     const res = await api.admin.posts.generateExcerpt(post.id);
                     setExcerpt(res.excerpt);
                     setExcerptMode('manual');
-                  } catch (err: any) {
-                    setError(err.message || 'AI 生成失败');
+                  } catch (err) {
+                    setError(err instanceof Error ? err.message : 'AI 生成失败');
                   }
                   setAiGenerating(false);
                 }}
@@ -296,11 +303,11 @@ export default function PostDetailDialog({ post, categories, tags, seriesList, p
               className="w-full px-3 py-2 rounded-xl text-sm outline-none glass-card"
               style={{ color: 'var(--text-primary)' }} />
           </div>
-        </div>
+        </fieldset>
 
         {/* Footer */}
         <div className="flex items-center justify-end gap-2 px-6 py-4 flex-shrink-0" style={{ borderTop: '1px solid var(--glass-border)' }}>
-          <button onClick={onClose} className="px-4 py-2 rounded-xl text-sm btn-glass" style={{ color: 'var(--text-secondary)' }}>取消</button>
+          <button onClick={onClose} disabled={saving} className="px-4 py-2 rounded-xl text-sm btn-glass disabled:opacity-50" style={{ color: 'var(--text-secondary)' }}>取消</button>
           <button onClick={handleSave} disabled={saving}
             className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium text-white disabled:opacity-50 transition-all"
             style={{ background: 'var(--primary)', boxShadow: '0 0 12px var(--primary-glow)' }}>
