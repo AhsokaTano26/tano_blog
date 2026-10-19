@@ -142,10 +142,10 @@ export default function AdminSeries() {
 
       {/* Create/Edit Modal */}
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+        <div className="admin-overlay fixed inset-0 z-50 flex items-center justify-center p-4"
           style={{ background: 'rgba(0,0,0,0.6)' }}
           onClick={(e) => { if (e.target === e.currentTarget && !mutation.pending) setShowForm(false); }}>
-          <div className="w-full max-w-md rounded-2xl p-6 shadow-2xl"
+          <div className="admin-dialog-panel w-full max-w-md rounded-2xl p-6 shadow-2xl"
             style={{
               background: 'var(--color-bg)',
               border: '1px solid var(--glass-border)',
@@ -283,10 +283,10 @@ function SetPostsModal({ series, onClose }: { series: SeriesItem; onClose: () =>
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+    <div className="admin-overlay fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{ background: 'rgba(0,0,0,0.6)' }}
       onClick={(e) => { if (e.target === e.currentTarget && !saving) onClose(); }}>
-      <div className="w-full max-w-lg max-h-[70vh] overflow-y-auto rounded-2xl p-6 shadow-2xl"
+      <div className="admin-dialog-panel w-full max-w-lg max-h-[70vh] overflow-y-auto rounded-2xl p-6 shadow-2xl"
         style={{ background: 'var(--color-bg)', border: '1px solid var(--glass-border)' }}>
         <h2 className="text-lg font-bold mb-4" style={{ color: 'var(--text-primary)' }}>
           设置「{series.name}」的文章

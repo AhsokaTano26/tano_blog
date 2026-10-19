@@ -113,7 +113,7 @@ export default function AdminGalleryPage() {
   };
 
   return (
-    <div className="page-transition">
+    <div>
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>图片馆</h1>
@@ -140,7 +140,7 @@ export default function AdminGalleryPage() {
               style={{ background: 'var(--card-bg)', border: '1px solid var(--glass-border)' }}>
               <div className="aspect-[4/3] overflow-hidden cursor-pointer" onClick={() => openEdit(img)}>
                 <ImageWithFallback src={img.thumbnail_url || img.url} fallbackSrc={img.url} alt={img.title || '图片'} loading="lazy" decoding="async"
-                  className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
+                  className="w-full h-full object-cover" />
               </div>
               <div className="p-3">
                 <div className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>
@@ -179,10 +179,10 @@ export default function AdminGalleryPage() {
 
       {/* 新增/编辑弹窗 */}
       {showDialog && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+        <div className="admin-overlay fixed inset-0 z-[100] flex items-center justify-center p-4"
           style={{ background: 'rgba(0,0,0,0.5)' }}
           onClick={(e) => { if (e.target === e.currentTarget) setShowDialog(false); }}>
-          <div className="rounded-2xl w-full max-w-lg p-6 animate-fade-scale-in"
+          <div className="admin-dialog-panel rounded-2xl w-full max-w-lg p-6"
             style={{ background: 'var(--color-bg)', border: '1px solid var(--glass-border)' }}>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>

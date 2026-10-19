@@ -673,7 +673,6 @@ export default function PostEditor({ post, onClose }: { post: Partial<Post> | nu
           from { opacity: 0; transform: translateY(-12px); }
           to   { opacity: 1; transform: translateY(0); }
         }
-        .pe-animate-in { animation: fade-scale-in 0.2s ease-out both; }
         .pe-slide-down { animation: slide-down 0.25s ease-out both; }
       `}</style>
       {/* Top bar */}

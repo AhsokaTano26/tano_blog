@@ -970,10 +970,10 @@ export default function AdminMedia() {
         const item = viewerItem;
         const type = getMediaType(item.mime_type);
         return (
-          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 sm:p-8"
+          <div className="admin-overlay fixed inset-0 z-[200] flex items-center justify-center p-4 sm:p-8"
             style={{ background: 'rgba(0,0,0,0.85)' }}
             onClick={() => setViewerItem(null)}>
-            <div className="relative max-w-5xl w-full max-h-full flex flex-col items-center"
+            <div className="admin-dialog-panel relative max-w-5xl w-full max-h-full flex flex-col items-center"
               onClick={e => e.stopPropagation()}>
               {/* Close button */}
               <button onClick={() => setViewerItem(null)} aria-label="关闭预览"
@@ -1125,10 +1125,10 @@ export default function AdminMedia() {
         const item = editingMetadataItem;
         const type = getMediaType(item.mime_type);
         return (
-          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4"
+          <div className="admin-overlay fixed inset-0 z-[200] flex items-center justify-center p-4"
             style={{ background: 'rgba(0,0,0,0.6)' }}
             onClick={() => { if (!mutation.pending) setEditingMetadataItem(null); }}>
-            <div role="dialog" aria-modal="true" aria-label="编辑元信息" className="w-full max-w-lg rounded-xl p-5 space-y-4 glass-card"
+            <div role="dialog" aria-modal="true" aria-label="编辑元信息" className="admin-dialog-panel w-full max-w-lg rounded-xl p-5 space-y-4 glass-card"
               onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between">
                 <h3 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>编辑元信息</h3>

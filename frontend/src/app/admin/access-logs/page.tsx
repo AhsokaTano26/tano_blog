@@ -3,7 +3,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { api } from '@/lib/api';
-import { ScrollText, Search, Download, Trash2, X, Activity, Globe, AlertTriangle, Clock, BarChart3, LineChart } from 'lucide-react';
+import { ScrollText, Search, Download, Trash2, X } from 'lucide-react';
+import VisitTrendChart from '@/components/VisitTrendChart';
+import { RequestSummary } from '@/components/RequestStatistics';
+import { recentRequestRange } from '@/lib/request-statistics';
 import { Loading } from '@/components/Loading';
 import { useConfirm, Select } from '@/components/ConfirmDialog';
 
@@ -36,10 +39,7 @@ type Stats = {
 type LogFilters = { path: string; method: string; status_code: string; ip: string; start: string; end: string };
 
 function defaultFilters(): LogFilters {
-  // Match the API's inclusive calendar-day ranges in the site's UTC+8 zone.
-  const end = new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10);
-  const start = new Date(Date.parse(end) - 29 * 86400000).toISOString().slice(0, 10);
-  return { path: '', method: '', status_code: '', ip: '', start, end };
+  return { path: '', method: '', status_code: '', ip: '', ...recentRequestRange(30) };
 }
 
 function filterParams(filters: LogFilters): Record<string, string> {
@@ -55,9 +55,9 @@ function FloatingModal({ onClose, children }: { onClose: () => void; children: R
   }, [onClose]);
 
   return createPortal(
-    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.5)' }}
+    <div className="admin-overlay fixed inset-0 z-[200] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.5)' }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div ref={ref} className="w-full max-w-2xl max-h-[80vh] overflow-y-auto rounded-2xl shadow-2xl"
+      <div ref={ref} className="admin-dialog-panel w-full max-w-2xl max-h-[80vh] overflow-y-auto rounded-2xl shadow-2xl"
         style={{ background: 'var(--card-bg)', border: '1px solid var(--glass-border)', backdropFilter: 'blur(20px)' }}>
         {children}
       </div>
@@ -77,9 +77,6 @@ export default function AdminAccessLogs() {
   const [filterError, setFilterError] = useState('');
   const [refresh, setRefresh] = useState(0);
   const [stats, setStats] = useState<Stats | null>(null);
-  const [chartType, setChartType] = useState<'bar' | 'line'>('bar');
-  const [chartWidth, setChartWidth] = useState(600);
-  const chartRef = useRef<HTMLDivElement>(null);
   const [detailLog, setDetailLog] = useState<AccessLog | null>(null);
 
   // Draft edits only take effect after applying the filters.
@@ -137,14 +134,6 @@ export default function AdminAccessLogs() {
     return () => { statsSequence.current++; };
   }, [loadStats, refresh]);
 
-  useEffect(() => {
-    const el = chartRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(([entry]) => setChartWidth(entry.contentRect.width));
-    ro.observe(el);
-    setChartWidth(el.offsetWidth);
-    return () => ro.disconnect();
-  }, [stats?.daily_counts, chartType]);
 
   function handleFilter() {
     const days = (Date.parse(endDate) - Date.parse(startDate)) / 86400000;
@@ -230,128 +219,17 @@ export default function AdminAccessLogs() {
         </div>
       </div>
 
-      {/* Stats */}
-      <p className="text-xs mb-3" style={{ color: 'var(--text-secondary)' }}>
-        统计日期：{appliedFilters.start} 至 {appliedFilters.end}（UTC+8，包含结束日）
+      {/* Summary and trend share the applied date range; other filters only affect the list. */}
+      <p className="text-xs mb-3 leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+        统计日期：{appliedFilters.start} 至 {appliedFilters.end}（UTC+8，包含结束日）。统计日期范围内全部请求；路径、方法、状态码与 IP 仅筛选下方日志列表。
       </p>
       {statsError && <div role="alert" className="mb-4 text-sm" style={{ color: 'var(--color-error)' }}>
         {statsError} <button onClick={() => void loadStats()} className="underline ml-2">重试统计</button>
       </div>}
-      {stats && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-          {[
-            { label: '总请求', value: stats.total_requests.toLocaleString(), icon: Activity, color: 'var(--primary)' },
-            { label: '独立IP', value: stats.unique_ips.toLocaleString(), icon: Globe, color: 'hsl(210, 60%, 55%)' },
-            { label: '错误请求', value: stats.total_errors.toLocaleString(), icon: AlertTriangle, color: 'hsl(0, 60%, 55%)' },
-            { label: '平均耗时', value: `${Math.round(stats.avg_response_ms)}ms`, icon: Clock, color: 'hsl(142, 60%, 50%)' },
-          ].map(stat => {
-            const Icon = stat.icon;
-            return (
-              <div key={stat.label} className="glass-card rounded-xl p-4">
-                <div className="flex items-center gap-2 mb-1">
-                  <Icon className="w-4 h-4" style={{ color: stat.color }} />
-                  <span className="text-xs" style={{ color: 'var(--text-info)' }}>{stat.label}</span>
-                </div>
-                <div className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>{stat.value}</div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Daily chart */}
-      {stats && stats.daily_counts.length > 0 && (
-        <div className="glass-card rounded-xl p-4 mb-5">
-          <div className="flex items-center justify-between mb-3">
-            <div className="text-xs" style={{ color: 'var(--text-info)' }}>所选日期请求趋势</div>
-            <div className="flex gap-1 p-0.5 rounded-lg" style={{ background: 'var(--btn-card-bg)' }}>
-              <button onClick={() => setChartType('bar')}
-                className="px-2 py-0.5 rounded text-xs transition-all"
-                style={{
-                  background: chartType === 'bar' ? 'var(--primary)' : 'transparent',
-                  color: chartType === 'bar' ? '#fff' : 'var(--text-secondary)',
-                }}>
-                <BarChart3 className="w-3 h-3 inline mr-0.5" />柱状图
-              </button>
-              <button onClick={() => setChartType('line')}
-                className="px-2 py-0.5 rounded text-xs transition-all"
-                style={{
-                  background: chartType === 'line' ? 'var(--primary)' : 'transparent',
-                  color: chartType === 'line' ? '#fff' : 'var(--text-secondary)',
-                }}>
-                <LineChart className="w-3 h-3 inline mr-0.5" />折线图
-              </button>
-            </div>
-          </div>
-          {chartType === 'bar' ? (
-            <div className="flex items-end gap-2" style={{ height: '80px' }}>
-              {stats.daily_counts.map(d => {
-                const max = Math.max(...stats.daily_counts.map(x => x.count), 1);
-                const h = Math.max(4, Math.round((d.count / max) * 64));
-                return (
-                  <div key={d.date} className="flex-1 flex flex-col items-center gap-1">
-                    <span className="text-[10px] font-mono" style={{ color: 'var(--text-secondary)' }}>{d.count}</span>
-                    <div className="w-full rounded-t" style={{ height: `${h}px`, background: 'var(--primary)' }} />
-                    <span className="text-[10px]" style={{ color: 'var(--text-info)' }}>{d.date.slice(5)}</span>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div ref={chartRef} style={{ height: '80px', position: 'relative' }}>
-              <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="none" viewBox={`0 0 ${chartWidth} 80`} style={{ pointerEvents: 'none' }}>
-                <defs>
-                  <linearGradient id="logLineGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="var(--primary)" stopOpacity="0.2" />
-                    <stop offset="100%" stopColor="var(--primary)" stopOpacity="0.02" />
-                  </linearGradient>
-                </defs>
-                {(() => {
-                  const data = stats.daily_counts;
-                  const maxV = Math.max(...data.map((d: any) => d.count), 1);
-                  const padBottom = 18;
-                  const padTop = 16;
-                  const plotH = 80 - padTop - padBottom;
-                  const pts = data.map((d: any, i: number) => {
-                    const x = (data.length === 1 ? 0.5 : i / (data.length - 1)) * chartWidth;
-                    const y = padTop + plotH - (d.count / maxV) * plotH;
-                    return `${x},${y}`;
-                  });
-                  return (
-                    <>
-                      <polygon fill="url(#logLineGrad)" points={`0,${80 - padBottom} ${pts.join(' ')} ${chartWidth},${80 - padBottom}`} />
-                      <polyline fill="none" stroke="var(--primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" points={pts.join(' ')} />
-                    </>
-                  );
-                })()}
-              </svg>
-              {stats.daily_counts.map((d: any, i: number) => {
-                const maxV = Math.max(...stats.daily_counts.map((x: any) => x.count), 1);
-                const padBottom = 18;
-                const padTop = 16;
-                const plotH = 80 - padTop - padBottom;
-                const left = (stats.daily_counts.length === 1 ? 0.5 : i / (stats.daily_counts.length - 1)) * 100;
-                const cy = padBottom + (d.count / maxV) * plotH;
-                return (
-                  <div key={i} className="absolute" style={{ left: `${left}%`, bottom: `${cy}px`, transform: 'translateX(-50%) translateY(-3px)' }}>
-                    <div className="flex flex-col items-center">
-                      <span className="text-[10px] leading-none mb-1" style={{ color: 'var(--text-secondary)' }}>{d.count}</span>
-                      <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--color-bg)', border: '2px solid', borderColor: 'var(--primary)' }} />
-                    </div>
-                  </div>
-                );
-              })}
-              <div className="absolute bottom-0 left-0 right-0" style={{ height: '16px' }}>
-                {stats.daily_counts.map((d: any, i: number) => (
-                  <div key={i} className="absolute" style={{ left: `${(stats.daily_counts.length === 1 ? 0.5 : i / (stats.daily_counts.length - 1)) * 100}%`, transform: 'translateX(-50%)' }}>
-                    <span className="text-[10px]" style={{ color: 'var(--text-info)' }}>{d.date.slice(5)}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
+      {stats && <div className="space-y-4 mb-5">
+        <RequestSummary stats={stats} />
+        <VisitTrendChart data={stats.daily_counts} range={appliedFilters} compact />
+      </div>}
 
       {/* Filters */}
       <div className="glass-card rounded-xl mb-4">

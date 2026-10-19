@@ -334,9 +334,9 @@ export default function AdminBlocked() {
 
       {/* Create Ban Modal */}
       {showForm && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.5)' }}
+        <div className="admin-overlay fixed inset-0 z-[200] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.5)' }}
           onClick={(e) => { if (e.target === e.currentTarget && !mutation.pending) setShowForm(false); }}>
-          <div className="w-full max-w-lg rounded-xl shadow-2xl p-6" style={{ background: 'var(--card-bg)', border: '1px solid var(--glass-border)' }}>
+          <div className="admin-dialog-panel w-full max-w-lg rounded-xl shadow-2xl p-6" style={{ background: 'var(--card-bg)', border: '1px solid var(--glass-border)' }}>
             <h2 className="text-lg font-bold mb-4" style={{ color: 'var(--text-primary)' }}>新增封禁</h2>
             <RequestFeedback error={mutation.error} />
             {formError && (

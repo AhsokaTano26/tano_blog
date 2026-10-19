@@ -67,9 +67,9 @@ function CommentDetail({ comment, onClose, onReload }: { comment: AdminCommentIt
   }
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.5)' }}
+    <div className="admin-overlay fixed inset-0 z-[200] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.5)' }}
       onClick={(e) => { if (e.target === e.currentTarget && !saving) onClose(); }}>
-      <div role="dialog" aria-modal="true" aria-label="评论详情" className="w-full max-w-lg max-h-[80vh] overflow-y-auto rounded-2xl shadow-2xl p-6"
+      <div role="dialog" aria-modal="true" aria-label="评论详情" className="admin-dialog-panel w-full max-w-lg max-h-[80vh] overflow-y-auto rounded-2xl shadow-2xl p-6"
         style={{ background: 'var(--card-bg)', border: '1px solid var(--glass-border)' }}>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-bold flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>

@@ -518,10 +518,10 @@ export default function AdminMusicPage() {
         }
 
         return (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+          <div className="admin-overlay fixed inset-0 z-[100] flex items-center justify-center p-4"
             style={{ background: 'rgba(0,0,0,0.5)' }}
             onClick={(e) => { if (e.target === e.currentTarget) setEditingTrack(null); }}>
-            <div className="w-full max-w-lg rounded-2xl shadow-2xl flex flex-col animate-fade-scale-in"
+            <div className="admin-dialog-panel w-full max-w-lg rounded-2xl shadow-2xl flex flex-col"
               style={{
                 background: 'var(--card-bg)',
                 border: '1px solid var(--glass-border)',

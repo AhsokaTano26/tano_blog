@@ -1,7 +1,8 @@
 'use client';
 
-import { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { useExitPresence } from '@/lib/use-exit-presence';
 
 interface ConfirmState {
   message: string;
@@ -13,79 +14,86 @@ const ConfirmContext = createContext<((message: string, anchorEl?: HTMLElement |
 
 export function ConfirmProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<ConfirmState | null>(null);
+  const [open, setOpen] = useState(false);
+  const present = useExitPresence(open);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLElement | null>(null);
+  const pending = useRef<ConfirmState | null>(null);
+
+  const finish = useCallback((accepted: boolean) => {
+    const current = pending.current;
+    if (!current) return;
+    pending.current = null;
+    current.resolve(accepted);
+    setOpen(false);
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    const dialog = dialogRef.current;
+    dialog?.querySelector<HTMLButtonElement>('button')?.focus({ preventScroll: true });
+    function keyboard(event: KeyboardEvent) {
+      if (event.defaultPrevented) return;
+      document.documentElement.dataset.adminInput = 'keyboard';
+      if (event.key === 'Escape') { event.preventDefault(); finish(false); }
+      if (event.key !== 'Tab' || !dialog) return;
+      const controls = Array.from(dialog.querySelectorAll<HTMLButtonElement>('button:not(:disabled)'));
+      const first = controls[0], last = controls.at(-1);
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    }
+    document.addEventListener('keydown', keyboard);
+    return () => {
+      document.removeEventListener('keydown', keyboard);
+      if (triggerRef.current?.isConnected) triggerRef.current.focus({ preventScroll: true });
+    };
+  }, [open, state, finish]);
+
+  useEffect(() => () => { pending.current?.resolve(false); }, []);
 
   const confirm = useCallback((message: string, anchorEl?: HTMLElement | null) => {
     return new Promise<boolean>(resolve => {
       // Textareas can fill the viewport; attaching a dialog below them hides
       // every action. Only infer a button anchor, otherwise use the modal.
       const target = anchorEl || (document.activeElement instanceof window.HTMLButtonElement ? document.activeElement : null);
+      if (!dialogRef.current?.contains(target)) triggerRef.current = target || null;
       const rect = target?.getBoundingClientRect();
       const fits = rect && rect.right >= 8 && rect.right + 320 <= window.innerWidth - 8 && rect.bottom + 200 <= window.innerHeight - 8;
-      setState({
+      pending.current?.resolve(false);
+      const next = {
         message,
         resolve,
         anchorRect: fits ? { top: rect.bottom + 4, left: rect.right } : undefined,
-      });
+      };
+      pending.current = next;
+      setState(next);
+      setOpen(true);
     });
   }, []);
-
-  const handleConfirm = () => {
-    state?.resolve(true);
-    setState(null);
-  };
-
-  const handleCancel = () => {
-    state?.resolve(false);
-    setState(null);
-  };
 
   return (
     <ConfirmContext.Provider value={confirm}>
       {children}
-      {state && createPortal(
-        <>
-          {/* Backdrop only for centered mode */}
-          {!state.anchorRect && (
-            <div className="fixed inset-0 z-[300] animate-fade-in"
-              style={{ background: 'rgba(0,0,0,0.5)' }}
-              onClick={(e) => { if (e.target === e.currentTarget) handleCancel(); }} />
-          )}
-          {state.anchorRect ? (
-            // Anchor-positioned popover
-            <div role="alertdialog" aria-label="确认操作" className="fixed z-[300] animate-fade-in"
-              style={{ top: state.anchorRect.top, left: state.anchorRect.left, width: 320, maxHeight: `calc(100dvh - ${state.anchorRect.top + 8}px)`, overflowY: 'auto' }}>
-              <div className="rounded-2xl p-5 shadow-2xl"
-                style={{ background: 'var(--card-bg)', border: '1px solid var(--glass-border)', backdropFilter: 'blur(24px)', minWidth: '220px' }}>
-                <p className="text-sm mb-5" style={{ color: 'var(--text-primary)' }}>{state.message}</p>
-                <div className="flex justify-end gap-2">
-                  <button onClick={handleCancel}
-                    className="px-4 py-2 rounded-xl text-sm btn-glass btn-press"
-                    style={{ color: 'var(--text-secondary)' }}>取消</button>
-                  <button onClick={handleConfirm}
-                    className="px-4 py-2 rounded-xl text-sm font-medium text-white btn-press"
-                    style={{ background: 'var(--primary)' }}>确定</button>
-                </div>
-              </div>
+      {present && state && createPortal(
+        <div className={`admin-overlay fixed z-[300] ${state.anchorRect ? '' : 'inset-0 flex items-center justify-center p-4'}`}
+          data-state={open ? 'open' : 'closed'} inert={!open} aria-hidden={!open || undefined}
+          onPointerDownCapture={() => { document.documentElement.dataset.adminInput = 'pointer'; }}
+          style={state.anchorRect
+            ? { top: state.anchorRect.top, left: state.anchorRect.left, width: 320, maxHeight: `calc(100dvh - ${state.anchorRect.top + 8}px)` }
+            : { background: 'rgba(0,0,0,0.5)' }}
+          onClick={event => { if (event.target === event.currentTarget) finish(false); }}>
+          <div ref={dialogRef} role={open ? 'alertdialog' : undefined} aria-modal={open && !state.anchorRect ? true : undefined} aria-label="确认操作"
+            className={`admin-dialog-panel w-full overflow-y-auto rounded-2xl shadow-2xl ${state.anchorRect ? 'admin-popover-panel p-5' : 'max-w-sm max-h-[85dvh] p-6'}`}
+            style={{ background: 'var(--card-bg)', border: '1px solid var(--glass-border)', backdropFilter: 'blur(24px)', maxHeight: state.anchorRect ? 'inherit' : undefined }}>
+            <p className="text-sm mb-5" style={{ color: 'var(--text-primary)' }}>{state.message}</p>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => finish(false)} className="px-4 py-2 rounded-xl text-sm btn-glass btn-press"
+                style={{ color: 'var(--text-secondary)' }}>取消</button>
+              <button onClick={() => finish(true)} className="px-4 py-2 rounded-xl text-sm font-medium text-white btn-press"
+                style={{ background: 'var(--primary)' }}>确定</button>
             </div>
-          ) : (
-            // Centered modal
-            <div className="fixed inset-0 z-[300] flex items-center justify-center p-4"
-              onClick={(e) => { if (e.target === e.currentTarget) handleCancel(); }}>
-              <div role="alertdialog" aria-modal="true" aria-label="确认操作" className="w-full max-w-sm max-h-[85dvh] overflow-y-auto rounded-2xl p-6 shadow-2xl animate-fade-scale-in"
-                style={{ background: 'var(--card-bg)', border: '1px solid var(--glass-border)', backdropFilter: 'blur(24px)' }}>
-                <p className="text-sm mb-6" style={{ color: 'var(--text-primary)' }}>{state.message}</p>
-                <div className="flex justify-end gap-2">
-                  <button onClick={handleCancel}
-                    className="px-4 py-2 rounded-xl text-sm btn-glass btn-press"
-                    style={{ color: 'var(--text-secondary)' }}>取消</button>
-                  <button onClick={handleConfirm}
-                    className="px-4 py-2 rounded-xl text-sm font-medium text-white btn-press"
-                    style={{ background: 'var(--primary)' }}>确定</button>
-                </div>
-              </div>
-            </div>
-          )}
-        </>, document.body
+          </div>
+        </div>, document.body
       )}
     </ConfirmContext.Provider>
   );

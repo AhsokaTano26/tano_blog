@@ -145,10 +145,10 @@ export default function CalendarPage() {
             {selectedDate && (() => {
                 const dayPosts = postsByDate[selectedDate] || [];
                 return (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in"
+                    <div className="admin-overlay fixed inset-0 z-50 flex items-center justify-center p-4"
                         style={{ background: 'rgba(0,0,0,0.5)' }}
                         onClick={() => setSelectedDate(null)}>
-                        <div className="w-full max-w-md rounded-2xl p-5 shadow-2xl animate-fade-scale-in"
+                        <div className="admin-dialog-panel w-full max-w-md rounded-2xl p-5 shadow-2xl"
                             style={{ background: 'var(--card-bg)', border: '1px solid var(--glass-border)', backdropFilter: 'blur(24px)' }}
                             onClick={e => e.stopPropagation()}>
                             <div className="flex items-center justify-between mb-4">

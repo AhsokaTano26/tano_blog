@@ -265,9 +265,9 @@ export function MediaPickerModal({ onSelect, onClose, onUpload, triggerRect, fil
     return createPortal(
       <>
         <div className="fixed inset-0 z-[300]" onClick={onClose} />
-        <div className="fixed z-[300] animate-fade-in"
+        <div className="admin-overlay fixed z-[300]"
           style={{ top, left }}>
-          <div className="rounded-2xl p-4 shadow-2xl flex flex-col"
+          <div className="admin-dialog-panel admin-popover-panel rounded-2xl p-4 shadow-2xl flex flex-col"
             style={{
               width: popWidth,
               maxHeight: '70vh',
@@ -286,12 +286,12 @@ export function MediaPickerModal({ onSelect, onClose, onUpload, triggerRect, fil
 
   return (
     <div
-      className="fixed inset-0 z-[300] flex items-center justify-center p-4 animate-fade-in"
+      className="admin-overlay fixed inset-0 z-[300] flex items-center justify-center p-4"
       style={{ background: 'rgba(0,0,0,0.5)' }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div
-        className="w-full max-w-2xl rounded-2xl p-4 shadow-2xl flex flex-col animate-fade-scale-in"
+        className="admin-dialog-panel w-full max-w-2xl rounded-2xl p-4 shadow-2xl flex flex-col"
         style={{
           background: 'var(--card-bg)',
           border: '1px solid var(--glass-border)',

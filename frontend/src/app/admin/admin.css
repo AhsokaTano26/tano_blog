@@ -5,6 +5,52 @@
   --admin-radius: 14px;
   color: var(--text-primary);
 }
+:where(.admin-shell, .post-editor, .admin-overlay, .admin-drawer-layer) {
+  --admin-motion-fast: 120ms;
+  --admin-motion-enter: 200ms;
+  --admin-motion-exit: 140ms;
+  --admin-ease-out: cubic-bezier(.23, 1, .32, 1);
+  --admin-ease-drawer: cubic-bezier(.32, .72, 0, 1);
+}
+/* Restrict utility transitions to feedback; never interpolate table or editor geometry. */
+.admin-shell .transition-all, .post-editor .transition-all, .admin-dialog-panel .transition-all,
+.admin-shell .btn-glass, .post-editor .btn-glass, .admin-dialog-panel .btn-glass {
+  transition-property: color, background-color, border-color, opacity, transform;
+  transition-duration: var(--admin-motion-fast);
+  transition-timing-function: var(--admin-ease-out);
+}
+.admin-sidebar :where(button, a), .editor-view-switch button, .admin-dialog-panel button {
+  transition: color var(--admin-motion-fast) ease, background-color var(--admin-motion-fast) ease,
+    opacity var(--admin-motion-fast) ease, transform var(--admin-motion-fast) var(--admin-ease-out);
+}
+.admin-overlay { opacity: 1; transition: opacity var(--admin-motion-enter) var(--admin-ease-out); }
+.admin-dialog-panel {
+  opacity: 1; transform: none;
+  transition: opacity var(--admin-motion-enter) var(--admin-ease-out), transform var(--admin-motion-enter) var(--admin-ease-out);
+}
+.admin-popover-panel { transform-origin: top left; }
+.admin-overlay[data-state="closed"] { opacity: 0; pointer-events: none; transition-duration: var(--admin-motion-exit); }
+.admin-overlay[data-state="closed"] > .admin-dialog-panel { opacity: 0; transform: translateY(4px) scale(.985); transition-duration: var(--admin-motion-exit); }
+.admin-drawer-backdrop { opacity: 1; transition: opacity var(--admin-motion-enter) var(--admin-ease-out); }
+.admin-drawer-panel { transform: none; transition: transform 220ms var(--admin-ease-drawer); }
+.admin-drawer-layer[data-state="closed"] { pointer-events: none; }
+.admin-drawer-layer[data-state="closed"] .admin-drawer-backdrop { opacity: 0; transition-duration: var(--admin-motion-exit); }
+.admin-drawer-layer[data-state="closed"] .admin-drawer-panel { transform: translateX(-100%); transition-duration: var(--admin-motion-exit); }
+@starting-style {
+  /* Keep controls readable even when an occluded window pauses a transition. */
+  .admin-overlay, .admin-drawer-backdrop { opacity: .85; }
+  .admin-dialog-panel { opacity: .96; transform: translateY(6px) scale(.985); }
+  .admin-drawer-panel { transform: translateX(-12px); }
+}
+@media (hover: hover) and (pointer: fine) {
+  html[data-admin-input="pointer"] :is(.admin-primary-action, .admin-secondary-action, .admin-sidebar button, .admin-dialog-panel button):not(:disabled):active {
+    transform: scale(.98); transition-duration: 80ms;
+  }
+}
+/* Keyboard actions take effect immediately, including portals outside the shell. */
+html[data-admin-input="keyboard"] :is(.admin-overlay, .admin-dialog-panel, .admin-drawer-backdrop, .admin-drawer-panel),
+html[data-admin-input="keyboard"] :is(.admin-shell, .post-editor, .admin-dialog-panel) :is(button, a, .pe-slide-down) { animation: none !important; transition: none !important; }
+html[data-admin-input="keyboard"] :is(.admin-dialog-panel, .admin-shell .btn-press:active, .post-editor .btn-press:active, .admin-dialog-panel .btn-press:active) { transform: none !important; }
 .light .admin-shell, .light .post-editor { --text-info: #66758a; --admin-panel: #fff; --admin-warning: #946114; }
 .admin-shell :where(button, a, input, select, textarea, summary):focus-visible,
 .post-editor :where(button, a, input, select, textarea, summary):focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
@@ -142,4 +188,6 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .admin-shell *, .post-editor * { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+  .admin-overlay, .admin-dialog-panel, .admin-drawer-backdrop, .admin-drawer-panel { animation: none !important; transition: none !important; }
+  .admin-dialog-panel { transform: none !important; }
 }
