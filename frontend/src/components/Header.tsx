@@ -2,232 +2,156 @@
 
 import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { useTheme } from '@/lib/theme';
-import { useMobile } from '@/lib/useMobile';
 import { api } from '@/lib/api';
 import { Menu, X, Sun, Moon, Palette, Search } from 'lucide-react';
 
+const defaultNavLinks = [
+  { href: '/', label: '首页' },
+  { href: '/gallery', label: '图片' },
+  { href: '/music', label: '音乐' },
+  { href: '/archive', label: '归档' },
+  { href: '/links', label: '友链' },
+  { href: '/about', label: '关于' },
+  { href: '/admin', label: '管理' },
+];
+
 export function Header() {
   const { theme, hue, setTheme, setHue } = useTheme();
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [hueOpen, setHueOpen] = useState(false);
-  const isMobile = useMobile();
-  const hueRef = useRef<HTMLDivElement>(null);
-
-  const defaultNavLinks = [
-    { href: '/', label: '首页' },
-    { href: '/gallery', label: '图片' },
-    { href: '/music', label: '音乐' },
-    { href: '/archive', label: '归档' },
-    { href: '/links', label: '友链' },
-    { href: '/about', label: '关于' },
-    { href: '/admin', label: '管理' },
-  ];
-
+  const pathname = usePathname();
+  const [panel, setPanel] = useState<'menu' | 'hue' | null>(null);
   const [navLinks, setNavLinks] = useState(defaultNavLinks);
+  const headerRef = useRef<HTMLElement>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const hueButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
+    let active = true;
     api.getNavLinks().then(res => {
-      const items = res.items || [];
-      // Merge with defaults: always keep default nav links, append custom ones
-      // Deduplicate by href so admin-added links that match defaults don't duplicate
-      const customLinks = items.map((item: any) => ({ href: item.url, label: item.title }));
-      const existingHrefs = new Set(defaultNavLinks.map(l => l.href));
-      const merged = [...defaultNavLinks, ...customLinks.filter(l => !existingHrefs.has(l.href))];
+      if (!active) return;
+      const seen = new Set(defaultNavLinks.map(link => link.href));
+      const merged = [...defaultNavLinks];
+      for (const item of res.items || []) {
+        if (!seen.has(item.url)) {
+          seen.add(item.url);
+          merged.push({ href: item.url, label: item.title });
+        }
+      }
       setNavLinks(merged);
     }).catch(() => {});
+    return () => { active = false; };
   }, []);
 
-  // Close hue panel on outside click
   useEffect(() => {
-    if (!hueOpen) return;
-    function handleClick(e: MouseEvent) {
-      if (hueRef.current && !hueRef.current.contains(e.target as Node)) {
-        setHueOpen(false);
-      }
+    if (!panel) return;
+    const desktop = window.matchMedia('(min-width: 1024px)');
+    const closeOnLayoutChange = () => setPanel(null);
+    function handleOutside(event: PointerEvent) {
+      if (!headerRef.current?.contains(event.target as Node)) setPanel(null);
     }
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, [hueOpen]);
+    function handleKey(event: KeyboardEvent) {
+      if (event.key !== 'Escape') return;
+      setPanel(null);
+      (panel === 'menu' ? menuButtonRef : hueButtonRef).current?.focus();
+    }
+    document.addEventListener('pointerdown', handleOutside);
+    document.addEventListener('keydown', handleKey);
+    desktop.addEventListener('change', closeOnLayoutChange);
+    return () => {
+      document.removeEventListener('pointerdown', handleOutside);
+      document.removeEventListener('keydown', handleKey);
+      desktop.removeEventListener('change', closeOnLayoutChange);
+    };
+  }, [panel]);
+
+  const isCurrent = (href: string) => href === '/'
+    ? pathname === '/'
+    : href.startsWith('/') && !href.startsWith('//') && (pathname === href || pathname.startsWith(`${href}/`));
+  const closePanel = () => setPanel(null);
+  const togglePanel = (next: 'menu' | 'hue') => setPanel(current => current === next ? null : next);
+  const themeIsDark = theme === 'dark' || (theme === 'system' && typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches);
 
   return (
-    <div className="fixed top-3 left-1/2 -translate-x-1/2 z-50 flex items-center gap-1 px-3 py-1.5 rounded-2xl max-w-[92vw]"
-      style={{
-        background: isMobile ? 'var(--glass-bg-mobile)' : 'var(--glass-bg)',
-        border: '1px solid var(--glass-border)',
-        backdropFilter: 'blur(var(--glass-blur))',
-        WebkitBackdropFilter: 'blur(var(--glass-blur))',
-        boxShadow: '0 4px 24px -4px rgba(0, 0, 0, 0.2), inset 0 1px 0 hsla(0, 0%, 100%, 0.05)',
-      }}>
-      {/* Logo */}
-      <Link href="/" className="flex items-center gap-2 mr-2 group">
-        <img src="/aimi.png" alt="Tano" className="w-7 h-7 rounded-lg object-cover transition-transform group-hover:scale-110" />
-        <span className="font-bold text-sm hidden sm:inline" style={{ color: 'var(--primary)' }}>
-          朝花夕拾录
-        </span>
-      </Link>
+    <header className="site-header" ref={headerRef}>
+      <div className="site-header-bar">
+        <Link href="/" className="site-header-brand" onClick={closePanel} aria-label="朝花夕拾录 · 首页">
+          <img src="/aimi.png" alt="" width={32} height={32} />
+          <span>朝花夕拾录</span>
+        </Link>
 
-      {/* Nav links */}
-      <nav className="hidden md:flex items-center gap-0.5">
-        {navLinks.map((link) => (
-          <Link key={link.href} href={link.href}
-            className="px-3 py-1.5 rounded-xl text-sm transition-all hover:bg-white/5 dark:hover:bg-white/5 hover:scale-[1.02]"
-            style={{ color: 'var(--text-secondary)' }}>
-            {link.label}
+        <nav className="site-header-nav" aria-label="主导航">
+          {navLinks.map(link => (
+            <Link key={link.href} href={link.href} className="site-header-link"
+              aria-current={isCurrent(link.href) ? 'page' : undefined} onClick={closePanel}>
+              {link.label}
+            </Link>
+          ))}
+        </nav>
+
+        <div className="site-header-tools">
+          <Clock />
+          <Link href="/search" className="site-header-icon" aria-label="搜索" title="搜索"
+            aria-current={pathname === '/search' ? 'page' : undefined} onClick={closePanel}>
+            <Search size={18} />
           </Link>
-        ))}
-      </nav>
-
-      {/* Divider */}
-      <div className="hidden md:block w-px h-5 mx-1" style={{ background: 'var(--glass-border)' }} />
-
-      {/* Hue picker button + slider */}
-      <div className="hidden md:block relative" ref={hueRef}>
-        <button
-          onClick={() => setHueOpen(!hueOpen)}
-          className="w-7 h-7 rounded-full transition-all hover:scale-110 flex items-center justify-center"
-          style={{
-            background: `hsl(${hue}, 60%, 55%)`,
-            boxShadow: `0 0 8px hsla(${hue}, 60%, 55%, 0.4)`,
-          }}
-          title="主题色"
-          aria-label="主题色"
-        >
-          <Palette className="w-3.5 h-3.5 text-white" />
-        </button>
-
-        {hueOpen && (
-          <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3 rounded-xl p-3 w-48 animate-slide-up"
-            style={{
-              background: 'var(--glass-bg)',
-              border: '1px solid var(--glass-border)',
-              backdropFilter: 'blur(var(--glass-blur))',
-              WebkitBackdropFilter: 'blur(var(--glass-blur))',
-              boxShadow: '0 8px 32px -4px rgba(0, 0, 0, 0.3)',
-            }}>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs" style={{ color: 'var(--text-info)' }}>主题色</span>
-              <span className="text-xs font-mono" style={{ color: 'var(--text-secondary)' }}>{hue}°</span>
-            </div>
-            <input
-              type="range"
-              min={0}
-              max={360}
-              value={hue}
-              onChange={(e) => setHue(parseInt(e.target.value))}
-              className="w-full h-2 rounded-full appearance-none cursor-pointer"
-              style={{
-                background: `linear-gradient(to right, hsl(0,60%,55%), hsl(60,60%,55%), hsl(120,60%,55%), hsl(180,60%,55%), hsl(240,60%,55%), hsl(300,60%,55%), hsl(360,60%,55%))`,
-                accentColor: `hsl(${hue}, 60%, 55%)`,
-              }}
-            />
+          <div className="site-header-hue">
+            <button ref={hueButtonRef} type="button" onClick={() => togglePanel('hue')}
+              className="site-header-icon" title="主题色" aria-label="主题色"
+              aria-expanded={panel === 'hue'} aria-controls="site-hue-panel">
+              <Palette size={18} style={{ color: 'var(--primary)' }} />
+            </button>
+            {panel === 'hue' && <div id="site-hue-panel" className="site-header-popover site-header-hue-panel">
+              <HueControl id="desktop-header-hue" hue={hue} onChange={setHue} />
+            </div>}
           </div>
-        )}
+          <button type="button" onClick={() => setTheme(themeIsDark ? 'light' : 'dark')}
+            className="site-header-icon" aria-label="切换主题" title={themeIsDark ? '切换到日间模式' : '切换到夜间模式'}>
+            {themeIsDark ? <Sun size={18} /> : <Moon size={18} />}
+          </button>
+          <button ref={menuButtonRef} type="button" onClick={() => togglePanel('menu')}
+            className="site-header-icon site-header-menu-toggle" aria-label={panel === 'menu' ? '关闭菜单' : '打开菜单'}
+            aria-expanded={panel === 'menu'} aria-controls="site-mobile-menu">
+            {panel === 'menu' ? <X size={20} /> : <Menu size={20} />}
+          </button>
+        </div>
       </div>
 
-      {/* Divider */}
-      <div className="hidden md:block w-px h-5 mx-1" style={{ background: 'var(--glass-border)' }} />
-      {/* Live clock */}
-      <Clock />
-
-      {/* Divider */}
-      <div className="hidden md:block w-px h-5 mx-1" style={{ background: 'var(--glass-border)' }} />
-
-      {/* Search */}
-      <Link href="/search"
-        className="hidden md:flex p-2 rounded-xl transition-all hover:bg-white/5 dark:hover:bg-white/5 btn-press"
-        style={{ color: 'var(--text-secondary)' }}
-        aria-label="搜索">
-        <Search className="w-4 h-4" />
-      </Link>
-
-      {/* Theme toggle */}
-      <button
-        onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-        className="p-2 rounded-xl transition-all hover:bg-white/5 dark:hover:bg-white/5 btn-press"
-        style={{ color: 'var(--text-secondary)' }}
-        aria-label="切换主题"
-      >
-        {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-      </button>
-
-      {/* Mobile menu */}
-      <button
-        onClick={() => setMenuOpen(!menuOpen)}
-        className="md:hidden p-2 rounded-xl transition-all hover:bg-white/5 dark:hover:bg-white/5 btn-press"
-        style={{ color: 'var(--text-secondary)' }}
-        aria-label="菜单"
-      >
-        {menuOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
-      </button>
-
-      {/* Mobile dropdown */}
-      {menuOpen && (
-        <div className="md:hidden absolute top-full left-0 right-0 mt-2 rounded-2xl p-4 animate-slide-down"
-          style={{
-            background: isMobile ? 'var(--glass-bg-mobile)' : 'var(--glass-bg)',
-            backdropFilter: 'blur(var(--glass-blur))',
-            WebkitBackdropFilter: 'blur(var(--glass-blur))',
-            boxShadow: '0 8px 32px -4px rgba(0, 0, 0, 0.3)',
-          }}>
-          <div className="space-y-1">
-            {navLinks.map((link) => (
-              <Link key={link.href} href={link.href} onClick={() => setMenuOpen(false)}
-                className="block px-3 py-2 rounded-xl text-sm transition-all hover:bg-white/5"
-                style={{ color: 'var(--text-secondary)' }}>
+      {panel === 'menu' && (
+        <div id="site-mobile-menu" className="site-header-popover site-header-mobile-menu">
+          <div className="site-header-menu-heading">探索小站</div>
+          <nav aria-label="移动导航" className="site-header-menu-grid">
+            {navLinks.map(link => (
+              <Link key={link.href} href={link.href} className="site-header-link"
+                aria-current={isCurrent(link.href) ? 'page' : undefined} onClick={closePanel}>
                 {link.label}
               </Link>
             ))}
-            {/* Search in mobile menu */}
-            <Link href="/search" onClick={() => setMenuOpen(false)}
-              className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm transition-all hover:bg-white/5"
-              style={{ color: 'var(--text-secondary)' }}>
-              <Search className="w-4 h-4" />
-              搜索
-            </Link>
-            <div className="border-t my-2 pt-3" style={{ borderColor: 'var(--glass-border)' }}>
-              <div className="px-3">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs" style={{ color: 'var(--text-info)' }}>主题色</span>
-                  <span className="text-xs font-mono" style={{ color: 'var(--text-secondary)' }}>{hue}°</span>
-                </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={360}
-                  value={hue}
-                  onChange={(e) => setHue(parseInt(e.target.value))}
-                  className="w-full h-2 rounded-full appearance-none cursor-pointer"
-                  style={{
-                    background: `linear-gradient(to right, hsl(0,60%,55%), hsl(60,60%,55%), hsl(120,60%,55%), hsl(180,60%,55%), hsl(240,60%,55%), hsl(300,60%,55%), hsl(360,60%,55%))`,
-                    accentColor: `hsl(${hue}, 60%, 55%)`,
-                  }}
-                />
-              </div>
-            </div>
+          </nav>
+          <div className="site-header-menu-appearance">
+            <HueControl id="mobile-header-hue" hue={hue} onChange={setHue} />
           </div>
         </div>
       )}
-    </div>
+    </header>
   );
 }
 
+function HueControl({ id, hue, onChange }: { id: string; hue: number; onChange: (hue: number) => void }) {
+  return <div className="site-header-hue-control">
+    <div className="site-header-hue-label"><label htmlFor={id}>主题色</label><span>{hue}°</span></div>
+    <input id={id} type="range" min={0} max={360} value={hue}
+      onChange={event => onChange(Number(event.target.value))} />
+  </div>;
+}
 
 function Clock() {
   const [time, setTime] = useState('');
   useEffect(() => {
-    const tick = () => {
-      const d = new Date(Date.now() + 8 * 3600000);
-      setTime(d.toISOString().slice(11, 19));
-    };
+    const tick = () => setTime(new Date(Date.now() + 8 * 3600000).toISOString().slice(11, 19));
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
   }, []);
-  if (!time) return null;
-  return (
-    <span className="hidden md:block text-xs font-mono tabular-nums" style={{ color: 'var(--text-primary)' }}>
-      {time}
-    </span>
-  );
+  return <time className="site-header-clock" aria-label={time ? `北京时间 ${time}` : '北京时间'}>{time || '00:00:00'}</time>;
 }
