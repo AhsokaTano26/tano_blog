@@ -29,6 +29,14 @@ async function withAdminControlPosts(request, engine, check) {
   if (failure) throw failure;
 }
 
+async function navigateAdmin(page, site, route) {
+  // Keep the document alive while Next's sidebar prefetches settle. Replacing it
+  // with goto() makes Linux WebKit report discarded RSC requests as CORS errors.
+  // The first link can still be covered by the authenticated entry animation.
+  await page.locator(`a[href="${route}"]:visible`).first().click({ timeout: 25000 });
+  await page.waitForURL(`${site}${route}`);
+}
+
 // Read-only UI checks: each form is cancelled and no destructive action is sent.
 async function verifyAdminControls(page, site, screenshot = async () => {}) {
   const capture = async name => {
@@ -36,7 +44,7 @@ async function verifyAdminControls(page, site, screenshot = async () => {}) {
       .map(animation => animation.finished.catch(() => {}))));
     await screenshot(name);
   };
-  await page.goto(`${site}/admin/posts`);
+  await navigateAdmin(page, site, '/admin/posts');
   await expect(page.getByRole('heading', { name: '文章', exact: true })).toBeVisible();
   const status = page.getByRole('combobox', { name: '状态筛选' });
   await status.click();
@@ -72,7 +80,7 @@ async function verifyAdminControls(page, site, screenshot = async () => {}) {
   await confirmation.getByRole('button', { name: '取消', exact: true }).click();
   await expect(confirmation).toHaveCount(0);
 
-  await page.goto(`${site}/admin/access-logs`);
+  await navigateAdmin(page, site, '/admin/access-logs');
   const date = page.getByRole('textbox', { name: '开始日期', exact: true });
   await expect(date).toBeVisible();
   await page.getByRole('button', { name: '选择开始日期', exact: true }).click();
@@ -81,7 +89,7 @@ async function verifyAdminControls(page, site, screenshot = async () => {}) {
   await capture('admin-dark-calendar');
   await page.keyboard.press('Escape');
 
-  await page.goto(`${site}/admin/backup`);
+  await navigateAdmin(page, site, '/admin/backup');
   await page.getByRole('button', { name: '跨机同步', exact: true }).click();
   const plan = page.getByRole('combobox', { name: '计划类型' });
   await expect(plan).toBeVisible();
@@ -98,7 +106,7 @@ async function verifyAdminControls(page, site, screenshot = async () => {}) {
   await expect(page.getByRole('button', { name: '选择备份文件', exact: true })).toBeVisible();
   await expect(page.locator('input[type="file"]')).toHaveClass(/admin-ui-file-input/);
 
-  await page.goto(`${site}/admin/posts`);
+  await navigateAdmin(page, site, '/admin/posts');
   await page.getByRole('button', { name: '日间模式', exact: true }).click();
   await expect(page.locator('html')).toHaveClass(/light/);
   await page.locator('button[data-tooltip="设置"]').first().click();
@@ -119,7 +127,7 @@ async function verifyAdminControls(page, site, screenshot = async () => {}) {
   await capture('admin-mobile-dialog');
   await page.keyboard.press('Escape');
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.goto(`${site}/admin`);
+  await navigateAdmin(page, site, '/admin');
 }
 
-module.exports = { verifyAdminControls, withAdminControlPosts };
+module.exports = { verifyAdminControls, withAdminControlPosts, navigateAdmin };

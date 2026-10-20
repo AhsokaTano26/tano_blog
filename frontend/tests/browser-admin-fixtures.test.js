@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { withAdminControlPosts } = require('../scripts/browser-admin-controls.cjs');
+const { withAdminControlPosts, navigateAdmin } = require('../scripts/browser-admin-controls.cjs');
 
 function fixtureAPI(initial = []) {
   const posts = new Map(initial.map(post => [post.id, post]));
@@ -21,6 +21,25 @@ function fixtureAPI(initial = []) {
   };
   return { posts, request };
 }
+
+test('admin checks use the existing application document instead of aborting prefetches with goto', async () => {
+  let currentURL = 'http://localhost/admin';
+  let link;
+  const page = {
+    goto() { assert.fail('full document navigation can abort WebKit RSC prefetches'); },
+    locator(selector) {
+      link = selector;
+      return { first: () => ({ click: async ({ timeout }) => {
+        assert.equal(timeout > 12200, true, 'fresh-login animation may still cover the link');
+        await Promise.resolve();
+        currentURL = 'http://localhost/admin/posts';
+      } }) };
+    },
+    async waitForURL(expected) { assert.equal(currentURL, expected); },
+  };
+  await navigateAdmin(page, 'http://localhost', '/admin/posts');
+  assert.equal(link, 'a[href="/admin/posts"]:visible');
+});
 
 test('admin control checks have two drafts even in an empty CI database', async () => {
   const { posts, request } = fixtureAPI();
