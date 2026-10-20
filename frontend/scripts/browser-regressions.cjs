@@ -5,7 +5,7 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const { chromium, webkit, expect } = require('@playwright/test');
 const { SITE, OUT, startServices, stopServices } = require('./browser-environment.cjs');
-const { verifyAdminControls } = require('./browser-admin-controls.cjs');
+const { verifyAdminControls, withAdminControlPosts } = require('./browser-admin-controls.cjs');
 
 const checks = [];
 const gates = [];
@@ -70,7 +70,11 @@ async function verifyEngine(engine, launcher, password) {
   pass(engine, 'real UI login');
   verifyProcessGroup(engine);
 
-  await verifyAdminControls(page, SITE, name => screenshot(engine, name));
+  await withAdminControlPosts(
+    (method, route, data) => request(admin, method, route, data),
+    engine,
+    () => verifyAdminControls(page, SITE, name => screenshot(engine, name)),
+  );
   pass(engine, 'custom admin controls, nested overlays, dates, files, themes and mobile dialog');
 
   await articlesLink.click();

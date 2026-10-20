@@ -1,5 +1,33 @@
 'use strict';
+const { randomUUID } = require('node:crypto');
 const { expect } = require('@playwright/test');
+
+// CI starts with an empty schema. Two owned drafts are needed for both row
+// actions and the mixed-state checkbox; remove them before editor regressions.
+async function withAdminControlPosts(request, engine, check) {
+  const ids = [];
+  let failure;
+  try {
+    for (let index = 1; index <= 2; index++) {
+      const { post } = await request('POST', '/api/v1/admin/posts', {
+        title: `Admin controls ${engine} ${index}`,
+        slug: `admin-controls-${engine}-${randomUUID()}`,
+        content: 'Isolated article for admin control regression checks.',
+        status: 'draft',
+      });
+      if (typeof post?.id !== 'string' || !post.id) throw new Error('Admin control fixture was not created');
+      ids.push(post.id);
+    }
+    await check();
+  } catch (error) {
+    failure = error;
+  }
+  for (const id of ids) {
+    try { await request('DELETE', `/api/v1/admin/posts/${encodeURIComponent(id)}`); }
+    catch (error) { failure ||= error; }
+  }
+  if (failure) throw failure;
+}
 
 // Read-only UI checks: each form is cancelled and no destructive action is sent.
 async function verifyAdminControls(page, site, screenshot = async () => {}) {
@@ -17,12 +45,12 @@ async function verifyAdminControls(page, site, screenshot = async () => {}) {
   await page.keyboard.press('Escape');
   await expect(page.getByRole('listbox')).toHaveCount(0);
 
-  const rowCheckbox = page.getByRole('checkbox', { name: /^选择文章 / }).first();
-  if (await rowCheckbox.count()) {
-    await rowCheckbox.check();
-    await expect(page.getByRole('checkbox', { name: '选择全部文章', exact: true })).toHaveAttribute('aria-checked', 'mixed');
-    await rowCheckbox.uncheck();
-  }
+  const rows = page.getByRole('checkbox', { name: /^选择文章 / });
+  await expect.poll(() => rows.count(), { message: 'Admin control checks require at least two fixture articles' }).toBeGreaterThanOrEqual(2);
+  const rowCheckbox = rows.first();
+  await rowCheckbox.check();
+  await expect(page.getByRole('checkbox', { name: '选择全部文章', exact: true })).toHaveAttribute('aria-checked', 'mixed');
+  await rowCheckbox.uncheck();
 
   await page.locator('button[data-tooltip="设置"]').first().click();
   const settings = page.getByRole('dialog', { name: '文章详情与设置', exact: true });
@@ -94,4 +122,4 @@ async function verifyAdminControls(page, site, screenshot = async () => {}) {
   await page.goto(`${site}/admin`);
 }
 
-module.exports = { verifyAdminControls };
+module.exports = { verifyAdminControls, withAdminControlPosts };
