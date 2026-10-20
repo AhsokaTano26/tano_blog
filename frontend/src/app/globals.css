@@ -35,7 +35,11 @@
   --border-color: hsla(0, 0%, 100%, 0.08);
 
   /* Page background */
-  --color-bg: #0c0e14;
+  --color-bg-dark: #0c0e14;
+  --color-bg-light: #f1f5f9;
+  --color-bg: var(--color-bg-dark);
+  --theme-transition-duration: 240ms;
+  --theme-transition-easing: cubic-bezier(0.2, 0, 0, 1);
 
   /* Status */
   --color-error: hsl(0, 60%, 60%);
@@ -62,7 +66,7 @@
   --text-info: #94a3b8;
 
   --border-color: rgba(0, 0, 0, 0.08);
-  --color-bg: #f1f5f9;
+  --color-bg: var(--color-bg-light);
 
   --color-error: hsl(0, 60%, 50%);
   --color-success: hsl(142, 60%, 45%);
@@ -82,6 +86,41 @@ body {
 html {
   scroll-behavior: smooth;
 }
+
+/* Keep each theme's fade at the foot of the artwork. */
+.banner-fade {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: clamp(128px, 16vh, 176px);
+  pointer-events: none;
+}
+.banner-fade::before, .banner-fade::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+}
+.banner-fade::before {
+  height: 128px;
+  background: linear-gradient(to top, var(--color-bg-dark), transparent);
+  opacity: 1;
+}
+.banner-fade::after {
+  height: 100%;
+  background: linear-gradient(to bottom,
+    color-mix(in srgb, var(--color-bg-light) 0%, transparent) 0%,
+    color-mix(in srgb, var(--color-bg-light) 8%, transparent) 20%,
+    color-mix(in srgb, var(--color-bg-light) 28%, transparent) 40%,
+    color-mix(in srgb, var(--color-bg-light) 58%, transparent) 60%,
+    color-mix(in srgb, var(--color-bg-light) 86%, transparent) 80%,
+    var(--color-bg-light) 100%);
+  opacity: 0;
+}
+.light .banner-fade::before { opacity: 0; }
+.light .banner-fade::after { opacity: 1; }
 
 /* ===== Frontend Navigation ===== */
 .site-header {
@@ -516,18 +555,42 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
 }
 
 /* ===== Theme Transition ===== */
+/* Apply the final palette at once; only the composed page snapshot fades. */
 html.theme-transitioning,
 html.theme-transitioning *,
+html.theme-transitioning::before,
+html.theme-transitioning::after,
 html.theme-transitioning *::before,
 html.theme-transitioning *::after {
-  transition: background-color 0.3s ease,
-              color 0.3s ease,
-              border-color 0.3s ease,
-              box-shadow 0.3s ease !important;
+  transition: none !important;
+}
+html.theme-transitioning::view-transition {
+  pointer-events: none;
+}
+html.theme-transitioning::view-transition-group(root),
+html.theme-transitioning::view-transition-old(root) {
+  animation: none;
+}
+html.theme-transitioning::view-transition-old(root) {
+  opacity: 1;
+  mix-blend-mode: normal;
+}
+html.theme-transitioning::view-transition-new(root) {
+  animation: theme-fade-in var(--theme-transition-duration) var(--theme-transition-easing) both;
+  mix-blend-mode: normal;
+}
+@keyframes theme-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 /* ===== Reduced Motion ===== */
 @media (prefers-reduced-motion: reduce) {
+  html.theme-transitioning::view-transition-group(root),
+  html.theme-transitioning::view-transition-old(root),
+  html.theme-transitioning::view-transition-new(root) {
+    animation: none !important;
+  }
   *,
   *::before,
   *::after {
