@@ -55,6 +55,8 @@ async function verifyEngine(engine, launcher, password) {
   page = await admin.newPage();
   page.setDefaultTimeout(7000);
   await page.goto(`${SITE}/admin/login`);
+  // SSR inputs can appear before their controlled React handlers are hydrated.
+  await page.waitForLoadState('networkidle');
   await page.locator('input[autocomplete="username"]').fill('admin');
   await page.locator('input[autocomplete="current-password"]').fill(password);
   await page.getByRole('button', { name: '登录', exact: true }).click();
@@ -198,15 +200,24 @@ async function verifyEngine(engine, launcher, password) {
   await isolateRequests(anonymous);
   page = await anonymous.newPage();
   page.on('pageerror', error => pageErrors.push(error.message.slice(0, 300)));
+  const publicPlayerReady = page.waitForResponse(response => new URL(response.url()).pathname === '/api/v1/config/music' && response.ok());
   await page.goto(`${SITE}/posts/${slug}`);
   await expect(page.getByRole('heading', { name: `Browser ${engine}`, exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '提交评论', exact: true })).toBeDisabled();
   await noOverflow(page);
   await screenshot(engine, 'mobile-article');
+  // The player starts after idle, so networkidle alone can precede its fetch.
+  // Finish hydration requests before discarding the document: WebKit reports
+  // fetches from a discarded document as access-control page errors.
+  await publicPlayerReady;
+  await page.waitForLoadState('networkidle');
+  const protectedPlayerReady = page.waitForResponse(response => new URL(response.url()).pathname === '/api/v1/config/music' && response.ok());
   await page.goto(`${SITE}/posts/protected-${engine}`);
   await expect(page.getByText('UNLOCKED-BROWSER-BODY', { exact: true })).toHaveCount(0);
   assert((await anonymous.request.get(`${SITE}/api/v1/admin/posts`)).status() === 401, 'Anonymous admin access was allowed');
   await expect(page.locator('input[type="password"]')).toBeVisible();
+  await protectedPlayerReady;
+  await page.waitForLoadState('networkidle');
   await page.locator('input[type="password"]').fill('browser-secret');
   await page.locator('input[type="password"]').press('Enter');
   await expect(page.getByText('UNLOCKED-BROWSER-BODY', { exact: true })).toBeVisible();
