@@ -2,6 +2,8 @@
 
 `npm run test:browser` 启动独立 Go API 和 Next.js 生产构建，串行运行 Chromium 与 WebKit。覆盖真实登录、草稿刷新恢复、双窗口版本冲突、粘贴上传与缩略图、图片尺寸、对齐、图片延迟加载后的双向滚动，以及移动端阅读、评论关闭和密码访问限制。
 
+测试依赖固定为 `@playwright/test@1.63.0`。1.64.x 携带的 Linux WebKit r2370 在模糊背景下存在严重渲染回归，会让点击稳定性检查超时；见 [Playwright #43426](https://github.com/microsoft/playwright/issues/43426)。升级时需确认新的稳定版已修复该问题，并重跑 Linux 双浏览器回归。
+
 ## 本地运行
 
 使用专用 PostgreSQL 测试数据库。`TEST_DATABASE_DSN` 只接受回环地址；不要填写生产连接。测试创建随机 `e2e_*` schema，媒体和备份写入临时目录。

@@ -109,8 +109,7 @@ async function verifyEngine(engine, launcher, password) {
   const saved = await request(admin, 'GET', `/api/v1/admin/posts/${post.id}`);
   assert(saved.post.content === 'Second window preserved content', 'Reviewed retry did not save the local content');
   await second.close();
-  // WebKit on Linux can leave the surviving tab occluded after closing the
-  // active one. Activate it so animation/actionability frames keep advancing.
+  // Return to the primary tab after exercising the second editing window.
   await page.bringToFront();
   pass(engine, 'two real windows reject stale saves and retain reviewed edits');
 
