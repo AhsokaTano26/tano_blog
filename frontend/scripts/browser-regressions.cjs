@@ -6,6 +6,7 @@ const { execFileSync } = require('node:child_process');
 const { chromium, webkit, expect } = require('@playwright/test');
 const { SITE, OUT, startServices, stopServices } = require('./browser-environment.cjs');
 const { verifyAdminControls, withAdminControlPosts } = require('./browser-admin-controls.cjs');
+const { collectRuntimeErrors } = require('./browser-runtime-diagnostics.cjs');
 
 const checks = [];
 const gates = [];
@@ -52,7 +53,7 @@ async function verifyEngine(engine, launcher, password) {
   const admin = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
   await isolateRequests(admin);
   const pageErrors = [];
-  admin.on('page', p => p.on('pageerror', error => { if (pageErrors.length < 10) pageErrors.push(error.message.slice(0, 300)); }));
+  await collectRuntimeErrors(admin, engine, pageErrors);
   page = await admin.newPage();
   await page.bringToFront();
   page.setDefaultTimeout(7000);
@@ -212,9 +213,9 @@ async function verifyEngine(engine, launcher, password) {
   assert(protectedPost.post.id, 'Protected fixture not created');
   const anonymous = await browser.newContext({ viewport: { width: 390, height: 844 } });
   await isolateRequests(anonymous);
+  await collectRuntimeErrors(anonymous, engine, pageErrors);
   page = await anonymous.newPage();
   await page.bringToFront();
-  page.on('pageerror', error => pageErrors.push(error.message.slice(0, 300)));
   const publicPlayerReady = page.waitForResponse(response => new URL(response.url()).pathname === '/api/v1/config/music' && response.ok());
   await page.goto(`${SITE}/posts/${slug}`);
   await expect(page.getByRole('heading', { name: `Browser ${engine}`, exact: true })).toBeVisible();
