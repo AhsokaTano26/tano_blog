@@ -53,6 +53,7 @@ async function verifyEngine(engine, launcher, password) {
   const pageErrors = [];
   admin.on('page', p => p.on('pageerror', error => { if (pageErrors.length < 10) pageErrors.push(error.message.slice(0, 300)); }));
   page = await admin.newPage();
+  await page.bringToFront();
   page.setDefaultTimeout(7000);
   await page.goto(`${SITE}/admin/login`);
   // SSR inputs can appear before their controlled React handlers are hydrated.
@@ -91,11 +92,14 @@ async function verifyEngine(engine, launcher, password) {
 
   await page.locator('button[title="编辑"]').first().click();
   const second = await admin.newPage();
+  await second.bringToFront();
   await second.goto(`${SITE}/admin/posts`);
   await second.locator('button[title="编辑"]').first().click();
+  await page.bringToFront();
   await editor.fill('First window accepted content');
   await page.getByRole('button', { name: '保存', exact: true }).click();
   await expect(editor).toBeHidden();
+  await second.bringToFront();
   await editorFor(second).fill('Second window preserved content');
   await second.getByRole('button', { name: '保存', exact: true }).click();
   await expect(second.getByText('First window accepted content', { exact: true })).toBeVisible();
@@ -105,6 +109,9 @@ async function verifyEngine(engine, launcher, password) {
   const saved = await request(admin, 'GET', `/api/v1/admin/posts/${post.id}`);
   assert(saved.post.content === 'Second window preserved content', 'Reviewed retry did not save the local content');
   await second.close();
+  // WebKit on Linux can leave the surviving tab occluded after closing the
+  // active one. Activate it so animation/actionability frames keep advancing.
+  await page.bringToFront();
   pass(engine, 'two real windows reject stale saves and retain reviewed edits');
 
   await page.locator('a[href="/admin"]:visible').first().click();
@@ -199,6 +206,7 @@ async function verifyEngine(engine, launcher, password) {
   const anonymous = await browser.newContext({ viewport: { width: 390, height: 844 } });
   await isolateRequests(anonymous);
   page = await anonymous.newPage();
+  await page.bringToFront();
   page.on('pageerror', error => pageErrors.push(error.message.slice(0, 300)));
   const publicPlayerReady = page.waitForResponse(response => new URL(response.url()).pathname === '/api/v1/config/music' && response.ok());
   await page.goto(`${SITE}/posts/${slug}`);
