@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"database/sql/driver"
 	"encoding/json"
 	"errors"
 	"github.com/gin-gonic/gin"
@@ -366,6 +367,50 @@ func TestCancelBackupInterruptsBlockedQuery(t *testing.T) {
 	h.operationMu.Unlock()
 	if status.Running || status.Phase != "cancelled" {
 		t.Fatalf("status: %+v", status)
+	}
+}
+
+// A cancelled pgx query can surface ErrBadConn instead of context.Canceled.
+// Inject that driver outcome deterministically, including the non-cancel case.
+func TestBackupDriverErrorRespectsCancellation(t *testing.T) {
+	for _, cancelled := range []bool{true, false} {
+		name, wantCode, wantPhase := "connection failure", http.StatusInternalServerError, "failed"
+		if cancelled {
+			name, wantCode, wantPhase = "cancelled connection", http.StatusConflict, "cancelled"
+		}
+		t.Run(name, func(t *testing.T) {
+			h := backupTestHandler(t)
+			if err := h.db.Callback().Row().Before("gorm:row").Register("test_backup_driver_failure", func(tx *gorm.DB) {
+				if tx.Statement.Table != "access_logs" {
+					return
+				}
+				if cancelled {
+					recorder := httptest.NewRecorder()
+					c, _ := gin.CreateTestContext(recorder)
+					h.CancelBackup(c)
+					if recorder.Code != http.StatusAccepted {
+						t.Errorf("cancel request: %d", recorder.Code)
+					}
+				}
+				tx.AddError(driver.ErrBadConn)
+			}); err != nil {
+				t.Fatal(err)
+			}
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/admin/backups", nil)
+			h.CreateBackup(c)
+			if recorder.Code != wantCode {
+				t.Errorf("backup response: %d %s; want %d", recorder.Code, recorder.Body.String(), wantCode)
+			}
+			if h.operation.Running || h.operation.Phase != wantPhase {
+				t.Errorf("backup status: %+v; want %s", h.operation, wantPhase)
+			}
+			files, err := os.ReadDir(h.backupDir)
+			if err != nil || len(files) != 0 {
+				t.Errorf("partial backup remains: %v, %v", files, err)
+			}
+		})
 	}
 }
 

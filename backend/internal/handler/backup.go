@@ -296,7 +296,15 @@ func (h *BackupHandler) generateBackup(path string, includeUploads, includeSyncM
 	return h.generateBackupContext(context.Background(), path, includeUploads, includeSyncManifest, nil)
 }
 
-func (h *BackupHandler) generateBackupContext(ctx context.Context, path string, includeUploads, includeSyncManifest bool, releaseWrites func()) error {
+func (h *BackupHandler) generateBackupContext(ctx context.Context, path string, includeUploads, includeSyncManifest bool, releaseWrites func()) (resultErr error) {
+	defer func() {
+		// Cancelling a PostgreSQL query can close its connection, causing pgx
+		// to return ErrBadConn instead of the context error. Preserve both so
+		// callers classify cancellation consistently without hiding DB faults.
+		if resultErr != nil && ctx.Err() != nil {
+			resultErr = errors.Join(ctx.Err(), resultErr)
+		}
+	}()
 	if err := ctx.Err(); err != nil {
 		return err
 	}
