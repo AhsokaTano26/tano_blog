@@ -329,6 +329,7 @@ func main() {
 
 		// Authenticated endpoints (CSRF protected)
 		authRequired := api.Group("")
+		authRequired.Use(handler.PrivateEntryAnimationCache)
 		authRequired.Use(middleware.AuthRequired(&cfg.JWT, db))
 		authRequired.Use(middleware.CSRF())
 		authRequired.Use(middleware.PasswordChangeRequired())
@@ -416,6 +417,7 @@ func main() {
 				admin.PUT("/series/:id/posts", seriesHandler.AdminSetPosts)
 
 				admin.GET("/config", siteConfigHandler.Get)
+				handler.NewEntryAnimationHandler(db).Register(admin)
 				admin.PUT("/config", siteConfigHandler.Update)
 				admin.POST("/config/test-email", siteConfigHandler.TestEmail)
 				admin.GET("/check-version", siteConfigHandler.CheckVersion)

@@ -1,5 +1,8 @@
 'use client';
 
+import { Tooltip } from '@/components/ui/Tooltip';
+import { Dialog } from '@/components/ui/Dialog';
+import { Input } from '@/components/ui/Input';
 import { useState, useCallback } from 'react';
 import { api } from '@/lib/api';
 import type { FriendLinkItem } from '@/lib/admin-types';
@@ -190,24 +193,24 @@ export default function AdminLinks() {
                     <div className="flex items-center justify-end gap-1">
                       {item.status === 'pending' && (
                         <>
-                          <button disabled={mutation.pending} onClick={() => handleUpdateStatus(item.id, 'approved')}
-                            className="btn-glass p-1.5 rounded transition-colors cursor-pointer" title="通过">
+                          <Tooltip content="通过"><button disabled={mutation.pending} onClick={() => handleUpdateStatus(item.id, 'approved')}
+                            className="btn-glass p-1.5 rounded transition-colors cursor-pointer" data-tooltip="通过" aria-label="通过">
                             <Check className="w-4 h-4" style={{ color: '#22c55e' }} />
-                          </button>
-                          <button disabled={mutation.pending} onClick={() => handleUpdateStatus(item.id, 'rejected')}
-                            className="btn-glass p-1.5 rounded transition-colors cursor-pointer" title="拒绝">
+                          </button></Tooltip>
+                          <Tooltip content="拒绝"><button disabled={mutation.pending} onClick={() => handleUpdateStatus(item.id, 'rejected')}
+                            className="btn-glass p-1.5 rounded transition-colors cursor-pointer" data-tooltip="拒绝" aria-label="拒绝">
                             <X className="w-4 h-4" style={{ color: '#ef4444' }} />
-                          </button>
+                          </button></Tooltip>
                         </>
                       )}
-                      <button disabled={mutation.pending} onClick={() => openEdit(item)}
-                        className="btn-glass p-1.5 rounded transition-colors cursor-pointer" title="编辑">
+                      <Tooltip content="编辑"><button disabled={mutation.pending} onClick={() => openEdit(item)}
+                        className="btn-glass p-1.5 rounded transition-colors cursor-pointer" data-tooltip="编辑" aria-label="编辑">
                         <Pencil className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
-                      </button>
-                      <button disabled={mutation.pending} onClick={() => handleDelete(item.id)}
-                        className="btn-glass p-1.5 rounded transition-colors cursor-pointer" title="删除">
+                      </button></Tooltip>
+                      <Tooltip content="删除"><button disabled={mutation.pending} onClick={() => handleDelete(item.id)}
+                        className="btn-glass p-1.5 rounded transition-colors cursor-pointer" data-tooltip="删除" aria-label="删除">
                         <Trash2 className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
-                      </button>
+                      </button></Tooltip>
                     </div>
                   </td>
                 </tr>
@@ -222,7 +225,7 @@ export default function AdminLinks() {
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2">
               <span className="text-xs" style={{ color: 'var(--text-info)' }}>每页</span>
-              <Select value={String(pageSize)} onChange={v => { setPageSize(Number(v)); setPage(1); }}
+              <Select aria-label="每页条数" value={String(pageSize)} onChange={v => { setPageSize(Number(v)); setPage(1); }}
                 options={[10, 20, 30, 50, 100].map(v => ({ value: String(v), label: String(v) }))} />
             </div>
             <div className="flex gap-1">
@@ -252,76 +255,72 @@ export default function AdminLinks() {
 
       {/* Edit/Create Modal */}
       {showModal && (
-        <div className="admin-overlay fixed inset-0 z-[200] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.5)' }}
-          onClick={(e) => { if (e.target === e.currentTarget && !mutation.pending) setShowModal(false); }}>
-          <div className="admin-dialog-panel w-full max-w-lg rounded-2xl shadow-2xl p-6" style={{ background: 'var(--card-bg)', border: '1px solid var(--glass-border)' }}>
-            <h2 className="text-lg font-bold mb-4" style={{ color: 'var(--text-primary)' }}>
-              {editing ? '编辑友链' : '添加友链'}
-            </h2>
-            <RequestFeedback error={mutation.error} />
-            <fieldset disabled={mutation.pending} className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>名称 *</label>
-                  <input aria-label="名称" type="text" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                    className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
-                    style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>URL *</label>
-                  <input aria-label="网址" type="text" value={form.url} onChange={e => setForm(f => ({ ...f, url: e.target.value }))}
-                    className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
-                    style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>头像</label>
-                  <input aria-label="头像" type="text" value={form.avatar} onChange={e => setForm(f => ({ ...f, avatar: e.target.value }))}
-                    className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
-                    style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>邮箱</label>
-                  <input aria-label="邮箱" type="text" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
-                    className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
-                    style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
-                </div>
-              </div>
+        <Dialog title={editing ? '编辑友链' : '添加友链'} onClose={() => { if (!mutation.pending) setShowModal(false); }} layer={200}
+          className="admin-dialog-panel w-full max-w-lg rounded-2xl shadow-2xl p-6"
+          style={{ border: '1px solid var(--glass-border)' }}>
+          <h2 className="text-lg font-bold mb-4" style={{ color: 'var(--text-primary)' }}>
+            {editing ? '编辑友链' : '添加友链'}
+          </h2>
+          <RequestFeedback error={mutation.error} />
+          <fieldset disabled={mutation.pending} className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>描述</label>
-                <input aria-label="描述" type="text" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>名称 *</label>
+                <Input aria-label="名称" type="text" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
                   className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
                   style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>排序</label>
-                  <input aria-label="排序" type="number" value={form.sort_order} onChange={e => setForm(f => ({ ...f, sort_order: parseInt(e.target.value) || 0 }))}
-                    className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
-                    style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>状态</label>
-                  <select aria-label="状态" value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
-                    className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
-                    style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }}>
-                    <option value="pending">待审核</option>
-                    <option value="approved">已通过</option>
-                    <option value="rejected">已拒绝</option>
-                  </select>
-                </div>
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>URL *</label>
+                <Input aria-label="网址" type="text" value={form.url} onChange={e => setForm(f => ({ ...f, url: e.target.value }))}
+                  className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
+                  style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
               </div>
-            </fieldset>
-            <div className="flex justify-end gap-2 mt-5">
-              <button disabled={mutation.pending} onClick={() => setShowModal(false)}
-                className="btn-glass px-4 py-2 rounded-lg text-sm cursor-pointer" style={{ color: 'var(--text-secondary)' }}>取消</button>
-              <button disabled={mutation.pending} onClick={handleSave}
-                className="px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors cursor-pointer"
-                style={{ background: 'var(--primary)' }}>
-                {editing ? '保存' : '添加'}
-              </button>
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>头像</label>
+                <Input aria-label="头像" type="text" value={form.avatar} onChange={e => setForm(f => ({ ...f, avatar: e.target.value }))}
+                  className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
+                  style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
+              </div>
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>邮箱</label>
+                <Input aria-label="邮箱" type="text" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+                  className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
+                  style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
+              </div>
             </div>
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>描述</label>
+              <Input aria-label="描述" type="text" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+                className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
+                style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>排序</label>
+                <Input aria-label="排序" type="number" value={form.sort_order} onChange={e => setForm(f => ({ ...f, sort_order: parseInt(e.target.value) || 0 }))}
+                  className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
+                  style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
+              </div>
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>状态</label>
+                <Select aria-label="状态" value={form.status} onChange={value => setForm(f => ({ ...f, status: value }))}
+                  options={[{ value: 'pending', label: '待审核' }, { value: 'approved', label: '已通过' }, { value: 'rejected', label: '已拒绝' }]}
+                  className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
+                  style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
+              </div>
+            </div>
+          </fieldset>
+          <div className="flex justify-end gap-2 mt-5">
+            <button disabled={mutation.pending} onClick={() => setShowModal(false)}
+              className="btn-glass px-4 py-2 rounded-lg text-sm cursor-pointer" style={{ color: 'var(--text-secondary)' }}>取消</button>
+            <button disabled={mutation.pending} onClick={handleSave}
+              className="px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors cursor-pointer"
+              style={{ background: 'var(--primary)' }}>
+              {editing ? '保存' : '添加'}
+            </button>
           </div>
-        </div>
+        </Dialog>
       )}
     </div>
   );

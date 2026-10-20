@@ -50,7 +50,7 @@ test('upload queue shows per-file progress and cancelling pending/active files p
   assert.equal(tasks.length, 2, 'only two files may upload concurrently');
   assert.ok(row('first.png'));
   await React.act(async () => tasks[0].onProgress({ loaded: 50, total: 100, percent: 50 }));
-  assert.equal(row('first.png').querySelector('progress').value, 50);
+  assert.equal(Number(row('first.png').querySelector('[role="progressbar"]').getAttribute('aria-valuenow')), 50);
   await click('取消上传 pending.png');
   await click('取消上传 first.png');
   assert.equal(tasks[0].signal.aborted, true);

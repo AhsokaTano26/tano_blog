@@ -1,5 +1,6 @@
 'use client';
 
+import { Tooltip } from '@/components/ui/Tooltip';
 import { useState, useEffect, useRef } from 'react';
 import './admin.css';
 import { api } from '@/lib/api';
@@ -8,13 +9,14 @@ import { useTheme } from '@/lib/theme';
 import {
   FileText, FolderTree, Tags, MessageSquare, Image, Settings, ScrollText,
   LogOut, Home, Sun, Moon, Monitor, UserCircle, Database, LayoutDashboard,
-  Bookmark, Link, Menu, Calendar, BarChart3, Bell, HelpCircle, Music, X, Ban
+  Bookmark, Link, Menu, Calendar, BarChart3, Bell, HelpCircle, Music, X, Ban, ScanLine
 } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import NavLink from 'next/link';
 import { Loading } from '@/components/Loading';
 import { ConfirmProvider } from '@/components/ConfirmDialog';
 import { WelcomeAnimation } from '@/components/WelcomeAnimation';
+import { EntryAnimationPreviewContext, type EntryAnimationDocument } from '@/lib/entry-animation';
 import { useExitPresence } from '@/lib/use-exit-presence';
 
 const navSections = [
@@ -55,6 +57,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const mobileSidebarPresent = useExitPresence(mobileSidebarOpen);
   const [showWelcome, setShowWelcome] = useState(false);
+  const [previewDocument, setPreviewDocument] = useState<EntryAnimationDocument | undefined>();
   const [pendingCounts, setPendingCounts] = useState<Record<string, number>>({});
   const [notifCount, setNotifCount] = useState(0);
   const drawerRef = useRef<HTMLElement>(null);
@@ -89,11 +92,17 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const { theme, setTheme } = useTheme();
 
   useEffect(() => {
-    if (isPublicAuthRoute(pathname)) { setUser(null); setLoading(false); return; }
+    if (isPublicAuthRoute(pathname)) { setUser(null); setShowWelcome(false); setPreviewDocument(undefined); setLoading(false); return; }
     let active = true;
     setLoading(true);
     api.getMe().then(u => {
       if (!active) return;
+      // Batch the overlay with the authenticated shell to avoid a frame of the
+      // workbench flashing before the entry sequence starts.
+      if (sessionStorage.getItem('jl')) {
+        sessionStorage.removeItem('jl');
+        setShowWelcome(true);
+      }
       setUser(u);
       // Force redirect to profile page if password must be changed
       if ((u as any).must_change_password && !pathname.includes('/admin/profile') && !isPublicAuthRoute(pathname)) {
@@ -102,18 +111,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     }).catch(() => {
       if (active && !isPublicAuthRoute(pathname)) {
         setUser(null);
+        setShowWelcome(false);
+        setPreviewDocument(undefined);
         window.location.href = '/admin/login';
       }
     }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [pathname]);
-
-  useEffect(() => {
-    if (user && sessionStorage.getItem('jl')) {
-      sessionStorage.removeItem('jl');
-      setShowWelcome(true);
-    }
-  }, [user]);
 
   useEffect(() => {
     if (!user) return;
@@ -167,13 +171,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     );
   }
 
-  // Show welcome animation fullscreen on fresh login, no admin layout underneath
-  if (showWelcome) {
-    return <WelcomeAnimation user={user} onEnd={() => setShowWelcome(false)} />;
-  }
-
   return (
-      <div className="admin-shell min-h-screen flex" style={{ background: 'var(--color-bg)' }}
+    <>
+      {showWelcome && <WelcomeAnimation document={previewDocument} onEnd={() => { setShowWelcome(false); setPreviewDocument(undefined); }} />}
+      <div className="admin-shell min-h-screen flex" inert={showWelcome || undefined} style={{ background: 'var(--color-bg)' }}
         onPointerDownCapture={() => { document.documentElement.dataset.adminInput = 'pointer'; }}
         onKeyDownCapture={() => { document.documentElement.dataset.adminInput = 'keyboard'; }}>
       {/* Mobile header bar */}
@@ -256,6 +257,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               ))}
             </nav>
             <div className="p-3 flex-shrink-0" style={{ borderTop: '1px solid var(--glass-border)' }}>
+              <button onClick={() => { setMobileSidebarOpen(false); setShowWelcome(true); }}
+                className="flex items-center gap-2 py-2 mb-2 text-xs" style={{ color: 'var(--text-secondary)' }}>
+                <ScanLine className="w-4 h-4" />重播进入动画
+              </button>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <img src={user?.avatar_url || '/aimi.png'} alt="" className="w-7 h-7 rounded-full object-cover" />
@@ -288,24 +293,24 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               <span className="text-base font-bold truncate" style={{ color: 'var(--text-primary)' }}>管理后台</span>
             )}
           </NavLink>
-          <button onClick={() => setCollapsed(!collapsed)}
+          <Tooltip content={collapsed ? '展开侧边栏' : '收起侧边栏'}><button onClick={() => setCollapsed(!collapsed)}
             className="p-1.5 rounded-lg hover:bg-white/10 transition-colors"
             style={{ color: 'var(--text-info)' }}
-            title={collapsed ? '展开侧边栏' : '收起侧边栏'} aria-label={collapsed ? '展开侧边栏' : '收起侧边栏'} aria-expanded={!collapsed}>
+            data-tooltip={collapsed ? '展开侧边栏' : '收起侧边栏'} aria-label={collapsed ? '展开侧边栏' : '收起侧边栏'} aria-expanded={!collapsed}>
             <Menu className="w-4 h-4" />
-          </button>
+          </button></Tooltip>
         </div>
 
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto py-3 px-2">
-          <NavLink href="/" title="前台首页" aria-label="前台首页"
+          <Tooltip content="前台首页"><NavLink href="/" data-tooltip="前台首页" aria-label="前台首页"
             className="flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-all hover:bg-white/5 cursor-pointer"
             style={{ color: 'var(--text-secondary)' }}>
             <Home className="w-4 h-4 flex-shrink-0" />
             {!collapsed && <span>前台首页</span>}
-          </NavLink>
+          </NavLink></Tooltip>
 
-          <NavLink href="/admin" title="概览" aria-label="概览" aria-current={pathname === '/admin' ? 'page' : undefined}
+          <Tooltip content="概览"><NavLink href="/admin" data-tooltip="概览" aria-label="概览" aria-current={pathname === '/admin' ? 'page' : undefined}
             className="flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-all hover:bg-white/5 mt-1 cursor-pointer"
             style={{
               background: pathname === '/admin' ? 'var(--primary-sub)' : 'transparent',
@@ -313,7 +318,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             }}>
             <LayoutDashboard className="w-4 h-4 flex-shrink-0" />
             {!collapsed && <span>概览</span>}
-          </NavLink>
+          </NavLink></Tooltip>
 
           {navSections.map((section) => (
             <div key={section.title} className="mt-4">
@@ -330,7 +335,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 const badgeCount = item.href === '/admin/comments' ? pendingCounts.comments
                   : item.href === '/admin/links' ? pendingCounts.links : 0;
                 return (
-                  <NavLink key={item.href} href={item.href} title={collapsed ? item.label : undefined} aria-label={item.label} aria-current={isActive ? 'page' : undefined}
+                  <Tooltip content={collapsed ? item.label : undefined} key={item.href}><NavLink href={item.href} data-tooltip={collapsed ? item.label : undefined} aria-label={item.label} aria-current={isActive ? 'page' : undefined}
                     className={`flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-all mb-0.5 relative cursor-pointer ${collapsed && badgeCount > 0 ? 'relative' : ''}`}
                     style={{
                       background: isActive ? 'var(--primary-sub)' : 'transparent',
@@ -354,7 +359,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                       <span className="absolute top-1 right-1 w-2 h-2 rounded-full"
                         style={{ background: 'var(--color-error)' }} />
                     )}
-                  </NavLink>
+                  </NavLink></Tooltip>
                 );
               })}
             </div>
@@ -364,7 +369,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         {/* User profile */}
         <div className="p-3 flex-shrink-0" style={{ borderTop: '1px solid var(--glass-border)' }}>
           {/* Notification bell */}
-          <NavLink href="/admin/notifications" aria-label={`通知，${notifCount} 条未读`} title="通知"
+          <Tooltip content="通知"><NavLink href="/admin/notifications" aria-label={`通知，${notifCount} 条未读`} data-tooltip="通知"
             className={`flex items-center ${collapsed ? 'flex-col justify-center' : 'px-1'} mb-2 relative group`}>
             <div className="relative p-2 hover:bg-white/10 rounded-lg transition-colors btn-press">
               <Bell className="w-5 h-5" style={{ color: 'var(--text-info)' }} />
@@ -375,7 +380,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               )}
             </div>
             {!collapsed && <span className="text-sm" style={{ color: 'var(--text-info)' }}>通知</span>}
-          </NavLink>
+          </NavLink></Tooltip>
 
           {/* Theme switcher */}
           <div className={`flex items-center gap-1 mb-2 ${collapsed ? 'flex-col justify-center' : 'px-1'}`}>
@@ -384,17 +389,22 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               { value: 'system' as const, icon: Monitor, label: '跟随系统' },
               { value: 'dark' as const, icon: Moon, label: '夜间模式' },
             ]).map((opt) => (
-              <button key={opt.value}
+              <Tooltip content={opt.label} key={opt.value}><button
                 onClick={() => setTheme(opt.value)}
                 className="p-1.5 rounded-lg transition-all btn-press"
-                title={opt.label} aria-label={opt.label} aria-pressed={theme === opt.value}
+                data-tooltip={opt.label} aria-label={opt.label} aria-pressed={theme === opt.value}
                 style={{
                   background: theme === opt.value ? 'var(--primary-sub)' : 'transparent',
                   color: theme === opt.value ? 'var(--primary)' : 'var(--text-info)',
                 }}>
                 <opt.icon className="w-4 h-4" />
-              </button>
+              </button></Tooltip>
             ))}
+            <Tooltip content="重播进入动画"><button onClick={() => setShowWelcome(true)}
+              className="p-1.5 rounded-lg transition-colors btn-press" aria-label="重播进入动画"
+              style={{ color: 'var(--text-secondary)' }}>
+              <ScanLine className="w-4 h-4" />
+            </button></Tooltip>
           </div>
 
           <div className="flex items-center gap-3">
@@ -411,11 +421,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               </div>
             )}
             {!collapsed && (
-              <button onClick={async () => { await api.logout(); window.location.href = '/admin/login'; }}
+              <Tooltip content="退出登录"><button onClick={async () => { await api.logout(); window.location.href = '/admin/login'; }}
                 className="p-1 transition-all hover:opacity-80 btn-press" style={{ color: 'var(--text-info)' }}
-                title="退出登录">
+                data-tooltip="退出登录" aria-label="退出登录">
                 <LogOut className="w-4 h-4" />
-              </button>
+              </button></Tooltip>
             )}
           </div>
 
@@ -426,10 +436,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       <main aria-busy={loading} className={`flex-1 min-w-0 pt-12 lg:pt-0 ${collapsed ? 'ml-0 lg:ml-[72px]' : 'ml-0 lg:ml-[220px]'}`}>
         <div className="mx-auto w-full max-w-[1600px] p-4 sm:p-6 lg:p-8">
           <ConfirmProvider>
-            {children}
+            <EntryAnimationPreviewContext.Provider value={document => { setPreviewDocument(document); setShowWelcome(true); }}>
+              {children}
+            </EntryAnimationPreviewContext.Provider>
           </ConfirmProvider>
         </div>
       </main>
     </div>
+    </>
   );
 }

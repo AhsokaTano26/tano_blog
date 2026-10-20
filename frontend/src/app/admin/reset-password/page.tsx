@@ -1,5 +1,6 @@
 'use client';
 
+import { Input } from '@/components/ui/Input';
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
@@ -66,11 +67,11 @@ function ResetContent() {
             </div>
           )}
           <form onSubmit={handleSubmit} className="space-y-4">
-            <input type="password" value={password} onChange={e => setPassword(e.target.value)}
+            <Input type="password" value={password} onChange={e => setPassword(e.target.value)}
               placeholder="新密码（至少6位）" required minLength={6}
               className="w-full px-4 py-3 rounded-xl text-sm outline-none glass-card"
               style={{ color: 'var(--text-primary)' }} />
-            <input type="password" value={confirm} onChange={e => setConfirm(e.target.value)}
+            <Input type="password" value={confirm} onChange={e => setConfirm(e.target.value)}
               placeholder="确认新密码" required
               className="w-full px-4 py-3 rounded-xl text-sm outline-none glass-card"
               style={{ color: 'var(--text-primary)' }} />

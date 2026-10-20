@@ -1,9 +1,14 @@
 'use client';
 
+import { Tooltip } from '@/components/ui/Tooltip';
+import { Input } from '@/components/ui/Input';
+import { Dialog } from '@/components/ui/Dialog';
+import { FilePicker } from '@/components/ui/FilePicker';
+
 import { useState, useRef, useEffect } from 'react';
-import { createPortal } from 'react-dom';
 import { api } from '@/lib/api';
 import { ImageWithFallback } from '@/components/ImageWithFallback';
+import type { MediaItem } from '@/lib/admin-types';
 
 interface MediaFieldProps {
   value: string;
@@ -51,7 +56,7 @@ export function MediaField({ value, onChange, accept, placeholder, previewSize =
           }}
         />
       )}
-      <input
+      <Input
         type="text"
         value={value}
         onChange={e => onChange(e.target.value)}
@@ -59,27 +64,21 @@ export function MediaField({ value, onChange, accept, placeholder, previewSize =
         className="flex-1 min-w-0 px-3 py-2 rounded-xl text-sm outline-none glass-card"
         style={{ color: 'var(--text-primary)' }}
       />
-      <button
+      <button type="button"
         onClick={() => setShowPicker(true)}
         className="px-3 py-2 rounded-xl text-sm btn-glass whitespace-nowrap flex-shrink-0"
         style={{ color: 'var(--text-secondary)' }}
       >
         媒体库
       </button>
-      <button
-        onClick={() => fileInputRef.current?.click()}
-        disabled={uploading}
-        className="px-3 py-2 rounded-xl text-sm font-medium text-white whitespace-nowrap flex-shrink-0 transition-all hover:opacity-90 disabled:opacity-50"
-        style={{ background: 'var(--primary)' }}
-      >
-        {uploading ? '上传中...' : '上传'}
-      </button>
-      <input
+      <FilePicker
         ref={fileInputRef}
-        type="file"
         accept={accept || 'image/*'}
         onChange={handleUpload}
-        style={{ display: 'none' }}
+        disabled={uploading}
+        label={uploading ? '上传中...' : '上传'}
+        compact
+        className="flex-shrink-0"
       />
       {showPicker && (
         <MediaPickerModal
@@ -92,13 +91,6 @@ export function MediaField({ value, onChange, accept, placeholder, previewSize =
   );
 }
 
-function getMediaType(mime: string): 'image' | 'video' | 'audio' | 'document' {
-  if (mime?.startsWith('image/')) return 'image';
-  if (mime?.startsWith('video/')) return 'video';
-  if (mime?.startsWith('audio/')) return 'audio';
-  return 'document';
-}
-
 const typeTabs = [
   { key: '', label: '全部' },
   { key: 'image', label: '图片' },
@@ -107,8 +99,8 @@ const typeTabs = [
   { key: 'document', label: '文档' },
 ];
 
-export function MediaPickerModal({ onSelect, onClose, onUpload, triggerRect, filterType }: { onSelect: (url: string, originalName?: string, thumbnailUrl?: string) => void; onClose: () => void; onUpload?: () => void; triggerRect?: DOMRect; filterType?: 'image' | 'video' | 'audio' | 'document' | '' }) {
-  const [items, setItems] = useState<any[]>([]);
+export function MediaPickerModal({ onSelect, onClose, onUpload, filterType }: { onSelect: (url: string, originalName?: string, thumbnailUrl?: string) => void; onClose: () => void; onUpload?: () => void; triggerRect?: DOMRect; filterType?: 'image' | 'video' | 'audio' | 'document' | '' }) {
+  const [items, setItems] = useState<MediaItem[]>([]);
   const [loadError, setLoadError] = useState('');
   const [retryKey, setRetryKey] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -205,12 +197,13 @@ export function MediaPickerModal({ onSelect, onClose, onUpload, triggerRect, fil
 
       <div className="grid grid-cols-5 gap-2 overflow-y-auto flex-1 content-start">
         {filtered.map(item => (
-          <div
-            key={item.id}
+          <Tooltip content={item.original_name || item.filename || ''} key={item.id}><button type="button"
+
             onClick={() => onSelect(item.url, item.original_name || item.filename || '', item.thumbnail_url || '')}
             className="cursor-pointer rounded-xl overflow-hidden hover:opacity-80 transition-opacity"
             style={{ background: 'var(--card-bg)', border: '1px solid var(--glass-border)' }}
-            title={item.original_name || item.filename || ''}
+            aria-label={`选择 ${item.original_name || item.filename || '媒体文件'}`}
+            data-tooltip={item.original_name || item.filename || ''}
           >
             {item.thumbnail_url || item.mime_type?.startsWith('image/') ? (
               <ImageWithFallback
@@ -229,7 +222,7 @@ export function MediaPickerModal({ onSelect, onClose, onUpload, triggerRect, fil
             <div className="px-1.5 pb-1.5 pt-1 text-[11px] truncate text-center font-medium" style={{ color: 'var(--text-primary)' }}>
               {item.original_name || item.filename || ''}
             </div>
-          </div>
+          </button></Tooltip>
         ))}
       </div>
       {loadError && <p role="alert" className="text-center text-sm mt-2" style={{ color: 'var(--color-error)' }}>
@@ -256,51 +249,14 @@ export function MediaPickerModal({ onSelect, onClose, onUpload, triggerRect, fil
     </>
   );
 
-  if (triggerRect) {
-    const popWidth = Math.min(560, window.innerWidth - 16);
-    let top = triggerRect.bottom + 4;
-    let left = triggerRect.left;
-    if (left + popWidth > window.innerWidth - 8) left = Math.max(8, window.innerWidth - popWidth - 8);
-    if (top + 400 > window.innerHeight) top = Math.max(8, triggerRect.top - 400);
-    return createPortal(
-      <>
-        <div className="fixed inset-0 z-[300]" onClick={onClose} />
-        <div className="admin-overlay fixed z-[300]"
-          style={{ top, left }}>
-          <div className="admin-dialog-panel admin-popover-panel rounded-2xl p-4 shadow-2xl flex flex-col"
-            style={{
-              width: popWidth,
-              maxHeight: '70vh',
-              background: 'var(--card-bg)',
-              border: '1px solid var(--glass-border)',
-              backdropFilter: 'blur(24px)',
-              WebkitBackdropFilter: 'blur(24px)',
-            }}>
-            {modalContent}
-          </div>
-        </div>
-      </>,
-      document.body
-    );
-  }
-
   return (
-    <div
-      className="admin-overlay fixed inset-0 z-[300] flex items-center justify-center p-4"
-      style={{ background: 'rgba(0,0,0,0.5)' }}
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <div
-        className="admin-dialog-panel w-full max-w-2xl rounded-2xl p-4 shadow-2xl flex flex-col"
+      <Dialog title="从媒体库选择" onClose={onClose} layer={300}
+        className="w-full max-w-2xl rounded-2xl p-4 shadow-2xl flex flex-col"
         style={{
-          background: 'var(--card-bg)',
-          border: '1px solid var(--glass-border)',
           maxHeight: '75vh',
-          backdropFilter: 'blur(24px)',
         }}
       >
         {modalContent}
-      </div>
-    </div>
+      </Dialog>
   );
 }

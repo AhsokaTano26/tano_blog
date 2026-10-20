@@ -176,8 +176,9 @@ html {
   min-height: 40px;
   padding: 8px 12px;
   border-radius: 12px;
-  color: var(--text-secondary);
+  color: var(--text-primary);
   font-size: 14px;
+  font-weight: 500;
   line-height: 1.5;
   white-space: nowrap;
   transition: background-color 150ms ease, color 150ms ease;
@@ -194,6 +195,7 @@ html {
   outline-offset: -2px;
 }
 .site-header-tools { display: flex; flex-shrink: 0; align-items: center; gap: 4px; margin-left: auto; }
+.site-header-admin { font-weight: 600; }
 .site-header-icon {
   display: flex;
   flex-shrink: 0;
@@ -209,7 +211,7 @@ html {
 .site-header-clock {
   width: 76px;
   margin-right: 8px;
-  color: var(--text-info);
+  color: var(--text-primary);
   font-family: ui-monospace, monospace;
   font-size: 12px;
   font-variant-numeric: tabular-nums;
@@ -260,6 +262,7 @@ html {
   .site-header-bar { gap: 4px; padding: 6px; border-radius: 18px; }
   .site-header-brand { gap: 8px; padding-left: 4px; font-size: 13px; letter-spacing: 0; }
   .site-header-tools { gap: 0; }
+  .site-header-admin { min-width: 40px; padding-inline: 7px; font-size: 13px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .site-header-link, .site-header-icon { transition: none; }

@@ -1,7 +1,11 @@
 'use client';
 
-import { useState, useRef } from 'react';
-import { X, ChevronDown, ChevronUp, ImagePlus } from 'lucide-react';
+import { Input } from '@/components/ui/Input';
+import { Textarea } from '@/components/ui/Textarea';
+import { Dialog } from '@/components/ui/Dialog';
+
+import { useState } from 'react';
+import { X, ChevronDown, ChevronUp } from 'lucide-react';
 import { MediaPickerModal } from '@/components/MediaField';
 import { GalleryImageItem, GalleryAttrs, createDefaultGalleryAttrs, generateGalleryHtml, getSlotCount } from '@/lib/gallery';
 
@@ -49,19 +53,13 @@ export default function GalleryEditDialog({ initialAttrs, onSave, onClose }: Gal
     onClose();
   }
 
-  const inputStyle: React.CSSProperties = {
-    background: 'var(--glass-bg)',
-    border: '1px solid var(--glass-border)',
-    color: 'var(--text-primary)',
-  };
-
   return (
-    <div className="admin-overlay fixed inset-0 z-[100] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.5)' }} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="admin-dialog-panel rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden" style={{ background: 'var(--color-bg)', border: '1px solid var(--glass-border)' }} onClick={e => e.stopPropagation()}>
+    <Dialog title="图片画廊" onClose={onClose}
+      className="rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden" style={{ background: 'var(--color-bg)', border: '1px solid var(--glass-border)' }}>
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 flex-shrink-0" style={{ borderBottom: '1px solid var(--glass-border)' }}>
           <h2 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>图片画廊</h2>
-          <button onClick={onClose} className="p-1.5 rounded-lg transition-colors btn-glass" style={{ color: 'var(--text-info)' }}>
+          <button onClick={onClose} aria-label="关闭画廊编辑" className="p-1.5 rounded-lg transition-colors btn-glass" style={{ color: 'var(--text-info)' }}>
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -111,7 +109,7 @@ export default function GalleryEditDialog({ initialAttrs, onSave, onClose }: Gal
                 {/* Collapsed row */}
                 <div className="flex items-center gap-3 px-3 py-2">
                   <span className="text-xs font-medium w-5 flex-shrink-0" style={{ color: 'var(--text-info)' }}>#{index + 1}</span>
-                  <input type="text" value={img.url} onChange={e => updateImage(index, 'url', e.target.value)}
+                  <Input type="text" value={img.url} onChange={e => updateImage(index, 'url', e.target.value)}
                     className="flex-1 px-3 py-1.5 rounded-xl text-sm outline-none"
                     style={{ background: 'var(--bg-card)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}
                     placeholder="输入图片地址" />
@@ -119,7 +117,7 @@ export default function GalleryEditDialog({ initialAttrs, onSave, onClose }: Gal
                     className="px-3 py-1.5 rounded-xl text-xs btn-glass whitespace-nowrap" style={{ color: 'var(--text-secondary)' }}>
                     选择
                   </button>
-                  <button onClick={() => toggleExpand(index)}
+                  <button onClick={() => toggleExpand(index)} aria-label={`编辑第 ${index + 1} 张图片说明`} aria-expanded={expandedIndex === index}
                     className="p-1.5 rounded-lg btn-glass transition-colors" style={{ color: 'var(--text-info)' }}>
                     {expandedIndex === index ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                   </button>
@@ -130,14 +128,14 @@ export default function GalleryEditDialog({ initialAttrs, onSave, onClose }: Gal
                   <div className="px-3 pb-3 pt-1 space-y-2" style={{ borderTop: '1px solid var(--glass-border)' }}>
                     <div>
                       <label className="block text-xs mb-0.5" style={{ color: 'var(--text-info)' }}>替换文本 (Alt)</label>
-                      <input type="text" value={img.alt} onChange={e => updateImage(index, 'alt', e.target.value)}
+                      <Input type="text" value={img.alt} onChange={e => updateImage(index, 'alt', e.target.value)}
                         className="w-full px-2.5 py-1.5 rounded-xl text-sm outline-none"
                         style={{ background: 'var(--bg-card)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}
                         placeholder="替代文本" />
                     </div>
                     <div>
                       <label className="block text-xs mb-0.5" style={{ color: 'var(--text-info)' }}>单张描述</label>
-                      <input type="text" value={img.caption} onChange={e => updateImage(index, 'caption', e.target.value)}
+                      <Input type="text" value={img.caption} onChange={e => updateImage(index, 'caption', e.target.value)}
                         className="w-full px-2.5 py-1.5 rounded-xl text-sm outline-none"
                         style={{ background: 'var(--bg-card)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}
                         placeholder="图片下方的小字描述" />
@@ -151,7 +149,7 @@ export default function GalleryEditDialog({ initialAttrs, onSave, onClose }: Gal
           {/* Gallery description */}
           <div>
             <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-info)' }}>画廊描述（显示在图片集下方）</label>
-            <textarea value={description} onChange={e => setDescription(e.target.value)} rows={2}
+            <Textarea value={description} onChange={e => setDescription(e.target.value)} rows={2}
               className="w-full px-3 py-2 rounded-xl text-sm outline-none resize-none"
               style={{ background: 'var(--glass-bg)', color: 'var(--text-primary)', border: '1px solid var(--glass-border)' }}
               placeholder="整个图片集的描述性文案（可选）" />
@@ -171,8 +169,6 @@ export default function GalleryEditDialog({ initialAttrs, onSave, onClose }: Gal
             确认
           </button>
         </div>
-      </div>
-
       {/* Media Picker */}
       {showMediaPickerIndex !== null && (
         <MediaPickerModal
@@ -184,6 +180,6 @@ export default function GalleryEditDialog({ initialAttrs, onSave, onClose }: Gal
           onClose={() => setShowMediaPickerIndex(null)}
         />
       )}
-    </div>
+    </Dialog>
   );
 }

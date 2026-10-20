@@ -1,5 +1,8 @@
 'use client';
 
+import { Textarea } from '@/components/ui/Textarea';
+import { Input } from '@/components/ui/Input';
+import { Select } from '@/components/ui/Select';
 import { useState, useEffect } from 'react';
 import { api } from '@/lib/api';
 import QRCode from 'qrcode';
@@ -10,7 +13,7 @@ import { MediaField } from '@/components/MediaField';
 import { bufferToBase64url, base64urlToBuffer } from '@/lib/webauthn';
 
 export default function AdminProfile() {
-  const { confirm } = useConfirm();
+  const { confirm, prompt } = useConfirm();
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -246,7 +249,7 @@ export default function AdminProfile() {
   }
 
   async function handleRenamePasskey(id: string, currentName: string) {
-    const name = prompt('输入新名称', currentName);
+    const name = await prompt('输入新名称', currentName);
     if (!name || name === currentName) return;
     try {
       await api.passkeyRename(id, name);
@@ -326,20 +329,20 @@ export default function AdminProfile() {
 
               <div>
                 <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>显示名称</label>
-                <input type="text" value={displayName} onChange={e => setDisplayName(e.target.value)}
+                <Input type="text" value={displayName} onChange={e => setDisplayName(e.target.value)}
                   placeholder="显示名称" className={inputClass} style={inputStyle} />
               </div>
 
               <div>
                 <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>邮箱</label>
-                <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+                <Input type="email" value={email} onChange={e => setEmail(e.target.value)}
                   placeholder="admin@example.com" className={inputClass} style={inputStyle} />
                 <p className="text-xs mt-1" style={{ color: 'var(--text-info)' }}>用于接收评论通知等邮件</p>
               </div>
 
               <div>
                 <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>个人简介</label>
-                <textarea value={bio} onChange={e => setBio(e.target.value)} rows={3}
+                <Textarea value={bio} onChange={e => setBio(e.target.value)} rows={3}
                   placeholder="介绍一下自己..." className={`${inputClass} resize-none`} style={inputStyle} />
               </div>
 
@@ -365,12 +368,12 @@ export default function AdminProfile() {
                 </div>
                 <div className="mt-4">
                   <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>显示名称</label>
-                  <input type="text" value={siteConfig.profile_name || ''} onChange={e => setSiteConfig({ ...siteConfig, profile_name: e.target.value })}
+                  <Input type="text" value={siteConfig.profile_name || ''} onChange={e => setSiteConfig({ ...siteConfig, profile_name: e.target.value })}
                     placeholder="Tano" className={inputClass} style={inputStyle} />
                 </div>
                 <div className="mt-4">
                   <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>个人简介</label>
-                  <textarea value={siteConfig.profile_bio || ''} onChange={e => setSiteConfig({ ...siteConfig, profile_bio: e.target.value })}
+                  <Textarea value={siteConfig.profile_bio || ''} onChange={e => setSiteConfig({ ...siteConfig, profile_bio: e.target.value })}
                     rows={2} placeholder="A BanG Dreamer!" className={`${inputClass} resize-none`} style={inputStyle} />
                 </div>
 
@@ -381,19 +384,16 @@ export default function AdminProfile() {
                     {getPubContacts().map((c, i) => (
                       <div key={i} className="flex items-center gap-2">
                         <div className="w-32">
-                          <select value={c.type} onChange={v => {
+                          <Select aria-label={`联系方式 ${i + 1} 类型`} value={c.type} onChange={value => {
                             const list = getPubContacts();
-                            list[i] = { ...list[i], type: v.target.value };
+                            list[i] = { ...list[i], type: value };
                             setPubContacts(list);
                           }}
+                            options={contactTypes}
                             className="w-full px-2 py-1.5 rounded-lg text-sm outline-none"
-                            style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }}>
-                            {contactTypes.map(t => (
-                              <option key={t.value} value={t.value}>{t.label}</option>
-                            ))}
-                          </select>
+                            style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
                         </div>
-                        <input type="text" value={c.value}
+                        <Input type="text" value={c.value}
                           onChange={e => {
                             const list = getPubContacts();
                             list[i] = { ...list[i], value: e.target.value };
@@ -444,19 +444,19 @@ export default function AdminProfile() {
               )}
               <div>
                 <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>旧密码</label>
-                <input type="password" value={oldPassword} onChange={e => setOldPassword(e.target.value)}
+                <Input type="password" value={oldPassword} onChange={e => setOldPassword(e.target.value)}
                   placeholder="输入当前密码" className={inputClass} style={inputStyle} />
               </div>
 
               <div>
                 <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>新密码</label>
-                <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)}
+                <Input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)}
                   placeholder="至少6个字符" className={inputClass} style={inputStyle} />
               </div>
 
               <div>
                 <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>确认新密码</label>
-                <input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)}
+                <Input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)}
                   placeholder="再次输入新密码" className={inputClass} style={inputStyle} />
               </div>
 
@@ -506,7 +506,7 @@ export default function AdminProfile() {
                   </div>
                   <div>
                     <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>验证码</label>
-                    <input type="text" value={totpCode} onChange={e => setTotpCode(e.target.value)}
+                    <Input type="text" value={totpCode} onChange={e => setTotpCode(e.target.value)}
                       placeholder="输入6位验证码" maxLength={6}
                       className={inputClass} style={inputStyle} />
                   </div>

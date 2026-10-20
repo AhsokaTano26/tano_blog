@@ -1,5 +1,6 @@
 'use client';
 
+import { Input } from '@/components/ui/Input';
 import { useState } from 'react';
 import { api } from '@/lib/api';
 import { ArrowLeft, Eye, EyeOff, KeyRound } from 'lucide-react';
@@ -121,7 +122,7 @@ export default function LoginPage() {
                   <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>
                     用户名或邮箱地址
                   </label>
-                  <input type="text" value={username} onChange={e => setUsername(e.target.value)}
+                  <Input type="text" value={username} onChange={e => setUsername(e.target.value)}
                     autoComplete="username" autoFocus required
                     className="w-full px-3 py-2.5 rounded-xl text-sm outline-none glass-card"
                     style={{ ...inputStyle, color: 'var(--text-primary)' }} />
@@ -132,7 +133,7 @@ export default function LoginPage() {
                     密码
                   </label>
                   <div className="relative">
-                    <input type={showPassword ? 'text' : 'password'} value={password}
+                    <Input type={showPassword ? 'text' : 'password'} value={password}
                       onChange={e => setPassword(e.target.value)}
                       autoComplete="current-password" required
                       className="w-full px-3 py-2.5 pr-10 rounded-xl text-sm outline-none glass-card"
@@ -178,7 +179,7 @@ export default function LoginPage() {
           ) : (
             <div>
               <p className="text-sm mb-4" style={{ color: 'var(--text-secondary)' }}>请输入两步验证码</p>
-              <input type="text" value={totpCode} onChange={e => setTotpCode(e.target.value)}
+              <Input type="text" value={totpCode} onChange={e => setTotpCode(e.target.value)}
                 placeholder="6 位验证码" autoFocus
                 className="w-full px-3 py-2.5 rounded-xl text-sm outline-none glass-card mb-4"
                 style={{ ...inputStyle, color: 'var(--text-primary)' }} />

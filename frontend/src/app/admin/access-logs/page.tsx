@@ -1,7 +1,11 @@
 'use client';
+import { validDateValue } from '@/lib/date-value';
 
+import { Tooltip } from '@/components/ui/Tooltip';
+import { Dialog } from '@/components/ui/Dialog';
+import { DatePicker } from '@/components/ui/DateTimePicker';
+import { Input } from '@/components/ui/Input';
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { createPortal } from 'react-dom';
 import { api } from '@/lib/api';
 import { ScrollText, Search, Download, Trash2, X } from 'lucide-react';
 import VisitTrendChart from '@/components/VisitTrendChart';
@@ -47,22 +51,12 @@ function filterParams(filters: LogFilters): Record<string, string> {
 }
 
 function FloatingModal({ onClose, children }: { onClose: () => void; children: React.ReactNode }) {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    function handleKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose(); }
-    document.addEventListener('keydown', handleKey);
-    return () => document.removeEventListener('keydown', handleKey);
-  }, [onClose]);
-
-  return createPortal(
-    <div className="admin-overlay fixed inset-0 z-[200] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.5)' }}
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div ref={ref} className="admin-dialog-panel w-full max-w-2xl max-h-[80vh] overflow-y-auto rounded-2xl shadow-2xl"
-        style={{ background: 'var(--card-bg)', border: '1px solid var(--glass-border)', backdropFilter: 'blur(20px)' }}>
-        {children}
-      </div>
-    </div>,
-    document.body
+  return (
+    <Dialog title="访问日志详情" onClose={onClose} layer={200}
+      className="admin-dialog-panel w-full max-w-2xl max-h-[80vh] overflow-y-auto rounded-2xl shadow-2xl"
+      style={{ border: '1px solid var(--glass-border)' }}>
+      {children}
+    </Dialog>
   );
 }
 
@@ -137,7 +131,7 @@ export default function AdminAccessLogs() {
 
   function handleFilter() {
     const days = (Date.parse(endDate) - Date.parse(startDate)) / 86400000;
-    if (!Number.isFinite(days) || days < 0 || days > 365) {
+    if (!validDateValue(startDate) || !validDateValue(endDate) || !Number.isFinite(days) || days < 0 || days > 365) {
       setFilterError('请选择有效日期范围，开始日期不能晚于结束日期，最多 366 天');
       return;
     }
@@ -239,7 +233,7 @@ export default function AdminAccessLogs() {
               <label className="block text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>路径</label>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: 'var(--text-info)' }} />
-                <input type="text" placeholder="搜索路径..." value={pathFilter}
+                <Input type="text" placeholder="搜索路径..." value={pathFilter}
                   onChange={e => setPathFilter(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && handleFilter()}
                   className={`${inputClass} pl-9`} style={inputStyle} />
@@ -247,14 +241,14 @@ export default function AdminAccessLogs() {
             </div>
             <div className="flex-1 min-w-[140px]">
               <label className="block text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>IP地址</label>
-              <input type="text" placeholder="搜索IP..." value={ipFilter}
+              <Input type="text" placeholder="搜索IP..." value={ipFilter}
                 onChange={e => setIpFilter(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleFilter()}
                 className={inputClass} style={inputStyle} />
             </div>
             <div className="w-28">
               <label className="block text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>方法</label>
-              <Select value={methodFilter} onChange={setMethodFilter}
+              <Select aria-label="请求方法" value={methodFilter} onChange={setMethodFilter}
                 options={[
                   { value: '', label: '全部' },
                   { value: 'GET', label: 'GET' },
@@ -266,7 +260,7 @@ export default function AdminAccessLogs() {
             </div>
             <div className="w-28">
               <label className="block text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>状态码</label>
-              <Select value={statusFilter} onChange={setStatusFilter}
+              <Select aria-label="状态筛选" value={statusFilter} onChange={setStatusFilter}
                 options={[
                   { value: '', label: '全部' },
                   { value: '200', label: '2xx 成功' },
@@ -277,12 +271,12 @@ export default function AdminAccessLogs() {
             </div>
             <div className="w-36">
               <label className="block text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>开始日期</label>
-              <input aria-label="开始日期" type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
+              <DatePicker aria-label="开始日期" value={startDate} onChange={value => setStartDate(value)}
                 className={inputClass} style={inputStyle} />
             </div>
             <div className="w-36">
               <label className="block text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>结束日期</label>
-              <input aria-label="结束日期" type="date" value={endDate} onChange={e => setEndDate(e.target.value)}
+              <DatePicker aria-label="结束日期" value={endDate} onChange={value => setEndDate(value)}
                 className={inputClass} style={inputStyle} />
             </div>
             <div className="flex gap-2">
@@ -290,11 +284,11 @@ export default function AdminAccessLogs() {
                 className="px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors"
                 style={{ background: 'var(--primary)' }}>筛选</button>
               {hasActiveFilters() && (
-                <button onClick={handleClearFilters} aria-label="重置筛选" title="重置为近 30 天"
+                <Tooltip content="重置为近 30 天"><button onClick={handleClearFilters} aria-label="重置筛选" data-tooltip="重置为近 30 天"
                   className="px-3 py-2 rounded-lg text-sm btn-glass transition-colors"
                   style={{ color: 'var(--text-secondary)' }}>
                   <X className="w-4 h-4" />
-                </button>
+                </button></Tooltip>
               )}
             </div>
           </div>
@@ -346,9 +340,9 @@ export default function AdminAccessLogs() {
                             log.method === 'DELETE' ? 'hsl(0, 60%, 55%)' : 'var(--text-secondary)',
                         }}>{log.method}</span>
                     </td>
-                    <td className="px-4 py-3 max-w-[250px] truncate font-mono text-xs" style={{ color: 'var(--text-secondary)' }} title={log.path + (log.query_params ? '?' + log.query_params : '')}>
+                    <Tooltip content={log.path + (log.query_params ? '?' + log.query_params : '')}><td className="px-4 py-3 max-w-[250px] truncate font-mono text-xs" style={{ color: 'var(--text-secondary)' }} data-tooltip={log.path + (log.query_params ? '?' + log.query_params : '')}>
                       {log.path}{log.query_params ? <span style={{ color: 'var(--text-info)' }}>?...</span> : ''}
-                    </td>
+                    </td></Tooltip>
                     <td className="px-4 py-3 whitespace-nowrap">
                       <span className="font-mono text-xs font-medium"
                         style={{
@@ -358,12 +352,12 @@ export default function AdminAccessLogs() {
                         }}>{log.status_code}</span>
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-sm" style={{ color: 'var(--text-secondary)' }}>{log.response_time}ms</td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm max-w-[120px] truncate" style={{ color: 'var(--text-secondary)' }} title={log.browser}>{log.browser || '-'}</td>
+                    <Tooltip content={log.browser}><td className="px-4 py-3 whitespace-nowrap text-sm max-w-[120px] truncate" style={{ color: 'var(--text-secondary)' }} data-tooltip={log.browser}>{log.browser || '-'}</td></Tooltip>
                     <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
-                      <button onClick={() => handleDelete(log.id)}
-                        className="btn-glass p-1.5 rounded transition-colors" title="删除">
+                      <Tooltip content="删除"><button onClick={() => handleDelete(log.id)}
+                        className="btn-glass p-1.5 rounded transition-colors" data-tooltip="删除" aria-label="删除">
                         <Trash2 className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
-                      </button>
+                      </button></Tooltip>
                     </td>
                   </tr>
                 ))}

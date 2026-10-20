@@ -14,7 +14,6 @@ const defaultNavLinks = [
   { href: '/archive', label: '归档' },
   { href: '/links', label: '友链' },
   { href: '/about', label: '关于' },
-  { href: '/admin', label: '管理' },
 ];
 
 export function Header() {
@@ -30,7 +29,7 @@ export function Header() {
     let active = true;
     api.getNavLinks().then(res => {
       if (!active) return;
-      const seen = new Set(defaultNavLinks.map(link => link.href));
+      const seen = new Set([...defaultNavLinks.map(link => link.href), '/admin', '/admin/']);
       const merged = [...defaultNavLinks];
       for (const item of res.items || []) {
         if (!seen.has(item.url)) {
@@ -114,6 +113,7 @@ export function Header() {
             aria-expanded={panel === 'menu'} aria-controls="site-mobile-menu">
             {panel === 'menu' ? <X size={20} /> : <Menu size={20} />}
           </button>
+          <Link href="/admin" className="site-header-link site-header-admin" onClick={closePanel}>管理</Link>
         </div>
       </div>
 

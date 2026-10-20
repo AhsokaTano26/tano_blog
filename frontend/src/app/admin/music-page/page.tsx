@@ -1,5 +1,7 @@
 'use client';
 
+import { Dialog } from '@/components/ui/Dialog';
+import { Input } from '@/components/ui/Input';
 import { useState, useEffect, useRef } from 'react';
 import { api } from '@/lib/api';
 import { Save, Music, Plus, Trash2, ArrowUp, ArrowDown, Image, Headphones, X } from 'lucide-react';
@@ -236,7 +238,7 @@ export default function AdminMusicPage() {
           {/* Page title */}
           <div>
             <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>页面标题</label>
-            <input type="text" value={config.title}
+            <Input type="text" value={config.title}
               onChange={e => updateField('title', e.target.value)}
               placeholder="音乐馆"
               className={inputClass} style={inputStyle} />
@@ -245,7 +247,7 @@ export default function AdminMusicPage() {
           {/* Page subtitle */}
           <div>
             <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>页面副标题</label>
-            <input type="text" value={config.subtitle}
+            <Input type="text" value={config.subtitle}
               onChange={e => updateField('subtitle', e.target.value)}
               placeholder="享受音乐的时光"
               className={inputClass} style={inputStyle} />
@@ -264,7 +266,7 @@ export default function AdminMusicPage() {
                     onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                 </div>
               )}
-              <input type="text" value={config.background}
+              <Input type="text" value={config.background}
                 onChange={e => updateField('background', e.target.value)}
                 placeholder="背景图片 URL（选填）"
                 className={`${inputClass} flex-1`} style={inputStyle} />
@@ -281,7 +283,7 @@ export default function AdminMusicPage() {
           <div>
             <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>访问密码</label>
             <div className="flex items-center gap-2">
-              <input type="text" value={musicPassword}
+              <Input type="text" value={musicPassword}
                 onChange={e => setMusicPassword(e.target.value)}
                 placeholder={passwordSet ? '当前已设置密码，输入新密码可修改' : '设置密码后进入音乐馆需输入（选填）'}
                 className={`${inputClass} flex-1`} style={inputStyle} />
@@ -334,7 +336,7 @@ export default function AdminMusicPage() {
                     style={{ background: selectedPlaylistId === pl.id ? 'var(--primary-sub)' : 'var(--surface-bg)' }}>
                     <div className="flex items-center gap-3 min-w-0 flex-1">
                       <Music className="w-4 h-4 flex-shrink-0" style={{ color: selectedPlaylistId === pl.id ? 'var(--primary)' : 'var(--text-info)' }} />
-                      <input value={pl.name}
+                      <Input value={pl.name}
                         onClick={e => e.stopPropagation()}
                         onChange={e => renamePlaylist(pl.id, e.target.value)}
                         className="text-sm font-medium bg-transparent outline-none border-0 flex-1 min-w-0"
@@ -518,126 +520,120 @@ export default function AdminMusicPage() {
         }
 
         return (
-          <div className="admin-overlay fixed inset-0 z-[100] flex items-center justify-center p-4"
-            style={{ background: 'rgba(0,0,0,0.5)' }}
-            onClick={(e) => { if (e.target === e.currentTarget) setEditingTrack(null); }}>
-            <div className="admin-dialog-panel w-full max-w-lg rounded-2xl shadow-2xl flex flex-col"
-              style={{
-                background: 'var(--card-bg)',
-                border: '1px solid var(--glass-border)',
-                backdropFilter: 'blur(24px)',
-                WebkitBackdropFilter: 'blur(24px)',
-                maxHeight: '85vh',
-              }}>
-              {/* Header */}
-              <div className="flex items-center justify-between px-6 pt-5 pb-3 flex-shrink-0"
-                style={{ borderBottom: '1px solid var(--glass-border)' }}>
-                <h2 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>
-                  {isNew ? '添加歌曲' : '歌曲详情'}
-                </h2>
-                <button onClick={() => setEditingTrack(null)}
-                  className="p-1.5 rounded-lg transition-colors btn-glass">
-                  <X className="w-4 h-4" />
-                </button>
+          <Dialog title={isNew ? '添加歌曲' : '歌曲详情'} onClose={() => setEditingTrack(null)} layer={100}
+            className="admin-dialog-panel w-full max-w-lg rounded-2xl shadow-2xl flex flex-col"
+            style={{
+              border: '1px solid var(--glass-border)',
+              maxHeight: '85vh',
+            }}>
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 pt-5 pb-3 flex-shrink-0"
+              style={{ borderBottom: '1px solid var(--glass-border)' }}>
+              <h2 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>
+                {isNew ? '添加歌曲' : '歌曲详情'}
+              </h2>
+              <button aria-label="关闭歌曲编辑" onClick={() => setEditingTrack(null)}
+                className="p-1.5 rounded-lg transition-colors btn-glass">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="overflow-y-auto p-6 space-y-4 flex-1">
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>歌曲标题</label>
+                <Input type="text" value={track.title || ''}
+                  onChange={e => update('title', e.target.value)}
+                  placeholder="输入歌曲标题"
+                  className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
+                  style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
               </div>
 
-              {/* Body */}
-              <div className="overflow-y-auto p-6 space-y-4 flex-1">
-                <div>
-                  <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>歌曲标题</label>
-                  <input type="text" value={track.title || ''}
-                    onChange={e => update('title', e.target.value)}
-                    placeholder="输入歌曲标题"
-                    className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
-                    style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>艺术家</label>
-                  <input type="text" value={track.artist || ''}
-                    onChange={e => update('artist', e.target.value)}
-                    placeholder="选填"
-                    className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
-                    style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>封面图</label>
-                  <div className="flex items-center gap-2">
-                    {track.cover && (
-                      <img src={track.cover} alt="cover" className="w-10 h-10 rounded-lg object-cover flex-shrink-0"
-                        onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-                    )}
-                    <input type="text" value={track.cover || ''}
-                      onChange={e => update('cover', e.target.value)}
-                      placeholder="封面图 URL"
-                      className="flex-1 px-3 py-2.5 rounded-lg text-sm outline-none"
-                      style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
-                    <button onClick={mediaPickerField('cover')}
-                      className="px-3 py-2.5 rounded-lg text-sm btn-glass flex-shrink-0"
-                      style={{ color: 'var(--text-secondary)' }}>
-                      <Image className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>音频文件</label>
-                  <div className="flex items-center gap-2">
-                    <input type="text" value={track.url}
-                      onChange={e => update('url', e.target.value)}
-                      placeholder="音频 URL"
-                      className="flex-1 px-3 py-2.5 rounded-lg text-sm outline-none"
-                      style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
-                    <button onClick={mediaPickerField('url')}
-                      className="px-3 py-2.5 rounded-lg text-sm btn-glass flex-shrink-0"
-                      style={{ color: 'var(--text-secondary)' }}>
-                      <Headphones className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>单独背景图（选填）</label>
-                  <div className="flex items-center gap-2">
-                    {track.background && (
-                      <div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0"
-                        style={{ border: '1px solid var(--glass-border)' }}>
-                        <img src={track.background} alt="bg" className="w-full h-full object-cover"
-                          onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-                      </div>
-                    )}
-                    <input type="text" value={track.background || ''}
-                      onChange={e => update('background', e.target.value)}
-                      placeholder="播放此曲时显示此背景（选填）"
-                      className="flex-1 px-3 py-2.5 rounded-lg text-sm outline-none"
-                      style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
-                    <button onClick={mediaPickerField('background')}
-                      className="px-3 py-2.5 rounded-lg text-sm btn-glass flex-shrink-0"
-                      style={{ color: 'var(--text-secondary)' }}>
-                      <Image className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>艺术家</label>
+                <Input type="text" value={track.artist || ''}
+                  onChange={e => update('artist', e.target.value)}
+                  placeholder="选填"
+                  className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
+                  style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
               </div>
 
-              {/* Footer */}
-              <div className="flex justify-end gap-2 px-6 py-4 flex-shrink-0"
-                style={{ borderTop: '1px solid var(--glass-border)' }}>
-                <button onClick={() => setEditingTrack(null)}
-                  className="px-4 py-2 rounded-lg text-sm btn-glass"
-                  style={{ color: 'var(--text-secondary)' }}>取消</button>
-                {isNew && (
-                  <button onClick={handleConfirmAdd}
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors"
-                    style={{ background: 'var(--primary)' }}>
-                    <Plus className="w-4 h-4" />
-                    确认添加
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>封面图</label>
+                <div className="flex items-center gap-2">
+                  {track.cover && (
+                    <img src={track.cover} alt="cover" className="w-10 h-10 rounded-lg object-cover flex-shrink-0"
+                      onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                  )}
+                  <Input type="text" value={track.cover || ''}
+                    onChange={e => update('cover', e.target.value)}
+                    placeholder="封面图 URL"
+                    className="flex-1 px-3 py-2.5 rounded-lg text-sm outline-none"
+                    style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
+                  <button onClick={mediaPickerField('cover')}
+                    className="px-3 py-2.5 rounded-lg text-sm btn-glass flex-shrink-0"
+                    style={{ color: 'var(--text-secondary)' }}>
+                    <Image className="w-4 h-4" />
                   </button>
-                )}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>音频文件</label>
+                <div className="flex items-center gap-2">
+                  <Input type="text" value={track.url}
+                    onChange={e => update('url', e.target.value)}
+                    placeholder="音频 URL"
+                    className="flex-1 px-3 py-2.5 rounded-lg text-sm outline-none"
+                    style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
+                  <button onClick={mediaPickerField('url')}
+                    className="px-3 py-2.5 rounded-lg text-sm btn-glass flex-shrink-0"
+                    style={{ color: 'var(--text-secondary)' }}>
+                    <Headphones className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>单独背景图（选填）</label>
+                <div className="flex items-center gap-2">
+                  {track.background && (
+                    <div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0"
+                      style={{ border: '1px solid var(--glass-border)' }}>
+                      <img src={track.background} alt="bg" className="w-full h-full object-cover"
+                        onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                    </div>
+                  )}
+                  <Input type="text" value={track.background || ''}
+                    onChange={e => update('background', e.target.value)}
+                    placeholder="播放此曲时显示此背景（选填）"
+                    className="flex-1 px-3 py-2.5 rounded-lg text-sm outline-none"
+                    style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
+                  <button onClick={mediaPickerField('background')}
+                    className="px-3 py-2.5 rounded-lg text-sm btn-glass flex-shrink-0"
+                    style={{ color: 'var(--text-secondary)' }}>
+                    <Image className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
+
+            {/* Footer */}
+            <div className="flex justify-end gap-2 px-6 py-4 flex-shrink-0"
+              style={{ borderTop: '1px solid var(--glass-border)' }}>
+              <button onClick={() => setEditingTrack(null)}
+                className="px-4 py-2 rounded-lg text-sm btn-glass"
+                style={{ color: 'var(--text-secondary)' }}>取消</button>
+              {isNew && (
+                <button onClick={handleConfirmAdd}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors"
+                  style={{ background: 'var(--primary)' }}>
+                  <Plus className="w-4 h-4" />
+                  确认添加
+                </button>
+              )}
+            </div>
+          </Dialog>
         );
       })()}
     </div>

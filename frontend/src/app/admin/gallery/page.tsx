@@ -1,5 +1,9 @@
 'use client';
 
+import { Dialog } from '@/components/ui/Dialog';
+import { Textarea } from '@/components/ui/Textarea';
+import { Input } from '@/components/ui/Input';
+import { useConfirm } from '@/components/ConfirmDialog';
 import { useState, useRef } from 'react';
 import { api } from '@/lib/api';
 import { Loading } from '@/components/Loading';
@@ -24,6 +28,7 @@ interface GalleryImage {
 const fetchImages = (params: Record<string, string>) => api.admin.gallery.list(params);
 
 export default function AdminGalleryPage() {
+  const { confirm, alert } = useConfirm();
   const pagination = usePagedItems<GalleryImage>(fetchImages, 48, mergeById);
   const { items: images, setItems: setImages, total, initialLoading, reload: loadImages } = pagination;
   const [moving, setMoving] = useState(false);
@@ -69,17 +74,17 @@ export default function AdminGalleryPage() {
       setShowDialog(false);
       loadImages();
     } catch (e: any) {
-      alert(e.message);
+      await alert(e.message);
     }
   }
 
   async function handleDelete(id: string) {
-    if (!confirm('确定删除这张图片？')) return;
+    if (!await confirm('确定删除这张图片？')) return;
     try {
       await api.admin.gallery.delete(id);
       loadImages();
     } catch (e: any) {
-      alert(e.message);
+      await alert(e.message);
     }
   }
 
@@ -179,66 +184,63 @@ export default function AdminGalleryPage() {
 
       {/* 新增/编辑弹窗 */}
       {showDialog && (
-        <div className="admin-overlay fixed inset-0 z-[100] flex items-center justify-center p-4"
-          style={{ background: 'rgba(0,0,0,0.5)' }}
-          onClick={(e) => { if (e.target === e.currentTarget) setShowDialog(false); }}>
-          <div className="admin-dialog-panel rounded-2xl w-full max-w-lg p-6"
-            style={{ background: 'var(--color-bg)', border: '1px solid var(--glass-border)' }}>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
-                {editingId ? '编辑图片' : '添加图片'}
-              </h2>
-              <button onClick={() => setShowDialog(false)}
-                className="p-1.5 rounded-lg btn-glass" style={{ color: 'var(--text-info)' }}>
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+        <Dialog title={editingId ? '编辑图片' : '添加图片'} onClose={() => setShowDialog(false)} layer={100}
+          className="admin-dialog-panel rounded-2xl w-full max-w-lg p-6"
+          style={{ border: '1px solid var(--glass-border)' }}>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
+              {editingId ? '编辑图片' : '添加图片'}
+            </h2>
+            <button aria-label="关闭图片编辑" onClick={() => setShowDialog(false)}
+              className="p-1.5 rounded-lg btn-glass" style={{ color: 'var(--text-info)' }}>
+              <X className="w-5 h-5" />
+            </button>
+          </div>
 
-            <div className="space-y-4">
-              <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-info)' }}>图片 URL</label>
-                <div className="flex gap-2">
-                  <input type="text" value={formUrl} onChange={e => setFormUrl(e.target.value)}
-                    className="flex-1 px-3 py-2 rounded-xl text-sm outline-none"
-                    style={inputStyle}
-                    placeholder="输入图片地址" />
-                  <button ref={mediaBtnRef} onClick={() => setShowMediaPicker(true)}
-                    className="px-3 py-2 rounded-xl btn-glass text-sm whitespace-nowrap"
-                    style={{ color: 'var(--text-secondary)' }}>
-                    媒体库
-                  </button>
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-info)' }}>标题</label>
-                <input type="text" value={formTitle} onChange={e => setFormTitle(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl text-sm outline-none"
+          <div className="space-y-4">
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-info)' }}>图片 URL</label>
+              <div className="flex gap-2">
+                <Input type="text" value={formUrl} onChange={e => setFormUrl(e.target.value)}
+                  className="flex-1 px-3 py-2 rounded-xl text-sm outline-none"
                   style={inputStyle}
-                  placeholder="图片标题（可选）" />
-              </div>
-              <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-info)' }}>描述</label>
-                <textarea value={formDescription} onChange={e => setFormDescription(e.target.value)} rows={3}
-                  className="w-full px-3 py-2 rounded-xl text-sm outline-none resize-none"
-                  style={inputStyle}
-                  placeholder="图片描述（可选）" />
+                  placeholder="输入图片地址" />
+                <button ref={mediaBtnRef} onClick={() => setShowMediaPicker(true)}
+                  className="px-3 py-2 rounded-xl btn-glass text-sm whitespace-nowrap"
+                  style={{ color: 'var(--text-secondary)' }}>
+                  媒体库
+                </button>
               </div>
             </div>
-
-            <div className="flex justify-end gap-2 mt-6">
-              <button onClick={() => setShowDialog(false)}
-                className="px-4 py-2 rounded-xl text-sm btn-glass" style={{ color: 'var(--text-secondary)' }}>
-                取消
-              </button>
-              <button onClick={handleSave}
-                className="px-4 py-2 rounded-xl text-sm font-medium text-white transition-all hover:opacity-90 disabled:opacity-40"
-                style={{ background: 'var(--primary)', boxShadow: '0 0 12px var(--primary-glow)' }}
-                disabled={!formUrl}>
-                {editingId ? '保存' : '添加'}
-              </button>
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-info)' }}>标题</label>
+              <Input type="text" value={formTitle} onChange={e => setFormTitle(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl text-sm outline-none"
+                style={inputStyle}
+                placeholder="图片标题（可选）" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-info)' }}>描述</label>
+              <Textarea value={formDescription} onChange={e => setFormDescription(e.target.value)} rows={3}
+                className="w-full px-3 py-2 rounded-xl text-sm outline-none resize-none"
+                style={inputStyle}
+                placeholder="图片描述（可选）" />
             </div>
           </div>
-        </div>
+
+          <div className="flex justify-end gap-2 mt-6">
+            <button onClick={() => setShowDialog(false)}
+              className="px-4 py-2 rounded-xl text-sm btn-glass" style={{ color: 'var(--text-secondary)' }}>
+              取消
+            </button>
+            <button onClick={handleSave}
+              className="px-4 py-2 rounded-xl text-sm font-medium text-white transition-all hover:opacity-90 disabled:opacity-40"
+              style={{ background: 'var(--primary)', boxShadow: '0 0 12px var(--primary-glow)' }}
+              disabled={!formUrl}>
+              {editingId ? '保存' : '添加'}
+            </button>
+          </div>
+        </Dialog>
       )}
 
       {/* 媒体库选择器 */}

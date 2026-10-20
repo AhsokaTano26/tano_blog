@@ -1,5 +1,6 @@
 'use client';
 
+import { Disclosure } from '@/components/ui/Disclosure';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import type { HealthAlert, StorageHealth, SystemMetrics } from '@/lib/system-health-types';
@@ -154,15 +155,15 @@ export default function SystemHealth() {
           <dd><output aria-label={metric.label}>{metric.value}</output></dd>
         </div>)}
       </dl>
-      <details className="health-details">
-        <summary>检查与备份详情</summary>
+      <Disclosure className="health-details" title={<>检查与备份详情</>}>
+
         <p className="mb-2">{metrics.requests.window_seconds ? `最近 ${Math.round(metrics.requests.window_seconds / 60)} 分钟` : '当前统计窗口'} · {metrics.requests.requests.toLocaleString('zh-CN')} 次请求 · P95 为响应时间区间估计。页面可见时每 60 秒刷新。</p>
       <div className="flex flex-wrap gap-x-5 gap-y-1 mb-3 text-xs" style={{ color: 'var(--text-secondary)' }}>
         <span>最近完整备份：{metrics.backup.last_success ? dateLabel(metrics.backup.last_success) : '暂无成功记录'}{metrics.backup.success_source === 'archive_mtime' && '（按已有归档时间）'}</span>
         <span>{metrics.backup.running ? '备份或维护任务正在运行' : `最近任务结果：${lastResult}`}</span>
         <a href="/admin/backup" className="underline" style={{ color: 'var(--primary)' }}>备份管理</a>
       </div>
-      </details>
+      </Disclosure>
       {metrics.alerts.length === 0 ? <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
         {idle ? '当前无流量，暂不评估请求质量；没有其他触发的告警。' : '当前没有触发告警。'}
       </p> : <ul aria-label="系统告警" className="space-y-2">

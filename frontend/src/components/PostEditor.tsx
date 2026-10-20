@@ -1,4 +1,12 @@
 'use client';
+import { localDateTimeTimestamp } from '@/lib/date-value';
+
+import { Tooltip } from '@/components/ui/Tooltip';
+import { Input } from '@/components/ui/Input';
+import { Textarea } from '@/components/ui/Textarea';
+import { Select } from '@/components/ui/Select';
+import { DateTimePicker } from '@/components/ui/DateTimePicker';
+import { FilePicker } from '@/components/ui/FilePicker';
 
 import { useState, useEffect, useLayoutEffect, useRef, useMemo, useDeferredValue } from 'react';
 import dynamic from 'next/dynamic';
@@ -57,7 +65,7 @@ type SavedPostResponse = { post?: Partial<Post> };
 
 /* ── Full-page post editor ── */
 export default function PostEditor({ post, onClose }: { post: Partial<Post> | null; onClose: () => void }) {
-  const { confirm } = useConfirm();
+  const { confirm, alert } = useConfirm();
   const mountedRef = useRef(false);
   useLayoutEffect(() => {
     mountedRef.current = true;
@@ -318,8 +326,7 @@ export default function PostEditor({ post, onClose }: { post: Partial<Post> | nu
       if (savedPostIdRef.current && baselineVersion.current) data.expected_updated_at = baselineVersion.current;
       data.author_name = authorName;
       if (savedPostIdRef.current && createdAt && createdAt !== serverMetadataRef.current.createdAt) {
-        const timestamp = new Date(createdAt);
-        if (!Number.isNaN(timestamp.getTime())) data.created_at = timestamp.toISOString();
+        data.created_at = localDateTimeTimestamp(createdAt, '文章创建时间');
       }
       if (password) {
         data.password = password;
@@ -679,9 +686,9 @@ export default function PostEditor({ post, onClose }: { post: Partial<Post> | nu
       <header className="editor-header"
         style={{ borderBottom: '1px solid var(--glass-border)' }}>
         <div className="flex items-center gap-3">
-          <button onClick={() => { void handleClose(); }} className="p-2 rounded-xl transition-colors btn-glass" style={{ color: 'var(--text-secondary)' }} title="返回列表">
+          <Tooltip content="返回列表"><button onClick={() => { void handleClose(); }} className="p-2 rounded-xl transition-colors btn-glass" style={{ color: 'var(--text-secondary)' }} data-tooltip="返回列表" aria-label="返回列表">
             <ArrowLeft className="w-5 h-5" />
-          </button>
+          </button></Tooltip>
           <div className="h-5 w-px" style={{ background: 'var(--glass-border)' }} />
           <span className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
             {savedPostId ? '编辑文章' : '新建文章'}
@@ -689,45 +696,45 @@ export default function PostEditor({ post, onClose }: { post: Partial<Post> | nu
         </div>
         <div className="editor-header-actions flex items-center gap-2">
           {savedPostId && status === 'draft' && (
-            <button onClick={async () => {
+            <Tooltip content="复制预览链接"><button onClick={async () => {
               try {
                 const res = await api.admin.posts.generatePreviewToken(savedPostId);
                 const url = `${window.location.origin}/posts/preview?token=${res.token}`;
                 await navigator.clipboard.writeText(url);
-                alert('预览链接已复制到剪贴板');
-              } catch { alert('生成失败'); }
+                await alert('预览链接已复制到剪贴板');
+              } catch { await alert('生成失败'); }
             }}
               className="p-2 rounded-xl transition-colors btn-glass"
               style={{ color: 'var(--text-info)' }}
-              title="复制预览链接">
+              data-tooltip="复制预览链接" aria-label="复制预览链接">
               <ExternalLink className="w-4 h-4" />
-            </button>
+            </button></Tooltip>
           )}
           <div className="editor-view-switch" role="group" aria-label="编辑器视图">
             {([['edit', '编辑'], ['split', '分屏'], ['preview', '预览']] as const).filter(([mode]) => !compact || mode !== 'split').map(([mode, label]) =>
               <button key={mode} type="button" aria-pressed={viewMode === mode} onClick={() => setViewMode(mode)}>{label}</button>)}
           </div>
-          <button onClick={() => setShowDetailDialog(true)}
+          <Tooltip content="文章详情与设置"><button onClick={() => setShowDetailDialog(true)}
             className="px-3 py-2 rounded-xl transition-colors btn-glass text-xs font-medium"
             style={{ color: 'var(--text-secondary)' }}
-            title="文章详情与设置">
+            data-tooltip="文章详情与设置" aria-label="文章详情与设置">
             <Settings className="w-3.5 h-3.5 inline mr-1" />详情
-          </button>
-          <button onClick={() => setShowMarkdownReference(value => !value)}
+          </button></Tooltip>
+          <Tooltip content="Markdown 语法参考"><button onClick={() => setShowMarkdownReference(value => !value)}
             className="editor-secondary flex items-center gap-1 px-3 py-2 rounded-xl text-sm transition-colors btn-glass"
             style={{ color: showMarkdownReference ? 'var(--primary)' : 'var(--text-secondary)' }}
-            title="Markdown 语法参考">
+            data-tooltip="Markdown 语法参考" aria-label="Markdown 语法参考">
             <FileText className="w-3.5 h-3.5" />语法参考
-          </button>
-          <button onClick={() => setShowRightPanel(!showRightPanel)}
+          </button></Tooltip>
+          <Tooltip content="切换侧边栏"><button onClick={() => setShowRightPanel(!showRightPanel)}
             className="editor-secondary p-2 rounded-xl transition-colors btn-glass"
             aria-expanded={showRightPanel} aria-label="切换侧边栏"
             style={{ color: showRightPanel ? 'var(--primary)' : 'var(--text-info)' }}
-            title="切换侧边栏">
+            data-tooltip="切换侧边栏">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7" />
             </svg>
-          </button>
+          </button></Tooltip>
           <button onClick={() => handleSave()} disabled={saving || mediaUploading || Boolean(conflict)}
             className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm btn-glass disabled:opacity-50 transition-all"
             style={{ color: 'var(--text-primary)' }}>
@@ -765,12 +772,11 @@ export default function PostEditor({ post, onClose }: { post: Partial<Post> | nu
         <div className="mx-4 mt-3 px-4 py-2.5 rounded-xl text-sm flex-shrink-0 flex flex-wrap items-center justify-between gap-2 glass-card pe-slide-down"
           style={{ color: 'var(--text-primary)', borderLeft: '3px solid var(--primary)' }}>
           <span>检测到未保存的草稿，是否恢复？</span>
-          <select aria-label="选择恢复草稿" value={persistence.selectedKey} onChange={event => persistence.setSelectedKey(event.target.value)}
-            className="rounded-lg px-2 py-1 min-w-0 max-w-full" style={{ background: 'var(--color-bg)', color: 'var(--text-primary)' }}>
-            {persistence.recoverable.map(item => <option key={item.key} value={item.key}>
-              {item.draft.title || item.draft.content.slice(0, 24) || '未命名草稿'} · {item.savedAt ? new Date(item.savedAt).toLocaleString('zh-CN') : '旧版草稿'}
-            </option>)}
-          </select>
+          <Select aria-label="选择恢复草稿" value={persistence.selectedKey} onChange={persistence.setSelectedKey}
+            options={persistence.recoverable.map(item => ({ value: item.key,
+              label: `${item.draft.title || item.draft.content.slice(0, 24) || '未命名草稿'} · ${item.savedAt ? new Date(item.savedAt).toLocaleString('zh-CN') : '旧版草稿'}`,
+            }))}
+            className="rounded-lg px-2 py-1 min-w-0 max-w-full" style={{ background: 'var(--color-bg)', color: 'var(--text-primary)' }} />
           <div className="flex gap-2">
             <button onClick={restoreDraft} className="px-3 py-1 rounded-lg text-xs font-medium text-white" style={{ background: 'var(--primary)' }}>恢复</button>
             <button onClick={persistence.discard} className="px-3 py-1 rounded-lg text-xs btn-glass" style={{ color: 'var(--text-secondary)' }}>丢弃</button>
@@ -813,7 +819,7 @@ export default function PostEditor({ post, onClose }: { post: Partial<Post> | nu
           <div style={{ display: viewMode === 'preview' ? 'none' : undefined, flex: viewMode === 'preview' ? '0 1 0%' : (viewMode === 'split' ? '0 0 50%' : '1 1 0%'), pointerEvents: viewMode === 'preview' ? 'none' : undefined }} className="flex flex-col overflow-hidden transition-all duration-300 ease-in-out">
             {/* Fixed header: title, slug, toolbar */}
             <div className="max-w-5xl mx-auto w-full pt-4 sm:pt-6 px-4 sm:px-6 flex-shrink-0">
-              <input
+              <Input
                 type="text"
                 aria-label="文章标题" placeholder="请输入标题"
                 value={title}
@@ -821,7 +827,7 @@ export default function PostEditor({ post, onClose }: { post: Partial<Post> | nu
                 className="w-full text-2xl sm:text-3xl font-bold outline-none border-0 bg-transparent mb-2"
                 style={{ color: 'var(--text-primary)' }}
               />
-              <label className="editor-field-label mb-4"><span>/posts/</span><input
+              <label className="editor-field-label mb-4"><span>/posts/</span><Input
                 type="text"
                 aria-label="文章链接标识" placeholder="url-slug"
                 value={slug}
@@ -840,20 +846,21 @@ export default function PostEditor({ post, onClose }: { post: Partial<Post> | nu
                   if (!showMoreTools && !commonTools.includes(btn.title!)) return null;
                   const Icon = btn.icon!;
                   return (
-                    <button key={i} type="button" onMouseDown={e => e.preventDefault()} onClick={(e) => { btn.action(); mediaPickerBtnRef.current = e.currentTarget; }} title={btn.title} aria-label={btn.title}
+                    <Tooltip content={btn.title} key={i}><button type="button" onMouseDown={e => e.preventDefault()} onClick={(e) => { btn.action(); mediaPickerBtnRef.current = e.currentTarget; }} data-tooltip={btn.title} aria-label={btn.title}
                       aria-pressed={'alignment' in btn ? textAlignment === btn.alignment : undefined}
                       className="transition-colors duration-150" style={{ color: 'alignment' in btn && textAlignment === btn.alignment ? 'var(--primary)' : 'var(--text-secondary)' }}>
                       <Icon className="w-4 h-4" />
-                    </button>
+                    </button></Tooltip>
                   );
                 })}
-                <button type="button" aria-expanded={showMoreTools} aria-label={showMoreTools ? '收起更多工具' : '更多格式工具'} onClick={() => setShowMoreTools(value => !value)} title="公式、表格、提示块与更多格式">
+                <Tooltip content="公式、表格、提示块与更多格式"><button type="button" aria-expanded={showMoreTools} aria-label={showMoreTools ? '收起更多工具' : '更多格式工具'} onClick={() => setShowMoreTools(value => !value)} data-tooltip="公式、表格、提示块与更多格式">
                   <MoreHorizontal size={16} /><span className="text-xs">{showMoreTools ? '收起' : '更多'}</span>
-                </button>
+                </button></Tooltip>
               </div>
 
               {/* Media picker & upload for toolbar */}
-              <input ref={mediaFileRef} type="file" multiple accept={mediaPickerType ? `${mediaPickerType}/*` : undefined}
+              <FilePicker ref={mediaFileRef} multiple accept={mediaPickerType ? `${mediaPickerType}/*` : undefined}
+                label="上传媒体文件"
                 onChange={e => mediaPickerType && handleMediaUpload(e, mediaPickerType)}
                 style={{ display: 'none' }} />
               {mediaPickerType && (
@@ -872,7 +879,7 @@ export default function PostEditor({ post, onClose }: { post: Partial<Post> | nu
               onDragOver={handleEditorDragOver}
               onDragLeave={handleEditorDragLeave}
               onDrop={handleEditorDrop}>
-              <textarea
+              <Textarea
                 ref={textareaRef}
                 aria-label="Markdown 正文"
                 placeholder="输入 Markdown 内容，可直接粘贴截图或拖入多张图片自动上传..."
@@ -973,12 +980,11 @@ export default function PostEditor({ post, onClose }: { post: Partial<Post> | nu
                   {serverMetadata.createdAt && (
                     <div>
                       <p className="text-xs font-medium mb-1" style={{ color: 'var(--text-info)' }}>创建时间</p>
-                      <input
-                        type="datetime-local"
+                      <DateTimePicker aria-label="文章创建时间"
                         value={createdAt}
-                        onChange={e => setCreatedAt(e.target.value)}
+                        onChange={setCreatedAt}
                         className="w-full px-2.5 py-1.5 rounded-xl text-sm outline-none"
-                        style={{ background: 'var(--glass-bg)', color: 'var(--text-primary)', border: '1px solid var(--glass-border)', colorScheme: 'dark' }}
+                        style={{ background: 'var(--glass-bg)', color: 'var(--text-primary)', border: '1px solid var(--glass-border)' }}
                       />
                     </div>
                   )}

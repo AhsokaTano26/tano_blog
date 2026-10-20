@@ -24,7 +24,7 @@ async function mount(t, request) {
 }
 
 async function changeDates(start, end) {
-  const dates = document.querySelectorAll('input[type="date"]');
+  const dates = document.querySelectorAll('input[aria-label="开始日期"], input[aria-label="结束日期"]');
   await React.act(async () => { input(dates[0], start); input(dates[1], end); });
 }
 

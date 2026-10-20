@@ -1,5 +1,6 @@
 'use client';
 
+import { Tooltip } from '@/components/ui/Tooltip';
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '@/lib/api';
 import { Bell, CheckCheck, MessageSquare, Link as LinkIcon, ExternalLink, LogIn, KeyRound } from 'lucide-react';
@@ -108,18 +109,18 @@ export default function NotificationsPage() {
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   {!n.is_read && (
-                    <button onClick={(e) => { e.stopPropagation(); handleMarkRead(n.id); }}
+                    <Tooltip content="标记已读"><button onClick={(e) => { e.stopPropagation(); handleMarkRead(n.id); }}
                       className="p-2 hover:bg-white/10 rounded-lg transition-colors btn-press"
-                      title="标记已读">
+                      data-tooltip="标记已读" aria-label="标记已读">
                       <CheckCheck className="w-4 h-4 text-gray-400" />
-                    </button>
+                    </button></Tooltip>
                   )}
                   {n.link && (
-                    <a href={n.link} onClick={(e) => e.stopPropagation()}
+                    <Tooltip content="查看详情"><a href={n.link} onClick={(e) => e.stopPropagation()}
                       className="p-2 hover:bg-white/10 rounded-lg transition-colors btn-press"
-                      title="查看详情">
+                      data-tooltip="查看详情" aria-label="查看详情">
                       <ExternalLink className="w-4 h-4 text-gray-400" />
-                    </a>
+                    </a></Tooltip>
                   )}
                 </div>
               </div>

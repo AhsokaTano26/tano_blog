@@ -1,5 +1,9 @@
 'use client';
 
+import { Tooltip } from '@/components/ui/Tooltip';
+import { Dialog } from '@/components/ui/Dialog';
+import { Input } from '@/components/ui/Input';
+import { Textarea } from '@/components/ui/Textarea';
 import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { api } from '@/lib/api';
 import type { AdminCommentItem, CommentRevision, IpBanItem } from '@/lib/admin-types';
@@ -67,126 +71,124 @@ function CommentDetail({ comment, onClose, onReload }: { comment: AdminCommentIt
   }
 
   return (
-    <div className="admin-overlay fixed inset-0 z-[200] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.5)' }}
-      onClick={(e) => { if (e.target === e.currentTarget && !saving) onClose(); }}>
-      <div role="dialog" aria-modal="true" aria-label="评论详情" className="admin-dialog-panel w-full max-w-lg max-h-[80vh] overflow-y-auto rounded-2xl shadow-2xl p-6"
-        style={{ background: 'var(--card-bg)', border: '1px solid var(--glass-border)' }}>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-bold flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
-            <Info className="w-5 h-5" />
-            评论详情
-          </h2>
-          <button aria-label="关闭评论详情" disabled={saving} onClick={onClose} className="p-1 rounded-lg btn-glass transition-colors" style={{ color: 'var(--text-secondary)' }}>
-            <X className="w-5 h-5" />
+    <Dialog title="评论详情" onClose={() => { if (!saving) onClose(); }} layer={200}
+      className="admin-dialog-panel w-full max-w-lg max-h-[80vh] overflow-y-auto rounded-2xl shadow-2xl p-6"
+      style={{ border: '1px solid var(--glass-border)' }}>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-lg font-bold flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
+          <Info className="w-5 h-5" />
+          评论详情
+        </h2>
+        <button aria-label="关闭评论详情" disabled={saving} onClick={onClose} className="p-1 rounded-lg btn-glass transition-colors" style={{ color: 'var(--text-secondary)' }}>
+          <X className="w-5 h-5" />
+        </button>
+      </div>
+
+      <RequestFeedback error={mutation.error} />
+      <RequestFeedback error={revisionFeedback.error} onRetry={handleLoadRevisions} pending={loadingRevisions} />
+      <div className="space-y-3">
+        <div className="flex items-center gap-3 pb-3" style={{ borderBottom: '1px solid var(--glass-border)' }}>
+          <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: 'var(--primary-sub)' }}>
+            <User className="w-5 h-5" style={{ color: 'var(--primary)' }} />
+          </div>
+          <div>
+            <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{comment.nickname}</div>
+            <div className="text-xs" style={{ color: 'var(--text-info)' }}>
+              {new Date(comment.created_at).toLocaleString('zh-CN')}
+            </div>
+          </div>
+        </div>
+
+        {isEditing ? (
+          <div>
+            <Textarea aria-label="评论内容" disabled={saving} value={editContent} onChange={e => setEditContent(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg text-sm resize-y min-h-[100px]"
+              style={{ background: 'var(--card-bg)', color: 'var(--text-primary)', border: '1px solid var(--glass-border)' }} />
+          </div>
+        ) : (
+          <div>
+            <p className="text-sm whitespace-pre-wrap" style={{ color: 'var(--text-secondary)' }}>{savedContent}</p>
+          </div>
+        )}
+
+        {/* Edited indicator */}
+        {(comment.edited_count || 0) > 0 && (
+          <div className="text-xs" style={{ color: 'var(--text-info)' }}>
+            已编辑 {comment.edited_count} 次{comment.edited_at ? ' · ' + new Date(comment.edited_at).toLocaleString('zh-CN') : ''}
+          </div>
+        )}
+
+        {/* Action buttons */}
+        <div className="flex items-center gap-2 pt-1">
+          <button disabled={saving} onClick={() => { mutation.clearError(); setIsEditing(!isEditing); setEditContent(savedContent); }}
+            className="btn-glass px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer"
+            style={{ color: 'var(--primary)' }}>
+            {isEditing ? '取消' : '编辑'}
+          </button>
+          {isEditing && (
+            <button onClick={handleSave} disabled={saving}
+              className="btn-glass px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer"
+              style={{ color: 'hsl(142, 60%, 50%)' }}>
+              {saving ? '保存中...' : '保存'}
+            </button>
+          )}
+          <button disabled={loadingRevisions} onClick={handleLoadRevisions}
+            className="btn-glass px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer"
+            style={{ color: 'var(--primary)' }}>
+            历史版本
           </button>
         </div>
 
-        <RequestFeedback error={mutation.error} />
-        <RequestFeedback error={revisionFeedback.error} onRetry={handleLoadRevisions} pending={loadingRevisions} />
-        <div className="space-y-3">
-          <div className="flex items-center gap-3 pb-3" style={{ borderBottom: '1px solid var(--glass-border)' }}>
-            <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: 'var(--primary-sub)' }}>
-              <User className="w-5 h-5" style={{ color: 'var(--primary)' }} />
-            </div>
-            <div>
-              <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{comment.nickname}</div>
-              <div className="text-xs" style={{ color: 'var(--text-info)' }}>
-                {new Date(comment.created_at).toLocaleString('zh-CN')}
-              </div>
-            </div>
-          </div>
-
-          {isEditing ? (
-            <div>
-              <textarea aria-label="评论内容" disabled={saving} value={editContent} onChange={e => setEditContent(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg text-sm resize-y min-h-[100px]"
-                style={{ background: 'var(--card-bg)', color: 'var(--text-primary)', border: '1px solid var(--glass-border)' }} />
-            </div>
-          ) : (
-            <div>
-              <p className="text-sm whitespace-pre-wrap" style={{ color: 'var(--text-secondary)' }}>{savedContent}</p>
-            </div>
-          )}
-
-          {/* Edited indicator */}
-          {(comment.edited_count || 0) > 0 && (
-            <div className="text-xs" style={{ color: 'var(--text-info)' }}>
-              已编辑 {comment.edited_count} 次{comment.edited_at ? ' · ' + new Date(comment.edited_at).toLocaleString('zh-CN') : ''}
-            </div>
-          )}
-
-          {/* Action buttons */}
-          <div className="flex items-center gap-2 pt-1">
-            <button disabled={saving} onClick={() => { mutation.clearError(); setIsEditing(!isEditing); setEditContent(savedContent); }}
-              className="btn-glass px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer"
-              style={{ color: 'var(--primary)' }}>
-              {isEditing ? '取消' : '编辑'}
-            </button>
-            {isEditing && (
-              <button onClick={handleSave} disabled={saving}
-                className="btn-glass px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer"
-                style={{ color: 'hsl(142, 60%, 50%)' }}>
-                {saving ? '保存中...' : '保存'}
-              </button>
-            )}
-            <button disabled={loadingRevisions} onClick={handleLoadRevisions}
-              className="btn-glass px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer"
-              style={{ color: 'var(--primary)' }}>
-              历史版本
-            </button>
-          </div>
-
-          {/* Revisions panel */}
-          {showRevisions && (
-            <div className="pt-2" style={{ borderTop: '1px solid var(--glass-border)' }}>
-              <h3 className="text-sm font-medium mb-2" style={{ color: 'var(--text-primary)' }}>历史版本</h3>
-              {loadingRevisions ? (
-                <Loading />
-              ) : revisions.length === 0 ? (
-                <p className="text-xs" style={{ color: 'var(--text-info)' }}>暂无历史版本</p>
-              ) : (
-                <div className="space-y-2 max-h-48 overflow-y-auto">
-                  {revisions.map((rev, idx) => (
-                    <div key={rev.id} className="p-2 rounded-lg text-xs" style={{ background: 'var(--card-bg)', border: '1px solid var(--glass-border)' }}>
-                      <div className="flex items-center justify-between mb-1">
-                        <span style={{ color: 'var(--text-info)' }}>版本 {revisions.length - idx}</span>
-                        <span style={{ color: 'var(--text-info)' }}>{new Date(rev.edited_at).toLocaleString('zh-CN')}</span>
-                      </div>
-                      <p className="whitespace-pre-wrap" style={{ color: 'var(--text-secondary)' }}>{rev.content}</p>
+        {/* Revisions panel */}
+        {showRevisions && (
+          <div className="pt-2" style={{ borderTop: '1px solid var(--glass-border)' }}>
+            <h3 className="text-sm font-medium mb-2" style={{ color: 'var(--text-primary)' }}>历史版本</h3>
+            {loadingRevisions ? (
+              <Loading />
+            ) : revisions.length === 0 ? (
+              <p className="text-xs" style={{ color: 'var(--text-info)' }}>暂无历史版本</p>
+            ) : (
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {revisions.map((rev, idx) => (
+                  <div key={rev.id} className="p-2 rounded-lg text-xs" style={{ background: 'var(--card-bg)', border: '1px solid var(--glass-border)' }}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span style={{ color: 'var(--text-info)' }}>版本 {revisions.length - idx}</span>
+                      <span style={{ color: 'var(--text-info)' }}>{new Date(rev.edited_at).toLocaleString('zh-CN')}</span>
                     </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          <div className="grid grid-cols-2 gap-3 pt-3" style={{ borderTop: '1px solid var(--glass-border)' }}>
-            <DetailField label="IP 地址" value={comment.ip_address || '-'} />
-            <DetailField label="浏览器" value={browser} />
-            <DetailField label="操作系统" value={os} />
-            <DetailField label="设备类型" value={device === 'mobile' ? '移动端' : device === 'tablet' ? '平板' : '桌面端'} />
+                    <p className="whitespace-pre-wrap" style={{ color: 'var(--text-secondary)' }}>{rev.content}</p>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
+        )}
 
-          {comment.user_agent && (
-            <div className="pt-2">
-              <DetailField label="User-Agent" value={comment.user_agent} mono />
-            </div>
-          )}
-
-          {comment.country && (
-            <DetailField label="地理位置" value={[comment.country, comment.city].filter(Boolean).join(' - ') || '-'} />
-          )}
-
-          {comment.email && (
-            <DetailField label="邮箱" value={comment.email} />
-          )}
-
-          {comment.website && (
-            <DetailField label="网站" value={comment.website} />
-          )}
+        <div className="grid grid-cols-2 gap-3 pt-3" style={{ borderTop: '1px solid var(--glass-border)' }}>
+          <DetailField label="IP 地址" value={comment.ip_address || '-'} />
+          <DetailField label="浏览器" value={browser} />
+          <DetailField label="操作系统" value={os} />
+          <DetailField label="设备类型" value={device === 'mobile' ? '移动端' : device === 'tablet' ? '平板' : '桌面端'} />
         </div>
+
+        {comment.user_agent && (
+          <div className="pt-2">
+            <DetailField label="User-Agent" value={comment.user_agent} mono />
+          </div>
+        )}
+
+        {comment.country && (
+          <DetailField label="地理位置" value={[comment.country, comment.city].filter(Boolean).join(' - ') || '-'} />
+        )}
+
+        {comment.email && (
+          <DetailField label="邮箱" value={comment.email} />
+        )}
+
+        {comment.website && (
+          <DetailField label="网站" value={comment.website} />
+        )}
       </div>
-    </div>
+    </Dialog>
   );
 }
 
@@ -407,13 +409,13 @@ export default function AdminComments() {
             <div className="flex items-end gap-3 mb-4">
               <div className="flex-1">
                 <label className="text-xs mb-1 block" style={{ color: 'var(--text-info)' }}>邮箱</label>
-                <input type="text" aria-label="搜索评论者邮箱" value={commenterEmail} onChange={e => setCommenterEmail(e.target.value)}
+                <Input type="text" aria-label="搜索评论者邮箱" value={commenterEmail} onChange={e => setCommenterEmail(e.target.value)}
                   placeholder="输入邮箱搜索" className="w-full px-3 py-2 rounded-lg text-sm"
                   style={{ background: 'var(--card-bg)', color: 'var(--text-primary)', border: '1px solid var(--glass-border)' }} />
               </div>
               <div className="flex-1">
                 <label className="text-xs mb-1 block" style={{ color: 'var(--text-info)' }}>IP 地址</label>
-                <input type="text" aria-label="搜索评论者 IP" value={commenterIP} onChange={e => setCommenterIP(e.target.value)}
+                <Input type="text" aria-label="搜索评论者 IP" value={commenterIP} onChange={e => setCommenterIP(e.target.value)}
                   placeholder="输入IP地址搜索" className="w-full px-3 py-2 rounded-lg text-sm"
                   style={{ background: 'var(--card-bg)', color: 'var(--text-primary)', border: '1px solid var(--glass-border)' }} />
               </div>
@@ -489,7 +491,7 @@ export default function AdminComments() {
                 <div className="flex items-center gap-3">
                   <div className="flex items-center gap-2">
                     <span className="text-xs" style={{ color: 'var(--text-info)' }}>每页</span>
-                    <Select value={String(pageSize)} onChange={v => { setPageSize(Number(v)); setCommenterPage(1); }}
+                    <Select aria-label="每页条数" value={String(pageSize)} onChange={v => { setPageSize(Number(v)); setCommenterPage(1); }}
                       options={[10, 20, 30, 50, 100].map(v => ({ value: String(v), label: String(v) }))} />
                   </div>
                   <div className="flex gap-1">
@@ -611,26 +613,26 @@ export default function AdminComments() {
 
                   {/* Actions */}
                   <div className="flex items-center gap-1 flex-shrink-0">
-                    <button onClick={() => setDetailComment(item)}
-                      className="btn-glass p-1.5 rounded transition-colors" title="详情" aria-label="查看详情">
+                    <Tooltip content="详情"><button onClick={() => setDetailComment(item)}
+                      className="btn-glass p-1.5 rounded transition-colors" data-tooltip="详情" aria-label="查看详情">
                       <Info className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
-                    </button>
+                    </button></Tooltip>
                     {item.status !== 'approved' && (
-                      <button disabled={mutation.pending} onClick={() => handleStatus(item.id, 'approved')}
-                        className="btn-glass p-1.5 rounded transition-colors" title="批准" aria-label="批准评论">
+                      <Tooltip content="批准"><button disabled={mutation.pending} onClick={() => handleStatus(item.id, 'approved')}
+                        className="btn-glass p-1.5 rounded transition-colors" data-tooltip="批准" aria-label="批准评论">
                         <Check className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
-                      </button>
+                      </button></Tooltip>
                     )}
                     {item.status !== 'rejected' && (
-                      <button disabled={mutation.pending} onClick={() => handleStatus(item.id, 'rejected')}
-                        className="btn-glass p-1.5 rounded transition-colors" title="拒绝" aria-label="拒绝评论">
+                      <Tooltip content="拒绝"><button disabled={mutation.pending} onClick={() => handleStatus(item.id, 'rejected')}
+                        className="btn-glass p-1.5 rounded transition-colors" data-tooltip="拒绝" aria-label="拒绝评论">
                         <X className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
-                      </button>
+                      </button></Tooltip>
                     )}
-                    <button disabled={mutation.pending} onClick={() => handleDelete(item.id)}
-                      className="btn-glass p-1.5 rounded transition-colors" title="删除" aria-label="删除评论">
+                    <Tooltip content="删除"><button disabled={mutation.pending} onClick={() => handleDelete(item.id)}
+                      className="btn-glass p-1.5 rounded transition-colors" data-tooltip="删除" aria-label="删除评论">
                       <Trash2 className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
-                    </button>
+                    </button></Tooltip>
                   </div>
                 </div>
               </div>
@@ -645,7 +647,7 @@ export default function AdminComments() {
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2">
               <span className="text-xs" style={{ color: 'var(--text-info)' }}>每页</span>
-              <Select value={String(pageSize)} onChange={v => { setPageSize(Number(v)); setPage(1); }}
+              <Select aria-label="每页条数" value={String(pageSize)} onChange={v => { setPageSize(Number(v)); setPage(1); }}
                 options={[10, 20, 30, 50, 100].map(v => ({ value: String(v), label: String(v) }))} />
             </div>
             <div className="flex gap-1">

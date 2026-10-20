@@ -7,6 +7,7 @@ const test = (name, fn) => nodeTest(name, { timeout: 5000 }, fn);
 const assert = require('node:assert/strict');
 const React = req('react');
 const { act } = React;
+const { key, openSelect, selectValue } = require('./ui-controls.js');
 const { createRoot } = req('react-dom/client');
 const Module = require('node:module');
 const originalLoad = Module._load;
@@ -50,11 +51,9 @@ test('regression: clearing article settings sends explicit empty fields', async 
     categories: [{ id: 'c', name: 'CategoryOne' }], seriesList: [{ id: 's', name: 'SeriesOne' }], tags: [{ id: 't', name: 'TagOne' }],
     onSave: async data => { payload = data; }, onClose() {},
   });
-  for (const select of document.querySelectorAll('select')) {
-    await act(async () => { select.value = ''; select.dispatchEvent(new Event('change', { bubbles: true })); });
-  }
+  for (const select of document.querySelectorAll('[role="combobox"]')) await selectValue(select, '');
   await clickText('TagOne');
-  await act(async () => { input(document.querySelector('input[type="datetime-local"]'), ''); input(document.querySelector('input[placeholder="https://..."]'), ''); });
+  await act(async () => { input(document.querySelector('input[aria-label="定时发布"]'), ''); input(document.querySelector('input[placeholder="https://..."]'), ''); });
   await clickText('保存设置');
   for (const key of ['category_id', 'series_id', 'tag_ids', 'cover_image', 'scheduled_at']) assert.deepEqual(payload[key], key === 'tag_ids' ? [] : key === 'scheduled_at' ? null : '', key);
 
@@ -84,7 +83,7 @@ test('regression: series checkbox selects its article exactly once', async t => 
   let submitted;
   t.mock.method(api.admin.series, 'setPosts', async (_id, ids) => { submitted = ids; });
   await mount(t, req('./src/app/admin/series/page.tsx').default);
-  await act(async () => document.querySelector('button[title="设置文章"]').click());
+  await act(async () => document.querySelector('button[data-tooltip="设置文章"]').click());
   await act(async () => document.querySelector('input[type="checkbox"]').click());
   await clickText('保存');
   assert.deepEqual(submitted, ['p']);
@@ -95,8 +94,8 @@ test('regression: editor preserves a manual excerpt when saving the article', as
   let submitted;
   t.mock.method(api.admin.posts, 'update', async (_id, data) => { submitted = data; });
   await mount(t, req('./src/components/PostEditor.tsx').default, { post: { id: 'p', title: 'Post', slug: 'post', content: 'Original article body', status: 'draft' }, onClose() {} });
-  const settings = document.querySelector('button[title="文章详情与设置"]');
-  assert.ok(settings, [...document.querySelectorAll('button')].map(x => x.title + '/' + x.textContent).join(','));
+  const settings = document.querySelector('button[data-tooltip="文章详情与设置"]');
+  assert.ok(settings, [...document.querySelectorAll('button')].map(x => x.dataset.tooltip + '/' + x.textContent).join(','));
   await act(async () => settings.click());
   await clickText('手动');
   const excerptInput = [...document.querySelectorAll('textarea')].find(x => x.placeholder.includes('摘要'));
@@ -138,7 +137,7 @@ test('regression: clearing an article password reaches the update payload', asyn
   let submitted;
   t.mock.method(api.admin.posts, 'update', async (_id, data) => { submitted = data; });
   await mount(t, req('./src/components/PostEditor.tsx').default, { post: { id: 'p', title: 'Post', slug: 'post', content: 'body', status: 'draft', password_set: true }, onClose() {} });
-  await act(async () => document.querySelector('button[title="文章详情与设置"]').click());
+  await act(async () => document.querySelector('button[data-tooltip="文章详情与设置"]').click());
   await clickText('清除密码');
   await clickText('保存设置');
   await clickText('保存');
@@ -150,10 +149,10 @@ test('regression: reopening editor settings preserves unsaved setting changes', 
   let submitted;
   t.mock.method(api.admin.posts, 'update', async (_id, data) => { submitted = data; });
   await mount(t, req('./src/components/PostEditor.tsx').default, { post: { id: 'p', title: 'Post', slug: 'post', content: 'body', status: 'draft', author_name: 'Old author' }, onClose() {} });
-  await act(async () => document.querySelector('button[title="文章详情与设置"]').click());
+  await act(async () => document.querySelector('button[data-tooltip="文章详情与设置"]').click());
   await act(async () => input(document.querySelector('input[placeholder="输入作者名称"]'), 'New author'));
   await clickText('保存设置');
-  await act(async () => document.querySelector('button[title="文章详情与设置"]').click());
+  await act(async () => document.querySelector('button[data-tooltip="文章详情与设置"]').click());
   assert.equal(document.querySelector('input[placeholder="输入作者名称"]').value, 'New author');
   await clickText('保存设置');
   await clickText('保存');
@@ -167,7 +166,7 @@ test('regression: series cannot save before current membership has loaded', asyn
   let submitted;
   t.mock.method(api.admin.series, 'setPosts', async (_id, ids) => { submitted = ids; });
   await mount(t, req('./src/app/admin/series/page.tsx').default);
-  await act(async () => document.querySelector('button[title="设置文章"]').click());
+  await act(async () => document.querySelector('button[data-tooltip="设置文章"]').click());
   assert.equal(button('保存').disabled, true);
   await clickText('保存');
   assert.equal(submitted, undefined);
@@ -221,15 +220,15 @@ for (const route of ['/admin/login', '/admin/forgot-password', '/admin/reset-pas
   });
 }
 
-test('shared controls expose native keyboard and label behavior', async t => {
+test('shared controls expose keyboard choice and native label behavior', async t => {
   const { Select, Checkbox } = req('./src/components/ConfirmDialog.tsx');
   let selected, checked;
   await mount(t, () => React.createElement(React.Fragment, null,
     React.createElement(Select, { value: 'a', options: [{value: 'a', label: 'A'}, {value: 'b', label: 'B'}], onChange: v => { selected = v; } }),
     React.createElement(Checkbox, { checked: false, label: 'Remember', onChange: v => { checked = v; } })));
-  const select = document.querySelector('select');
+  const select = document.querySelector('[role="combobox"]');
   assert.ok(select);
-  await act(async () => { select.value = 'b'; select.dispatchEvent(new Event('change', { bubbles: true })); });
+  await selectValue(select, 'b');
   assert.equal(selected, 'b');
   await act(async () => document.querySelector('label').click());
   assert.equal(checked, true);
@@ -243,7 +242,7 @@ test('series membership selector reaches posts after the first 100 and preserves
   let submitted;
   t.mock.method(api.admin.series, 'setPosts', async (_id, ids) => { submitted = ids; });
   await mount(t, req('./src/app/admin/series/page.tsx').default);
-  await act(async () => document.querySelector('button[title="设置文章"]').click());
+  await act(async () => document.querySelector('button[data-tooltip="设置文章"]').click());
   const next = [...document.querySelectorAll('button')].filter(x => x.textContent === '下一页').at(-1);
   assert.ok(next && !next.disabled);
   await act(async () => next.click());
@@ -261,10 +260,11 @@ test('post settings select series beyond page one without clearing the selected 
   const more = button('下一页系列');
   assert.ok(more);
   await act(async () => more.click());
-  const select = document.querySelector('select[aria-label="文章系列"]');
-  assert.ok([...select.options].some(option => option.textContent === 'Later series'));
-  assert.equal(select.value, 'old');
-  await act(async () => { select.value = 's21'; select.dispatchEvent(new Event('change', { bubbles: true })); });
+  const select = document.querySelector('[role="combobox"][aria-label="文章系列"]');
+  assert.equal(select.dataset.value, 'old');
+  const options = await openSelect(select);
+  assert.ok([...options.querySelectorAll('[role="option"]')].some(option => option.textContent === 'Later series'));
+  await selectValue(select, 's21');
   await clickText('保存设置');
   assert.equal(payload.series_id, 's21');
 });
@@ -292,13 +292,13 @@ test('editor retains AI summaries and explicit cleared category after settings r
   t.mock.method(api.admin.posts, 'update', async (_id, data) => { payload = data; });
   t.mock.method(api, 'getCategories', async () => ({ items: [{ id: 'old', name: 'Old category' }] }));
   await mount(t, req('./src/components/PostEditor.tsx').default, { post: { id: 'p', title: 'Title', content: 'body', slug: 'p', category_id: 'old', category: { id: 'old', name: 'Old category' } }, onClose() {} });
-  await act(async () => document.querySelector('button[title="文章详情与设置"]').click());
+  await act(async () => document.querySelector('button[data-tooltip="文章详情与设置"]').click());
   await clickText('AI 生成');
-  const select = document.querySelector('select');
-  await act(async () => { select.value = ''; select.dispatchEvent(new Event('change', { bubbles: true })); });
+  const select = document.querySelector('[role="combobox"]');
+  await selectValue(select, '');
   await clickText('保存设置');
-  await act(async () => document.querySelector('button[title="文章详情与设置"]').click());
-  assert.equal(document.querySelector('select').value, '');
+  await act(async () => document.querySelector('button[data-tooltip="文章详情与设置"]').click());
+  assert.equal(document.querySelector('[role="combobox"]').dataset.value, '');
   await clickText('保存设置');
   await clickText('保存');
   assert.equal(payload.excerpt, 'AI summary');
@@ -333,7 +333,7 @@ test('scheduled local input is sent as RFC3339 and displayed in local time', asy
   let payload;
   const value = '2030-07-02T10:30:00Z';
   await mount(t, req('./src/components/PostDetailDialog.tsx').default, { post: { id: 'p', title: 'Post', content: '', status: 'draft', scheduled_at: value }, categories: [], tags: [], seriesList: [], onClose() {}, onSave: async data => { payload = data; } });
-  const input = document.querySelector('input[type="datetime-local"]');
+  const input = document.querySelector('input[aria-label="定时发布"]');
   assert.equal(new Date(input.value).toISOString(), value.replace('Z', '.000Z'));
   await clickText('保存设置');
   assert.equal(payload.scheduled_at, '2030-07-02T10:30:00.000Z');
@@ -371,7 +371,7 @@ test('failed series membership stays protected until a successful retry', async 
   t.mock.method(api.admin.posts, 'list', async () => ({ items: [], total: 0 }));
   t.mock.method(api.admin.series, 'setPosts', async (_id, ids) => { submitted = ids; });
   await mount(t, req('./src/app/admin/series/page.tsx').default);
-  await act(async () => document.querySelector('button[title="设置文章"]').click());
+  await act(async () => document.querySelector('button[data-tooltip="设置文章"]').click());
   assert.equal(button('保存').disabled, true);
   assert.match(document.querySelector('[role="alert"]').textContent, /membership offline/);
   await clickText('保存');
@@ -425,8 +425,11 @@ test('series lookup search resets to page one and preserves the selected option'
   await clickText('下一页系列');
   await act(async () => input(document.querySelector('input[aria-label="搜索系列"]'), 'matching'));
   assert.deepEqual(requests.at(-1), { page: '1', page_size: '20', search: 'matching' });
-  assert.equal(document.querySelector('select').value, 'selected');
-  assert.match(document.body.textContent, /Matching series/);
+  const select = document.querySelector('[role="combobox"][aria-label="文章系列"]');
+  assert.equal(select.dataset.value, 'selected');
+  await openSelect(select);
+  assert.match(document.querySelector('[role="listbox"]').textContent, /Matching series/);
+  await key(document.activeElement, 'Escape');
 });
 
 test('article audio reports load failures and can retry playback', async t => {
@@ -449,7 +452,7 @@ for (const existing of [false, true]) {
     const post = { ...(existing ? { id: 'password-draft', updated_at: '2020-01-01T00:00:00Z' } : {}), title: 'Protected draft', slug: 'protected', content: 'Private body', status: 'draft', password_set: false };
     const Editor = req('./src/components/PostEditor.tsx').default;
     const root = await mount(t, Editor, { post, onClose() {} });
-    await act(async () => document.querySelector('button[title="文章详情与设置"]').click());
+    await act(async () => document.querySelector('button[data-tooltip="文章详情与设置"]').click());
     await act(async () => input(document.querySelector('input[type="password"]'), 'secret-before-refresh'));
     await clickText('保存设置');
     await act(async () => t.mock.timers.tick(30_000));
@@ -484,7 +487,7 @@ for (const clearPassword of [false, true]) {
     const Editor = req('./src/components/PostEditor.tsx').default;
     const root = await mount(t, Editor, { post, onClose() {} });
     if (clearPassword) {
-      await act(async () => document.querySelector('button[title="文章详情与设置"]').click());
+      await act(async () => document.querySelector('button[data-tooltip="文章详情与设置"]').click());
       await clickText('清除密码');
       await clickText('保存设置');
     }

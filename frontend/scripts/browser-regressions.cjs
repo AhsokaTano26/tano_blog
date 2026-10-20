@@ -5,6 +5,7 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const { chromium, webkit, expect } = require('@playwright/test');
 const { SITE, OUT, startServices, stopServices } = require('./browser-environment.cjs');
+const { verifyAdminControls } = require('./browser-admin-controls.cjs');
 
 const checks = [];
 const gates = [];
@@ -69,6 +70,9 @@ async function verifyEngine(engine, launcher, password) {
   pass(engine, 'real UI login');
   verifyProcessGroup(engine);
 
+  await verifyAdminControls(page, SITE, name => screenshot(engine, name));
+  pass(engine, 'custom admin controls, nested overlays, dates, files, themes and mobile dialog');
+
   await articlesLink.click();
   await page.getByRole('button', { name: '新建', exact: true }).first().click();
   let editor = editorFor(page);
@@ -90,11 +94,11 @@ async function verifyEngine(engine, launcher, password) {
   assert(post?.id, 'UI save did not persist the restored article');
   pass(engine, 'debounced draft survives actual reload and saves');
 
-  await page.locator('button[title="编辑"]').first().click();
+  await page.locator('button[data-tooltip="编辑"]').first().click();
   const second = await admin.newPage();
   await second.bringToFront();
   await second.goto(`${SITE}/admin/posts`);
-  await second.locator('button[title="编辑"]').first().click();
+  await second.locator('button[data-tooltip="编辑"]').first().click();
   await page.bringToFront();
   await editor.fill('First window accepted content');
   await page.getByRole('button', { name: '保存', exact: true }).click();
@@ -117,7 +121,7 @@ async function verifyEngine(engine, launcher, password) {
   await expect(page.getByRole('region', { name: '系统健康', exact: true })).toBeVisible();
   await expect(page.getByText('尚无成功的完整备份记录', { exact: false })).toBeVisible();
   await page.locator('a[href="/admin/posts"]:visible').first().click();
-  await page.locator('button[title="编辑"]').first().click();
+  await page.locator('button[data-tooltip="编辑"]').first().click();
   await page.evaluate(() => {
     const original = Storage.prototype.setItem;
     window.restoreTestStorage = () => { Storage.prototype.setItem = original; };
@@ -140,7 +144,7 @@ async function verifyEngine(engine, launcher, password) {
   pass(engine, 'failed draft storage protects SPA Back until explicit approval; health alerts render');
 
   await page.locator('a[href="/admin/posts"]:visible').first().click();
-  await page.locator('button[title="编辑"]').first().click();
+  await page.locator('button[data-tooltip="编辑"]').first().click();
   editor = editorFor(page);
   await editor.fill('Clipboard upload below\n\n');
   const uploaded = page.waitForResponse(response => response.request().method() === 'POST' && new URL(response.url()).pathname === '/api/v1/admin/upload');

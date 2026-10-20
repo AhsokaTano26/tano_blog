@@ -1,4 +1,5 @@
 'use client';
+import { Tooltip } from '@/components/ui/Tooltip';
 
 import { useId, useMemo, useState } from 'react';
 import { Activity, AlertTriangle, Clock, Globe } from 'lucide-react';
@@ -42,7 +43,7 @@ export function RequestBreakdown({ title, data, total, status = false }: { title
           const share = total > 0 ? item.count / total : null;
           return <li key={item.name} data-tone={tone}>
             <div className={styles.rankingHeader}>
-              <span className={styles.name} title={name}>{!status && <small aria-hidden="true">{String(index + 1).padStart(2, '0')}</small>}{status ? <code>{name}</code> : name}</span>
+              <Tooltip content={name}><span className={styles.name} data-tooltip={name}>{!status && <small aria-hidden="true">{String(index + 1).padStart(2, '0')}</small>}{status ? <code>{name}</code> : name}</span></Tooltip>
               <span className={styles.value}><strong>{number.format(item.count)}</strong><span>{share === null ? '—' : share > 0 && share < .001 ? '<0.1%' : percent.format(share)}</span></span>
             </div>
             <div className={styles.track} aria-hidden="true"><div style={{ width: `${item.count / max * 100}%` }} /></div>

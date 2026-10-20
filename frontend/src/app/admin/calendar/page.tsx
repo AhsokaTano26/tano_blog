@@ -1,5 +1,6 @@
 'use client';
 
+import { Dialog } from '@/components/ui/Dialog';
 import { useState, useEffect, useCallback } from 'react';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { api } from '@/lib/api';
@@ -145,32 +146,28 @@ export default function CalendarPage() {
             {selectedDate && (() => {
                 const dayPosts = postsByDate[selectedDate] || [];
                 return (
-                    <div className="admin-overlay fixed inset-0 z-50 flex items-center justify-center p-4"
-                        style={{ background: 'rgba(0,0,0,0.5)' }}
-                        onClick={() => setSelectedDate(null)}>
-                        <div className="admin-dialog-panel w-full max-w-md rounded-2xl p-5 shadow-2xl"
-                            style={{ background: 'var(--card-bg)', border: '1px solid var(--glass-border)', backdropFilter: 'blur(24px)' }}
-                            onClick={e => e.stopPropagation()}>
-                            <div className="flex items-center justify-between mb-4">
-                                <h2 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{selectedDate}</h2>
-                                <button onClick={() => setSelectedDate(null)}
-                                    className="p-1 rounded-lg hover:bg-white/10 transition-colors">
-                                    <X className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
-                                </button>
-                            </div>
-                            <div className="space-y-1 max-h-[50vh] overflow-y-auto">
-                                {dayPosts.map((p: any) => (
-                                    <a key={p.id} href={`/admin/posts`}
-                                        className="block px-3 py-2 rounded-xl text-sm hover:bg-white/5 transition-colors"
-                                        style={{ color: 'var(--text-primary)' }}
-                                        onClick={() => setSelectedDate(null)}>
-                                        <span className={`inline-block w-1.5 h-1.5 rounded-full mr-2 ${p.status === 'published' ? 'bg-green-500' : 'bg-gray-400'}`} />
-                                        {p.title}
-                                    </a>
-                                ))}
-                            </div>
+                    <Dialog title={`${selectedDate} 的文章`} onClose={() => setSelectedDate(null)} layer={50}
+                        className="admin-dialog-panel w-full max-w-md rounded-2xl p-5 shadow-2xl"
+                        style={{ border: '1px solid var(--glass-border)', backdropFilter: 'blur(24px)' }}>
+                        <div className="flex items-center justify-between mb-4">
+                            <h2 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{selectedDate}</h2>
+                            <button aria-label="关闭日期详情" onClick={() => setSelectedDate(null)}
+                                className="p-1 rounded-lg hover:bg-white/10 transition-colors">
+                                <X className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
+                            </button>
                         </div>
-                    </div>
+                        <div className="space-y-1 max-h-[50vh] overflow-y-auto">
+                            {dayPosts.map((p: any) => (
+                                <a key={p.id} href={`/admin/posts`}
+                                    className="block px-3 py-2 rounded-xl text-sm hover:bg-white/5 transition-colors"
+                                    style={{ color: 'var(--text-primary)' }}
+                                    onClick={() => setSelectedDate(null)}>
+                                    <span className={`inline-block w-1.5 h-1.5 rounded-full mr-2 ${p.status === 'published' ? 'bg-green-500' : 'bg-gray-400'}`} />
+                                    {p.title}
+                                </a>
+                            ))}
+                        </div>
+                    </Dialog>
                 );
             })()}
         </div>

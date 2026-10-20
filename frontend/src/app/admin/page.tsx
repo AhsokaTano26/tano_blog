@@ -1,5 +1,7 @@
 'use client';
 
+import { Disclosure } from '@/components/ui/Disclosure';
+import { Progress } from '@/components/ui/Progress';
 import { useCallback } from 'react';
 import Link from 'next/link';
 import { ArrowUpRight, Check, FileText, Image, MessageSquare, PenLine, Upload } from 'lucide-react';
@@ -74,8 +76,8 @@ export default function AdminDashboard() {
       </section>
     </div>
     <SystemHealth />
-    {overview.data && <details className="admin-panel admin-audience">
-      <summary><span>访客画像</span><span>设备、浏览器、系统与活跃时段</span></summary>
+    {overview.data && <Disclosure className="admin-panel admin-audience" title={<><span>访客画像</span><span>设备、浏览器、系统与活跃时段</span></>}>
+
       <div className="admin-audience-grid">
         {(['device', 'browser', 'os'] as const).map((key, index) => {
           const items = overview.data?.[key] ?? [];
@@ -83,7 +85,7 @@ export default function AdminDashboard() {
           return <section key={key}><h3>{['设备分布', '浏览器分布', '操作系统分布'][index]}</h3>
             {items.slice(0, 6).map(item => <div key={item.name} className="admin-distribution">
               <span>{({ desktop: '电脑', mobile: '手机', tablet: '平板', Unknown: '未知' } as Record<string, string>)[item.name] || item.name}</span>
-              <meter min={0} max={total || 1} value={item.count} aria-label={item.name} /><span>{total ? Math.round(item.count / total * 100) : 0}%</span>
+              <Progress max={total || 1} value={item.count} aria-label={item.name} style={{ flex: 1, minWidth: 0, height: 8 }} /><span>{total ? Math.round(item.count / total * 100) : 0}%</span>
             </div>)}{!items.length && <p className="admin-empty-note">暂无访问数据</p>}
           </section>;
         })}
@@ -91,6 +93,6 @@ export default function AdminDashboard() {
           {[...(overview.data.hour ?? [])].sort((a, b) => b.count - a.count).slice(0, 4).map(item => <p key={item.hour} className="admin-hour"><span>{String(item.hour).padStart(2, '0')}:00</span><span>{value(item.count)} 次</span></p>)}
         </section>
       </div>
-    </details>}
+    </Disclosure>}
   </div>;
 }

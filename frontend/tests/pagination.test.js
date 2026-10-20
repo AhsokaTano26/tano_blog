@@ -110,7 +110,7 @@ test('media gallery membership uses the current page and updates after toggling'
   t.mock.method(api.admin.media.tags, 'list', async () => ({ items: [] }));
   t.mock.method(api.admin.gallery, 'toggle', async () => ({ in_gallery: false }));
   await mount(t, require('../src/app/admin/media/page.tsx').default);
-  await React.act(async () => document.querySelector('button[title="编辑元信息"]').click());
+  await React.act(async () => document.querySelector('button[data-tooltip="编辑元信息"]').click());
   assert.equal(document.querySelector('[role="switch"]').getAttribute('aria-checked'), 'true');
   await React.act(async () => document.querySelector('[role="switch"]').click());
   assert.equal(document.querySelector('[role="switch"]').getAttribute('aria-checked'), 'false');

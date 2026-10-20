@@ -11,7 +11,7 @@ const AdminPosts = require('../src/app/admin/posts/page.tsx').default;
 
 test('opening the post list does not load the editor or Markdown parser', async t => {
   await mountPostList(t);
-  assert.ok(document.querySelector('button[title="编辑"]'));
+  assert.ok(document.querySelector('button[data-tooltip="编辑"]'));
   assert.equal(Boolean(require.cache[require.resolve('../src/components/PostEditor.tsx')]), false);
   assert.equal(Boolean(require.cache[require.resolve('react-markdown')]), false);
 });
@@ -38,13 +38,13 @@ async function mountPostList(t, content = '# Heading\n\n$E = mc^2$', detailRespo
 
 async function mountEditor(t, content = '# Heading\n\n$E = mc^2$') {
   await mountPostList(t, content);
-  await act(async () => document.querySelector('button[title="编辑"]').click());
+  await act(async () => document.querySelector('button[data-tooltip="编辑"]').click());
   return document.querySelector('textarea[placeholder^="输入 Markdown"]');
 }
 
 test('alignment buttons format the current paragraph, switch without nesting, and persist Markdown', async t => {
   const textarea = await mountEditor(t, 'Intro\n\n**Bold** paragraph\n\nTail');
-  const button = title => document.querySelector(`button[title="${title}"]`);
+  const button = title => document.querySelector(`button[data-tooltip="${title}"]`);
   assert.equal(Boolean(button('居中')), true, 'the editor needs a center alignment button');
   textarea.focus();
   textarea.setSelectionRange(16, 16);
@@ -70,16 +70,16 @@ test('opening an editor fetches its full content from a summary-only post list',
 
 test('post settings derive the excerpt from the fetched full article', async t => {
   await mountPostList(t, 'Content used for the automatic excerpt.');
-  await act(async () => document.querySelector('button[title="设置"]').click());
+  await act(async () => document.querySelector('button[data-tooltip="设置"]').click());
   assert.match(document.body.textContent, /Content used for the automatic excerpt\./);
 });
 
 test('a failed detail request leaves the list available without opening an empty editor', async t => {
   await mountPostList(t, '# Article', () => Response.json({ error: '读取正文失败' }, { status: 500 }));
-  await act(async () => document.querySelector('button[title="编辑"]').click());
+  await act(async () => document.querySelector('button[data-tooltip="编辑"]').click());
   assert.equal(Boolean(document.querySelector('textarea[placeholder^="输入 Markdown"]')), false);
   assert.equal(document.querySelector('[role="alert"]')?.textContent, '读取正文失败');
-  assert.ok(document.querySelector('button[title="编辑"]'));
+  assert.ok(document.querySelector('button[data-tooltip="编辑"]'));
 });
 
 test('changing editor metadata does not parse the article again', async t => {
@@ -286,10 +286,10 @@ test('compact editor uses one pane and preserves content when switching preview 
 
 test('advanced formatting remains available without changing the current article', async t => {
   const textarea = await mountEditor(t, 'Keep this content');
-  assert.equal(document.querySelector('button[title="行内公式"]') === null, true);
+  assert.equal(document.querySelector('button[data-tooltip="行内公式"]') === null, true);
   await act(async () => document.querySelector('[aria-label="更多格式工具"]').click());
-  assert.equal(Boolean(document.querySelector('button[title="行内公式"]')), true);
-  assert.equal(Boolean(document.querySelector('button[title="提示块：Note"]')), true);
+  assert.equal(Boolean(document.querySelector('button[data-tooltip="行内公式"]')), true);
+  assert.equal(Boolean(document.querySelector('button[data-tooltip="提示块：Note"]')), true);
   await act(async () => document.querySelector('[aria-label="收起更多工具"]').click());
   assert.equal(textarea.value, 'Keep this content');
 });

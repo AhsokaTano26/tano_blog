@@ -1,10 +1,16 @@
 'use client';
 
+import { Input } from '@/components/ui/Input';
+import { Textarea } from '@/components/ui/Textarea';
+import { Dialog } from '@/components/ui/Dialog';
+import { DateTimePicker } from '@/components/ui/DateTimePicker';
+import { Checkbox } from '@/components/ui/Checkbox';
+import { Select } from '@/components/ui/Select';
+
 import { useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import { api, type Post, type PostMutation } from '@/lib/api';
 import { toDateTimeLocal, scheduledTimestamp, type ExcerptMode } from '@/lib/post-settings';
-import { Checkbox, Select } from './ConfirmDialog';
 import { MediaField } from './MediaField';
 import { SeriesSelect } from './SeriesSelect';
 
@@ -97,15 +103,9 @@ export default function PostDetailDialog({ post, categories, tags, seriesList, p
     }
   }
 
-  const inputStyle = {
-    background: 'var(--glass-bg)',
-    border: '1px solid var(--glass-border)',
-    color: 'var(--text-primary)',
-  };
-
   return (
-    <div className="admin-overlay fixed inset-0 z-[100] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.5)' }}>
-      <div className="admin-dialog-panel rounded-2xl w-full max-w-xl max-h-[85vh] flex flex-col overflow-hidden" style={{ background: 'var(--color-bg)', border: '1px solid var(--glass-border)' }}>
+    <Dialog title="文章详情与设置" onClose={() => { if (!savingRef.current) onClose(); }} closeOnOutside={false}
+      className="rounded-2xl w-full max-w-xl max-h-[85vh] flex flex-col overflow-hidden" style={{ background: 'var(--color-bg)', border: '1px solid var(--glass-border)' }}>
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 flex-shrink-0" style={{ borderBottom: '1px solid var(--glass-border)' }}>
           <h2 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
@@ -117,7 +117,8 @@ export default function PostDetailDialog({ post, categories, tags, seriesList, p
         </div>
 
         {/* Body */}
-        <fieldset disabled={saving} className="flex-1 min-w-0 overflow-y-auto p-6 space-y-5">
+        <div className="flex-1 min-h-0 min-w-0 overflow-y-auto">
+        <fieldset disabled={saving} className="min-w-0 p-6 space-y-5">
           {error && (
             <div role="alert" className="px-4 py-2.5 rounded-xl text-sm" style={{ color: 'var(--color-error)', background: 'var(--glass-bg)' }}>
               {error}
@@ -127,7 +128,7 @@ export default function PostDetailDialog({ post, categories, tags, seriesList, p
           {/* Author */}
           <div>
             <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-info)' }}>作者（文章创作者）</label>
-            <input type="text" value={authorName} onChange={e => setAuthorName(e.target.value)}
+            <Input type="text" value={authorName} onChange={e => setAuthorName(e.target.value)}
               placeholder="输入作者名称" className="w-full px-3 py-2 rounded-xl text-sm outline-none glass-card"
               style={{ color: 'var(--text-primary)' }} />
             <p className="mt-1 text-xs" style={{ color: 'var(--text-info)' }}>留空则不显示作者</p>
@@ -158,8 +159,7 @@ export default function PostDetailDialog({ post, categories, tags, seriesList, p
           {status === 'draft' && (
             <div>
               <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-info)' }}>定时发布</label>
-              <input type="datetime-local" value={scheduledAt}
-                onChange={e => setScheduledAt(e.target.value)}
+              <DateTimePicker value={scheduledAt} onChange={setScheduledAt} aria-label="定时发布"
                 className="w-full px-3 py-2 rounded-xl text-sm outline-none glass-card"
                 style={{ color: 'var(--text-primary)' }} />
               {scheduledAt && (
@@ -173,7 +173,7 @@ export default function PostDetailDialog({ post, categories, tags, seriesList, p
           {/* Category */}
           <div>
             <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-info)' }}>分类</label>
-            <Select value={categoryId} onChange={setCategoryId}
+            <Select value={categoryId} onChange={setCategoryId} aria-label="文章分类"
               options={[
                 { value: '', label: '无分类' },
                 ...categories.map(cat => ({ value: cat.id, label: cat.name })),
@@ -257,7 +257,7 @@ export default function PostDetailDialog({ post, categories, tags, seriesList, p
               </div>
             </div>
             {excerptMode === 'manual' ? (
-              <textarea placeholder="文章摘要" value={excerpt} onChange={e => setExcerpt(e.target.value)} rows={8}
+              <Textarea placeholder="文章摘要" value={excerpt} onChange={e => setExcerpt(e.target.value)} rows={8}
                 className="w-full px-3 py-2 rounded-xl text-sm outline-none resize-none glass-card"
                 style={{ color: 'var(--text-primary)' }} />
             ) : (
@@ -290,7 +290,7 @@ export default function PostDetailDialog({ post, categories, tags, seriesList, p
                 </div>
               </div>
             ) : (
-              <input type="password" value={password} onChange={e => setPassword(e.target.value)}
+              <Input type="password" value={password} onChange={e => setPassword(e.target.value)}
                 placeholder="设置访问密码（留空则不设密码）" maxLength={100}
                 className="w-full px-3 py-2 rounded-xl text-sm outline-none glass-card"
                 style={{ color: 'var(--text-primary)' }} />
@@ -298,15 +298,16 @@ export default function PostDetailDialog({ post, categories, tags, seriesList, p
           </div>
           <div>
             <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-info)' }}>密码提示</label>
-            <input type="text" value={passwordHint} onChange={e => setPasswordHint(e.target.value)}
+            <Input type="text" value={passwordHint} onChange={e => setPasswordHint(e.target.value)}
               placeholder="如：请输入文章访问密码（选填）" maxLength={200}
               className="w-full px-3 py-2 rounded-xl text-sm outline-none glass-card"
               style={{ color: 'var(--text-primary)' }} />
           </div>
         </fieldset>
+        </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-2 px-6 py-4 flex-shrink-0" style={{ borderTop: '1px solid var(--glass-border)' }}>
+        <div className="relative z-10 flex items-center justify-end gap-2 px-6 py-4 flex-shrink-0" style={{ background: 'var(--color-bg)', borderTop: '1px solid var(--glass-border)' }}>
           <button onClick={onClose} disabled={saving} className="px-4 py-2 rounded-xl text-sm btn-glass disabled:opacity-50" style={{ color: 'var(--text-secondary)' }}>取消</button>
           <button onClick={handleSave} disabled={saving}
             className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium text-white disabled:opacity-50 transition-all"
@@ -314,7 +315,6 @@ export default function PostDetailDialog({ post, categories, tags, seriesList, p
             {saving ? '保存中...' : '保存设置'}
           </button>
         </div>
-      </div>
-    </div>
+    </Dialog>
   );
 }

@@ -37,7 +37,7 @@ async function change(selector, value) {
 
 test('logs default to a visible inclusive 30-day range shared by the overview', async t => {
   const { lists, overviews } = await mount(t);
-  const dates = [...document.querySelectorAll('input[type="date"]')].map(element => element.value);
+  const dates = [...document.querySelectorAll('input[aria-label="开始日期"], input[aria-label="结束日期"]')].map(element => element.value);
   assert.ok(dates.every(Boolean), 'default dates must be visible');
   assert.equal((Date.parse(dates[1]) - Date.parse(dates[0])) / 86400000, 29);
   assert.deepEqual({ start: lists[0].start, end: lists[0].end }, { start: dates[0], end: dates[1] });
@@ -48,7 +48,7 @@ test('applying a filter on a later page issues one page-one request with the edi
   const { lists, overviews } = await mount(t, async params => response(params, `${params.path || '/all'}-${params.page}`));
   await click('下一页');
   await change('input[placeholder="搜索路径..."]', '/filtered');
-  const dates = document.querySelectorAll('input[type="date"]');
+  const dates = document.querySelectorAll('input[aria-label="开始日期"], input[aria-label="结束日期"]');
   await React.act(async () => { input(dates[0], '2025-01-01'); input(dates[1], '2025-01-31'); });
   const before = lists.length;
   await click('筛选');
@@ -110,7 +110,7 @@ test('list and overview failures remain visible and can retry the applied query'
 
 test('invalid or over-366-day ranges do not send queries', async t => {
   const { lists, overviews } = await mount(t);
-  const dates = document.querySelectorAll('input[type="date"]');
+  const dates = document.querySelectorAll('input[aria-label="开始日期"], input[aria-label="结束日期"]');
   await React.act(async () => { input(dates[0], '2024-01-01'); input(dates[1], '2025-12-31'); });
   await click('筛选');
   assert.match(document.querySelector('[role="alert"]').textContent, /366/);

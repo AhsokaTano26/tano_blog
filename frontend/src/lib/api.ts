@@ -4,6 +4,7 @@ import { uploadFilename } from './editor-upload';
 import { uploadForm, type UploadOptions } from './upload';
 import type { Post, PostMutation, PostRevision } from './post-types';
 import type { SystemMetrics } from './system-health-types';
+import type { EntryAnimationConfig, EntryAnimationDocument, EntryAnimationSettings } from './entry-animation';
 export type { Post, PostMutation, PostRevision } from './post-types';
 
 export class ApiError extends Error {
@@ -348,6 +349,12 @@ export const api = {
         create: (name: string) => request('/api/v1/admin/media/tags', { method: 'POST', body: JSON.stringify({ name }) }),
         delete: (id: string) => request(`/api/v1/admin/media/tags/${id}`, { method: 'DELETE' }),
       },
+    },
+    entryAnimation: {
+      get: (signal?: AbortSignal) => request<EntryAnimationSettings>('/api/v1/admin/entry-animation', { cache: 'no-store', signal }),
+      update: (data: EntryAnimationConfig) => request<EntryAnimationSettings>('/api/v1/admin/entry-animation', { method: 'PUT', body: JSON.stringify(data), cache: 'no-store' }),
+      player: (signal?: AbortSignal) => request<EntryAnimationDocument>('/api/v1/admin/entry-animation/player', { cache: 'no-store', signal, timeoutMs: 8000 }),
+      preview: (data: EntryAnimationConfig) => request<EntryAnimationDocument>('/api/v1/admin/entry-animation/preview', { method: 'POST', body: JSON.stringify(data), cache: 'no-store' }),
     },
     config: {
       get: () => request<{ config: Record<string, string> }>('/api/v1/admin/config'),

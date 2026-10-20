@@ -3,6 +3,7 @@ const { input } = require('./dom-setup.js');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const React = require('react');
+const { key, openSelect, dialogButton } = require('./ui-controls.js');
 const { createRoot } = require('react-dom/client');
 const { api } = require('../src/lib/api.ts');
 const { ConfirmProvider } = require('../src/components/ConfirmDialog.tsx');
@@ -31,7 +32,7 @@ async function mountEditor(t, post = original, { clear = true } = {}) {
 
 async function click(text, container = document) {
   const scope = ['确定', '取消'].includes(text) ? document.querySelector('[role="alertdialog"]') || container : container;
-  const button = [...scope.querySelectorAll('button')].find(node => node.textContent.trim() === text);
+  const button = dialogButton(text) || [...scope.querySelectorAll('button')].find(node => node.textContent.trim() === text);
   assert.equal(Boolean(button), true, `Missing button ${text}`);
   await React.act(async () => button.click());
 }
@@ -85,8 +86,11 @@ test('two fresh editors keep independent draft bodies and both remain recoverabl
   await first.unmount();
   await second.unmount();
   const reopened = await mountEditor(t, null);
-  const choices = reopened.container.querySelectorAll('select[aria-label="选择恢复草稿"] option');
+  const trigger = reopened.container.querySelector('[role="combobox"][aria-label="选择恢复草稿"]');
+  const listbox = await openSelect(trigger);
+  const choices = listbox.querySelectorAll('[role="option"]');
   assert.equal(choices.length, 2);
+  await key(document.activeElement, 'Escape');
   await click('恢复', reopened.container);
   assert.equal(['Draft from tab A', 'Draft from tab B'].includes(reopened.textarea.value), true);
 });
@@ -121,11 +125,11 @@ test('dirty editor requires confirmation to close and protects browser unload', 
   const dirty = new Event('beforeunload', { cancelable: true });
   await React.act(async () => window.dispatchEvent(dirty));
   assert.equal(dirty.defaultPrevented, true);
-  await React.act(async () => view.container.querySelector('button[title="返回列表"]').click());
+  await React.act(async () => view.container.querySelector('button[data-tooltip="返回列表"]').click());
   assert.equal(view.closed(), 0);
   await click('取消', view.container);
   assert.equal(view.textarea.value, 'Still editing');
-  await React.act(async () => view.container.querySelector('button[title="返回列表"]').click());
+  await React.act(async () => view.container.querySelector('button[data-tooltip="返回列表"]').click());
   await click('确定', view.container);
   assert.equal(view.closed(), 1);
   assert.equal(storedDrafts().some(draft => draft.content === 'Still editing'), true);
@@ -348,7 +352,7 @@ test('undoing ordinary edits clears only the owned obsolete draft when closing',
   await React.act(async () => window.dispatchEvent(new Event('pagehide')));
   assert.equal(storedDrafts().length, 2);
   await React.act(async () => input(view.textarea, original.content));
-  await React.act(async () => view.container.querySelector('button[title="返回列表"]').click());
+  await React.act(async () => view.container.querySelector('button[data-tooltip="返回列表"]').click());
   assert.equal(view.closed(), 1, 'undoing all edits should not ask for confirmation');
   await view.unmount();
   assert.deepEqual(storedDrafts().map(draft => draft.content), ['Keep other work']);

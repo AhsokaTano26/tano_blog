@@ -1,12 +1,20 @@
 'use client';
+import { Switch } from '@/components/ui/Switch';
 
+import { Tooltip } from '@/components/ui/Tooltip';
+import { Dialog } from '@/components/ui/Dialog';
+import { Textarea } from '@/components/ui/Textarea';
+import { Input } from '@/components/ui/Input';
+import { Progress } from '@/components/ui/Progress';
+import { FilePicker } from '@/components/ui/FilePicker';
+import { MediaPreview } from '@/components/ui/MediaPreview';
 import { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react';
 import { api } from '@/lib/api';
 import type { MediaItem, MediaTag } from '@/lib/admin-types';
 import { useFeedbackMutation, useLatestRequest } from '@/lib/request-feedback';
 import { RequestFeedback } from '@/components/RequestFeedback';
 import { FloatingPopover } from '@/components/FloatingPopover';
-import { Image, Upload, Trash2, Copy, Check, Grid, List, Search, X, FileText, Video, Music, File, Tag, Plus, Settings, Play, ExternalLink } from 'lucide-react';
+import { Image, Trash2, Copy, Check, Grid, List, Search, X, FileText, Video, Music, File, Tag, Plus, Settings, Play, ExternalLink } from 'lucide-react';
 import { Loading } from '@/components/Loading';
 import { useConfirm, Checkbox, Select } from '@/components/ConfirmDialog';
 import { MediaField } from '@/components/MediaField';
@@ -147,16 +155,6 @@ export default function AdminMedia() {
   // Metadata editor
   const [editingMetadataItem, setEditingMetadataItem] = useState<MediaItem | null>(null);
   const [metadataForm, setMetadataForm] = useState({ title: '', artist: '', album: '', description: '', thumbnail_url: '' });
-
-  // Close viewer on Escape
-  useEffect(() => {
-    if (!viewerItem) return;
-    function handleKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') setViewerItem(null);
-    }
-    document.addEventListener('keydown', handleKey);
-    return () => document.removeEventListener('keydown', handleKey);
-  }, [viewerItem]);
 
   const load = useCallback(async () => {
     const sequence = ++loadSequence.current;
@@ -341,7 +339,7 @@ export default function AdminMedia() {
   }
 
   function toggleSelectAll() {
-    if (selectedIds.size === filtered.length) {
+    if (filtered.length > 0 && filtered.every(item => selectedIds.has(item.id))) {
       setSelectedIds(new Set());
     } else {
       setSelectedIds(new Set(filtered.map(i => i.id)));
@@ -438,11 +436,11 @@ export default function AdminMedia() {
                     <code className="flex-1 text-xs truncate px-2 py-1 rounded" style={{ background: 'var(--surface-bg)', color: 'var(--text-primary)' }}>
                       {link.value}
                     </code>
-                    <button onClick={() => copyValue(link.value, copyKey)}
+                    <Tooltip content={`复制${link.fmt}`}><button onClick={() => copyValue(link.value, copyKey)}
                       className="p-1 rounded transition-colors btn-glass flex-shrink-0"
-                      title={`复制${link.fmt}`}>
+                      data-tooltip={`复制${link.fmt}`} aria-label={`复制${link.fmt}`}>
                       {copiedKey === copyKey ? <Check className="w-3.5 h-3.5" style={{ color: 'var(--color-success)' }} /> : <Copy className="w-3.5 h-3.5" style={{ color: 'var(--text-info)' }} />}
-                    </button>
+                    </button></Tooltip>
                   </div>
                 );
               })}
@@ -512,12 +510,9 @@ export default function AdminMedia() {
               <List className="w-4 h-4" />
             </button>
           </div>
-          <label className={`relative focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-[var(--primary)] flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-white cursor-pointer transition-colors ${uploading ? 'opacity-50' : ''}`}
-            style={{ background: 'var(--primary)' }}>
-            <Upload className="w-4 h-4" />
-            {uploading ? `上传中${uploadProgress ? ` (${uploadProgress})` : '...'}` : '上传'}
-            <input type="file" aria-label="上传附件" className="absolute inset-0 opacity-0 w-full cursor-pointer" onChange={handleUpload} disabled={uploading} multiple />
-          </label>
+          <FilePicker aria-label="上传附件" compact
+            label={uploading ? `上传中${uploadProgress ? ` (${uploadProgress})` : '...'}` : '上传'}
+            className="text-sm font-medium" onChange={handleUpload} disabled={uploading} multiple />
         </div>
       </div>
 
@@ -532,8 +527,8 @@ export default function AdminMedia() {
         </div>
         <ul aria-label="上传队列" className="space-y-2 max-h-64 overflow-y-auto">
           {uploadQueue.map(item => <li key={item.id} data-upload-file={item.name} className="flex items-center gap-3 text-xs">
-            <span className="min-w-0 flex-1 truncate" title={item.name} style={{ color: 'var(--text-secondary)' }}>{item.name}</span>
-            {item.status === 'uploading' && <progress aria-label={`${item.name} 上传进度`} max={100}
+            <Tooltip content={item.name}><span className="min-w-0 flex-1 truncate" data-tooltip={item.name} style={{ color: 'var(--text-secondary)' }}>{item.name}</span></Tooltip>
+            {item.status === 'uploading' && <Progress aria-label={`${item.name} 上传进度`} max={100}
               value={item.percent ?? undefined} className="w-24" />}
             <span style={{ color: item.status === 'failed' ? 'var(--color-error)' : 'var(--text-info)' }}>
               {item.status === 'pending' ? '等待上传' : item.status === 'uploading' ? (item.percent === null ? '上传中' : item.percent === 100 ? '处理中' : `${Math.round(item.percent)}%`) : item.status === 'completed' ? '已上传' : item.status === 'cancelled' ? '已取消' : `上传失败：${item.error}`}
@@ -591,7 +586,7 @@ export default function AdminMedia() {
         <div className="flex items-center gap-3 p-4 flex-wrap" style={{ borderBottom: '1px solid var(--glass-border)' }}>
           <div className="relative flex-1 min-w-[170px] max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: 'var(--text-info)' }} />
-            <input type="text" aria-label="搜索文件名" placeholder="搜索文件名..." value={search}
+            <Input type="text" aria-label="搜索文件名" placeholder="搜索文件名..." value={search}
               onChange={e => setSearch(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleSearch()}
               className="w-full pl-9 pr-8 py-2 rounded-xl text-sm outline-none glass-card"
@@ -620,11 +615,11 @@ export default function AdminMedia() {
               );
             })}
           </div>
-          <button onClick={() => setShowTagManager(!showTagManager)}
+          <Tooltip content="管理标签"><button onClick={() => setShowTagManager(!showTagManager)}
             className="p-1.5 rounded-lg transition-colors btn-glass ml-auto"
-            title="管理标签">
+            data-tooltip="管理标签" aria-label="管理标签">
             <Settings className="w-4 h-4" style={{ color: 'var(--text-secondary)' }} />
-          </button>
+          </button></Tooltip>
         </div>
 
         {/* Tag filter row */}
@@ -656,7 +651,7 @@ export default function AdminMedia() {
         {showTagManager && (
           <div className="px-4 py-3" style={{ borderBottom: '1px solid var(--glass-border)' }}>
             <div className="flex items-center gap-2 mb-2">
-              <input aria-label="新标签名称" disabled={mutation.pending} type="text" placeholder="新标签名称..." value={newTagName}
+              <Input aria-label="新标签名称" disabled={mutation.pending} type="text" placeholder="新标签名称..." value={newTagName}
                 onChange={e => setNewTagName(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleCreateTag()}
                 className="flex-1 max-w-xs px-3 py-1.5 rounded-lg text-sm outline-none glass-card"
@@ -762,7 +757,7 @@ export default function AdminMedia() {
                     )}
                     <button className="absolute inset-0 w-full h-full" aria-label={`预览 ${item.original_name || item.filename}`} onClick={() => setViewerItem(item)} />
                     <div className="absolute top-2 left-2 z-10">
-                      <Checkbox checked={selectedIds.has(item.id)} onChange={() => toggleSelect(item.id)} />
+                      <Checkbox aria-label={`选择文件 ${item.original_name || item.filename}`} checked={selectedIds.has(item.id)} onChange={() => toggleSelect(item.id)} />
                     </div>
                     {item.in_gallery && (
                       <div className="absolute top-2 right-2 z-10 px-1.5 py-0.5 rounded text-[10px] font-medium"
@@ -772,43 +767,43 @@ export default function AdminMedia() {
                     )}
                   </div>
                   <div className="admin-media-actions" aria-label={`${item.original_name || item.filename} 的操作`}>
-                      <button onClick={(e) => {
+                      <Tooltip content="复制链接"><button onClick={(e) => {
                         e.stopPropagation();
                         if (openLinksId === item.id) { setOpenLinksId(null); setOpenLinksEl(null); }
                         else { setOpenLinksId(item.id); setOpenLinksEl(e.currentTarget); setEditingTagsId(null); }
                       }}
-                        className="p-1.5 rounded-full transition-colors pointer-events-auto" style={{ background: 'var(--card-bg)', color: 'var(--text-primary)' }} title="复制链接">
+                        className="p-1.5 rounded-full transition-colors pointer-events-auto" style={{ background: 'var(--card-bg)', color: 'var(--text-primary)' }} data-tooltip="复制链接" aria-label="复制链接">
                         <Copy className="w-4 h-4" />
-                      </button>
-                      <button onClick={(e) => {
+                      </button></Tooltip>
+                      <Tooltip content="编辑标签"><button onClick={(e) => {
                         e.stopPropagation();
                         if (editingTagsId === item.id) { setEditingTagsId(null); setEditingTagsEl(null); }
                         else { setEditingTagsId(item.id); setEditingTagsEl(e.currentTarget); setOpenLinksId(null); }
                       }}
-                        className="p-1.5 rounded-full transition-colors pointer-events-auto" style={{ background: 'var(--card-bg)', color: 'var(--text-primary)' }} title="编辑标签">
+                        className="p-1.5 rounded-full transition-colors pointer-events-auto" style={{ background: 'var(--card-bg)', color: 'var(--text-primary)' }} data-tooltip="编辑标签" aria-label="编辑标签">
                         <Tag className="w-4 h-4" />
-                      </button>
-                      <button onClick={(e) => {
+                      </button></Tooltip>
+                      <Tooltip content="编辑元信息"><button onClick={(e) => {
                         e.stopPropagation();
                         openMetadataEditor(item);
                       }}
-                        className="p-1.5 rounded-full transition-colors pointer-events-auto" style={{ background: 'var(--card-bg)', color: 'var(--text-primary)' }} title="编辑元信息">
+                        className="p-1.5 rounded-full transition-colors pointer-events-auto" style={{ background: 'var(--card-bg)', color: 'var(--text-primary)' }} data-tooltip="编辑元信息" aria-label="编辑元信息">
                         <FileText className="w-4 h-4" />
-                      </button>
-                      <button onClick={(e) => {
+                      </button></Tooltip>
+                      <Tooltip content="删除"><button onClick={(e) => {
                         e.stopPropagation();
                         handleDelete(item.id, e.currentTarget);
                       }}
-                        className="p-1.5 rounded-full transition-colors pointer-events-auto" style={{ background: 'var(--card-bg)', color: 'var(--color-error)' }} title="删除">
+                        className="p-1.5 rounded-full transition-colors pointer-events-auto" style={{ background: 'var(--card-bg)', color: 'var(--color-error)' }} data-tooltip="删除" aria-label="删除">
                         <Trash2 className="w-4 h-4" />
-                      </button>
+                      </button></Tooltip>
                   </div>
                   <div className="px-2.5 pb-2.5">
-                    <p className="text-xs truncate" style={{ color: 'var(--text-secondary)' }} title={item.original_name || item.filename}>
+                    <Tooltip content={item.original_name || item.filename}><p className="text-xs truncate" style={{ color: 'var(--text-secondary)' }} data-tooltip={item.original_name || item.filename}>
                       {item.mime_type?.startsWith('audio/') && (item.title || item.artist)
                         ? [item.title, item.artist].filter(Boolean).join(' — ') || item.original_name || item.filename
                         : item.original_name || item.filename}
-                    </p>
+                    </p></Tooltip>
                     {item.tags && item.tags.length > 0 && (
                       <div className="flex gap-1 mt-1 flex-wrap">
                         {item.tags.map(tag => (
@@ -831,7 +826,8 @@ export default function AdminMedia() {
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--glass-border)' }}>
                   <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider w-10" style={{ color: 'var(--text-secondary)' }}>
-                    <Checkbox checked={selectedIds.size === filtered.length && filtered.length > 0} onChange={toggleSelectAll} />
+                    <Checkbox aria-label="选择全部文件" checked={filtered.length > 0 && filtered.every(item => selectedIds.has(item.id))}
+                      indeterminate={filtered.some(item => selectedIds.has(item.id)) && !filtered.every(item => selectedIds.has(item.id))} onChange={toggleSelectAll} />
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider w-12" style={{ color: 'var(--text-secondary)' }}></th>
                   <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>文件名</th>
@@ -847,7 +843,7 @@ export default function AdminMedia() {
                   return (
                     <tr key={item.id} className="transition-colors" style={{ borderBottom: '1px solid var(--glass-border)' }}>
                       <td className="px-4 py-3">
-                        <Checkbox checked={selectedIds.has(item.id)} onChange={() => toggleSelect(item.id)} />
+                        <Checkbox aria-label={`选择文件 ${item.original_name || item.filename}`} checked={selectedIds.has(item.id)} onChange={() => toggleSelect(item.id)} />
                       </td>
                       <td className="px-4 py-3">
                         <button aria-label={`预览 ${item.original_name || item.filename}`} onClick={() => setViewerItem(item)}>
@@ -877,11 +873,11 @@ export default function AdminMedia() {
                           )}
                         </button>
                       </td>
-                      <td className="px-4 py-3 text-sm truncate max-w-[200px]" style={{ color: 'var(--text-primary)' }} title={item.original_name || item.filename}>
+                      <Tooltip content={item.original_name || item.filename}><td className="px-4 py-3 text-sm truncate max-w-[200px]" style={{ color: 'var(--text-primary)' }} data-tooltip={item.original_name || item.filename}>
                         {item.mime_type?.startsWith('audio/') && (item.title || item.artist)
                           ? [item.title, item.artist].filter(Boolean).join(' — ') || item.original_name || item.filename
                           : item.original_name || item.filename}
-                      </td>
+                      </td></Tooltip>
                       <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>{item.mime_type || '-'}</td>
                       <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>{item.size ? formatSize(item.size) : '-'}</td>
                       <td className="px-4 py-3">
@@ -898,28 +894,28 @@ export default function AdminMedia() {
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-1">
-                          <button onClick={(e) => {
+                          <Tooltip content="复制链接"><button onClick={(e) => {
                             if (openLinksId === item.id) { setOpenLinksId(null); setOpenLinksEl(null); }
                             else { setOpenLinksId(item.id); setOpenLinksEl(e.currentTarget); setEditingTagsId(null); }
                           }}
-                            className="btn-glass p-2.5 rounded transition-colors" title="复制链接">
+                            className="btn-glass p-2.5 rounded transition-colors" data-tooltip="复制链接" aria-label="复制链接">
                             <Copy className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
-                          </button>
-                          <button onClick={(e) => {
+                          </button></Tooltip>
+                          <Tooltip content="编辑标签"><button onClick={(e) => {
                             if (editingTagsId === item.id) { setEditingTagsId(null); setEditingTagsEl(null); }
                             else { setEditingTagsId(item.id); setEditingTagsEl(e.currentTarget); setOpenLinksId(null); }
                           }}
-                            className="btn-glass p-2.5 rounded transition-colors" title="编辑标签">
+                            className="btn-glass p-2.5 rounded transition-colors" data-tooltip="编辑标签" aria-label="编辑标签">
                             <Tag className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
-                          </button>
-                          <button onClick={() => openMetadataEditor(item)}
-                            className="btn-glass p-2.5 rounded transition-colors" title="编辑元信息">
+                          </button></Tooltip>
+                          <Tooltip content="编辑元信息"><button onClick={() => openMetadataEditor(item)}
+                            className="btn-glass p-2.5 rounded transition-colors" data-tooltip="编辑元信息" aria-label="编辑元信息">
                             <FileText className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
-                          </button>
-                          <button onClick={() => handleDelete(item.id)}
-                            className="btn-glass p-2.5 rounded transition-colors" title="删除">
+                          </button></Tooltip>
+                          <Tooltip content="删除"><button onClick={() => handleDelete(item.id)}
+                            className="btn-glass p-2.5 rounded transition-colors" data-tooltip="删除" aria-label="删除">
                             <Trash2 className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
-                          </button>
+                          </button></Tooltip>
                         </div>
                       </td>
                     </tr>
@@ -937,7 +933,7 @@ export default function AdminMedia() {
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-2">
               <span className="text-xs whitespace-nowrap shrink-0" style={{ color: 'var(--text-info)' }}>每页</span>
-              <Select value={String(pageSize)} onChange={v => { setPageSize(Number(v)); setPage(1); }}
+              <Select aria-label="每页条数" value={String(pageSize)} onChange={v => { setPageSize(Number(v)); setPage(1); }}
                 options={[10, 20, 30, 50, 100].map(v => ({ value: String(v), label: String(v) }))} />
             </div>
             <div className="flex flex-wrap gap-1">
@@ -970,85 +966,81 @@ export default function AdminMedia() {
         const item = viewerItem;
         const type = getMediaType(item.mime_type);
         return (
-          <div className="admin-overlay fixed inset-0 z-[200] flex items-center justify-center p-4 sm:p-8"
-            style={{ background: 'rgba(0,0,0,0.85)' }}
-            onClick={() => setViewerItem(null)}>
-            <div className="admin-dialog-panel relative max-w-5xl w-full max-h-full flex flex-col items-center"
-              onClick={e => e.stopPropagation()}>
-              {/* Close button */}
-              <button onClick={() => setViewerItem(null)} aria-label="关闭预览"
-                className="absolute -top-10 right-0 sm:-right-10 sm:-top-10 p-2 rounded-full transition-colors hover:bg-white/10 z-10 cursor-pointer"
-                style={{ color: '#fff' }}>
-                <X className="w-6 h-6" />
-              </button>
+          <Dialog title="媒体预览" onClose={() => setViewerItem(null)} layer={200}
+            className="admin-dialog-panel max-w-5xl w-full flex flex-col items-center">
+            {/* Close button */}
+            <button onClick={() => setViewerItem(null)} aria-label="关闭预览"
+              className="absolute top-3 right-3 p-2 rounded-full transition-colors hover:bg-white/10 z-10 cursor-pointer"
+              style={{ color: '#fff', background: 'rgba(0,0,0,0.65)' }}>
+              <X className="w-6 h-6" />
+            </button>
 
-              {/* Media display */}
-              <div className="w-full flex items-center justify-center rounded-xl overflow-hidden"
-                style={{ background: 'var(--surface-bg)', minHeight: type === 'audio' ? '200px' : 'auto' }}>
-                {type === 'image' ? (
-                  <img src={item.url} alt={item.original_name || item.filename}
-                    className="max-w-full max-h-[70vh] object-contain"
-                    style={{ background: 'var(--surface-bg)' }} />
-                ) : type === 'video' ? (
-                  <video src={item.url} controls autoPlay
-                    className="max-w-full max-h-[70vh] w-full"
-                    style={{ background: '#000' }} />
-                ) : type === 'audio' ? (
-                  <div className="w-full p-8 sm:p-12 flex flex-col items-center gap-6 relative"
-                    style={{
-                      background: item.thumbnail_url
-                        ? `linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)`
-                        : 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
-                      minHeight: '280px',
-                    }}>
-                    {item.thumbnail_url && (
-                      <img src={item.thumbnail_url} alt=""
-                        className="absolute inset-0 w-full h-full object-contain opacity-30 pointer-events-none" />
+            {/* Media display */}
+            <div className="w-full flex items-center justify-center rounded-xl overflow-hidden"
+              style={{ background: 'var(--surface-bg)', minHeight: type === 'audio' ? '200px' : 'auto' }}>
+              {type === 'image' ? (
+                <img src={item.url} alt={item.original_name || item.filename}
+                  className="max-w-full max-h-[70vh] object-contain"
+                  style={{ background: 'var(--surface-bg)' }} />
+              ) : type === 'video' ? (
+                <MediaPreview src={item.url} type="video" title={item.original_name || item.filename}
+                  className="max-w-full max-h-[70vh] w-full"
+                  style={{ background: '#000' }} />
+              ) : type === 'audio' ? (
+                <div className="w-full p-8 sm:p-12 flex flex-col items-center gap-6 relative"
+                  style={{
+                    background: item.thumbnail_url
+                      ? `linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)`
+                      : 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
+                    minHeight: '280px',
+                  }}>
+                  {item.thumbnail_url && (
+                    <img src={item.thumbnail_url} alt=""
+                      className="absolute inset-0 w-full h-full object-contain opacity-30 pointer-events-none" />
+                  )}
+                  <div className="w-24 h-24 rounded-full overflow-hidden flex items-center justify-center relative z-10"
+                    style={{ background: 'var(--glass-bg)', border: '2px solid var(--glass-border)' }}>
+                    {item.thumbnail_url ? (
+                      <ImageWithFallback src={item.thumbnail_url} alt={item.original_name || item.filename} loading="lazy" decoding="async" className="w-full h-full object-cover" />
+                    ) : (
+                      <Music className="w-10 h-10" style={{ color: 'var(--primary)' }} />
                     )}
-                    <div className="w-24 h-24 rounded-full overflow-hidden flex items-center justify-center relative z-10"
-                      style={{ background: 'var(--glass-bg)', border: '2px solid var(--glass-border)' }}>
-                      {item.thumbnail_url ? (
-                        <ImageWithFallback src={item.thumbnail_url} alt={item.original_name || item.filename} loading="lazy" decoding="async" className="w-full h-full object-cover" />
-                      ) : (
-                        <Music className="w-10 h-10" style={{ color: 'var(--primary)' }} />
-                      )}
-                    </div>
-                    <audio src={item.url} controls autoPlay
-                      className="w-full max-w-md relative z-10" />
                   </div>
-                ) : (
-                  <div className="p-12 flex flex-col items-center gap-4">
-                    <FileText className="w-16 h-16" style={{ color: 'var(--text-info)' }} />
-                    <a href={item.url} target="_blank" rel="noopener noreferrer"
-                      className="text-sm underline" style={{ color: 'var(--primary)' }}>
-                      打开文件
-                    </a>
-                  </div>
-                )}
-              </div>
-
-              {/* Info bar */}
-              <div className="w-full mt-3 flex items-center justify-between px-2">
-                <div className="flex items-center gap-3 min-w-0">
-                  <span className="text-sm font-medium truncate" style={{ color: '#e5e7eb' }}>
-                    {item.original_name || item.filename}
-                  </span>
-                  <span className="text-xs flex-shrink-0" style={{ color: '#9ca3af' }}>
-                    {formatSize(item.size)}
-                  </span>
-                  <span className="text-xs flex-shrink-0" style={{ color: '#9ca3af' }}>
-                    {item.mime_type}
-                  </span>
+                  <MediaPreview src={item.url} type="audio" title={item.original_name || item.filename}
+                    className="w-full max-w-md relative z-10" />
                 </div>
-                <a href={item.url} target="_blank" rel="noopener noreferrer"
-                  className="flex items-center gap-1 text-xs p-2.5 rounded transition-colors hover:bg-white/10 flex-shrink-0"
-                  style={{ color: '#9ca3af' }}>
-                  <ExternalLink className="w-3.5 h-3.5" />
-                  {SITE_URL}{item.url}
-                </a>
-              </div>
+              ) : (
+                <div className="p-12 flex flex-col items-center gap-4">
+                  <FileText className="w-16 h-16" style={{ color: 'var(--text-info)' }} />
+                  <a href={item.url} target="_blank" rel="noopener noreferrer"
+                    className="text-sm underline" style={{ color: 'var(--primary)' }}>
+                    打开文件
+                  </a>
+                </div>
+              )}
             </div>
-          </div>
+
+            {/* Info bar */}
+            <div className="w-full mt-3 flex items-center justify-between px-2">
+              <div className="flex items-center gap-3 min-w-0">
+                <span className="text-sm font-medium truncate" style={{ color: '#e5e7eb' }}>
+                  {item.original_name || item.filename}
+                </span>
+                <span className="text-xs flex-shrink-0" style={{ color: '#9ca3af' }}>
+                  {formatSize(item.size)}
+                </span>
+                <span className="text-xs flex-shrink-0" style={{ color: '#9ca3af' }}>
+                  {item.mime_type}
+                </span>
+              </div>
+              <a href={item.url} target="_blank" rel="noopener noreferrer"
+                className="flex items-center gap-1 text-xs p-2.5 rounded transition-colors hover:bg-white/10 flex-shrink-0"
+                style={{ color: '#9ca3af' }}>
+                <ExternalLink className="w-3.5 h-3.5" />
+                {SITE_URL}{item.url}
+              </a>
+            </div>
+          </Dialog>
         );
       })()}
       {openLinksId && (() => {
@@ -1125,127 +1117,117 @@ export default function AdminMedia() {
         const item = editingMetadataItem;
         const type = getMediaType(item.mime_type);
         return (
-          <div className="admin-overlay fixed inset-0 z-[200] flex items-center justify-center p-4"
-            style={{ background: 'rgba(0,0,0,0.6)' }}
-            onClick={() => { if (!mutation.pending) setEditingMetadataItem(null); }}>
-            <div role="dialog" aria-modal="true" aria-label="编辑元信息" className="admin-dialog-panel w-full max-w-lg rounded-xl p-5 space-y-4 glass-card"
-              onClick={e => e.stopPropagation()}>
-              <div className="flex items-center justify-between">
-                <h3 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>编辑元信息</h3>
-                <button aria-label="关闭元信息编辑" disabled={mutation.pending} onClick={() => setEditingMetadataItem(null)} className="p-1 rounded hover:bg-white/10">
-                  <X className="w-4 h-4" style={{ color: 'var(--text-secondary)' }} />
-                </button>
-              </div>
-
-              <RequestFeedback error={mutation.error} />
-              <fieldset disabled={mutation.pending} className="space-y-3">
-                {/* Cover image */}
-                <div className="pb-3" style={{ borderBottom: '1px solid var(--glass-border)' }}>
-                  <label className="block text-xs font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>封面图</label>
-                  <div className="flex items-center gap-3">
-                    <div className="w-20 h-20 rounded-xl overflow-hidden flex-shrink-0"
-                      style={{ background: 'var(--surface-bg)', border: '1px dashed var(--glass-border)' }}>
-                      {metadataForm.thumbnail_url ? (
-                        <img key={metadataForm.thumbnail_url} src={metadataForm.thumbnail_url} alt="" className="w-full h-full object-cover" />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center">
-                          <Image className="w-7 h-7" style={{ color: 'var(--text-info)' }} />
-                        </div>
-                      )}
-                    </div>
-                    <div className="min-w-0 flex-1 space-y-1">
-                      <p className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>{item.original_name || item.filename}</p>
-                      <p className="text-xs" style={{ color: 'var(--text-info)' }}>{item.mime_type} · {formatSize(item.size)}</p>
-                      <div className="pt-1">
-                        <MediaField
-                          value={metadataForm.thumbnail_url}
-                          onChange={(url) => setMetadataForm(p => ({ ...p, thumbnail_url: url }))}
-                          filterType="image"
-                          previewSize={0}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Title */}
-                <div>
-                  <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>标题</label>
-                  <input type="text" aria-label="媒体标题" disabled={mutation.pending} value={metadataForm.title}
-                    onChange={e => setMetadataForm(p => ({ ...p, title: e.target.value }))}
-                    placeholder={type === 'audio' ? '歌曲名' : type === 'video' ? '视频标题' : '标题'}
-                    className="w-full px-3 py-2 rounded-lg text-sm outline-none glass-card"
-                    style={{ color: 'var(--text-primary)' }} />
-                </div>
-
-                {/* Artist */}
-                <div>
-                  <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>作者</label>
-                  <input type="text" aria-label="艺术家" disabled={mutation.pending} value={metadataForm.artist}
-                    onChange={e => setMetadataForm(p => ({ ...p, artist: e.target.value }))}
-                    placeholder={type === 'audio' ? '歌手/乐队名' : '视频作者'}
-                    className="w-full px-3 py-2 rounded-lg text-sm outline-none glass-card"
-                    style={{ color: 'var(--text-primary)' }} />
-                </div>
-
-                {/* Album */}
-                <div>
-                  <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>专辑</label>
-                  <input type="text" aria-label="专辑" disabled={mutation.pending} value={metadataForm.album}
-                    onChange={e => setMetadataForm(p => ({ ...p, album: e.target.value }))}
-                    placeholder="专辑名"
-                    className="w-full px-3 py-2 rounded-lg text-sm outline-none glass-card"
-                    style={{ color: 'var(--text-primary)' }} />
-                </div>
-
-                {/* Description */}
-                <div>
-                  <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>描述</label>
-                  <textarea aria-label="媒体描述" disabled={mutation.pending} value={metadataForm.description}
-                    onChange={e => setMetadataForm(p => ({ ...p, description: e.target.value }))}
-                    placeholder="简要描述"
-                    rows={3}
-                    className="w-full px-3 py-2 rounded-lg text-sm outline-none glass-card resize-none"
-                    style={{ color: 'var(--text-primary)' }} />
-                </div>
-
-                {/* Gallery toggle */}
-                {item.mime_type?.startsWith('image/') && (
-                  <div className="flex items-center justify-between py-2" style={{ borderTop: '1px solid var(--glass-border)' }}>
-                    <div>
-                      <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>图片馆展示</span>
-                      <p className="text-xs mt-0.5" style={{ color: 'var(--text-info)' }}>关闭则不在图片馆中显示此图</p>
-                    </div>
-                    <button
-                      onClick={async (e) => {
-                        e.stopPropagation();
-                        await mutation.run(async () => {
-                          const res = await api.admin.gallery.toggle(item.url, item.original_name || item.filename);
-                          setItems(previous => previous.map(media => media.url === item.url ? { ...media, in_gallery: res.in_gallery } : media));
-                          setEditingMetadataItem(previous => previous?.url === item.url ? { ...previous, in_gallery: res.in_gallery } : previous);
-                          await reloadLatest();
-                        });
-                      }}
-                      className={`relative w-11 h-6 rounded-full transition-colors ${item.in_gallery ? 'bg-green-500' : 'bg-gray-600'}`}
-                      disabled={mutation.pending}
-                      aria-label="图片馆展示"
-                      role="switch"
-                      aria-checked={Boolean(item.in_gallery)}
-                    >
-                      <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform ${item.in_gallery ? 'translate-x-5' : ''}`} />
-                    </button>
-                  </div>
-                )}
-              </fieldset>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <button disabled={mutation.pending} onClick={() => setEditingMetadataItem(null)}
-                  className="px-4 py-2 rounded-lg text-sm btn-glass" style={{ color: 'var(--text-secondary)' }}>取消</button>
-                <button disabled={mutation.pending} onClick={handleSaveMetadata}
-                  className="px-4 py-2 rounded-lg text-sm font-medium text-white" style={{ background: 'var(--primary)' }}>保存</button>
-              </div>
+          <Dialog title="编辑元信息" onClose={() => { if (!mutation.pending) setEditingMetadataItem(null); }} layer={200}
+            className="admin-dialog-panel w-full max-w-lg rounded-xl p-5 space-y-4 glass-card">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>编辑元信息</h3>
+              <button aria-label="关闭元信息编辑" disabled={mutation.pending} onClick={() => setEditingMetadataItem(null)} className="p-1 rounded hover:bg-white/10">
+                <X className="w-4 h-4" style={{ color: 'var(--text-secondary)' }} />
+              </button>
             </div>
-          </div>
+
+            <RequestFeedback error={mutation.error} />
+            <fieldset disabled={mutation.pending} className="space-y-3">
+              {/* Cover image */}
+              <div className="pb-3" style={{ borderBottom: '1px solid var(--glass-border)' }}>
+                <label className="block text-xs font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>封面图</label>
+                <div className="flex items-center gap-3">
+                  <div className="w-20 h-20 rounded-xl overflow-hidden flex-shrink-0"
+                    style={{ background: 'var(--surface-bg)', border: '1px dashed var(--glass-border)' }}>
+                    {metadataForm.thumbnail_url ? (
+                      <img key={metadataForm.thumbnail_url} src={metadataForm.thumbnail_url} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <Image className="w-7 h-7" style={{ color: 'var(--text-info)' }} />
+                      </div>
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <p className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>{item.original_name || item.filename}</p>
+                    <p className="text-xs" style={{ color: 'var(--text-info)' }}>{item.mime_type} · {formatSize(item.size)}</p>
+                    <div className="pt-1">
+                      <MediaField
+                        value={metadataForm.thumbnail_url}
+                        onChange={(url) => setMetadataForm(p => ({ ...p, thumbnail_url: url }))}
+                        filterType="image"
+                        previewSize={0}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Title */}
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>标题</label>
+                <Input type="text" aria-label="媒体标题" disabled={mutation.pending} value={metadataForm.title}
+                  onChange={e => setMetadataForm(p => ({ ...p, title: e.target.value }))}
+                  placeholder={type === 'audio' ? '歌曲名' : type === 'video' ? '视频标题' : '标题'}
+                  className="w-full px-3 py-2 rounded-lg text-sm outline-none glass-card"
+                  style={{ color: 'var(--text-primary)' }} />
+              </div>
+
+              {/* Artist */}
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>作者</label>
+                <Input type="text" aria-label="艺术家" disabled={mutation.pending} value={metadataForm.artist}
+                  onChange={e => setMetadataForm(p => ({ ...p, artist: e.target.value }))}
+                  placeholder={type === 'audio' ? '歌手/乐队名' : '视频作者'}
+                  className="w-full px-3 py-2 rounded-lg text-sm outline-none glass-card"
+                  style={{ color: 'var(--text-primary)' }} />
+              </div>
+
+              {/* Album */}
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>专辑</label>
+                <Input type="text" aria-label="专辑" disabled={mutation.pending} value={metadataForm.album}
+                  onChange={e => setMetadataForm(p => ({ ...p, album: e.target.value }))}
+                  placeholder="专辑名"
+                  className="w-full px-3 py-2 rounded-lg text-sm outline-none glass-card"
+                  style={{ color: 'var(--text-primary)' }} />
+              </div>
+
+              {/* Description */}
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>描述</label>
+                <Textarea aria-label="媒体描述" disabled={mutation.pending} value={metadataForm.description}
+                  onChange={e => setMetadataForm(p => ({ ...p, description: e.target.value }))}
+                  placeholder="简要描述"
+                  rows={3}
+                  className="w-full px-3 py-2 rounded-lg text-sm outline-none glass-card resize-none"
+                  style={{ color: 'var(--text-primary)' }} />
+              </div>
+
+              {/* Gallery toggle */}
+              {item.mime_type?.startsWith('image/') && (
+                <div className="flex items-center justify-between py-2" style={{ borderTop: '1px solid var(--glass-border)' }}>
+                  <div>
+                    <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>图片馆展示</span>
+                    <p className="text-xs mt-0.5" style={{ color: 'var(--text-info)' }}>关闭则不在图片馆中显示此图</p>
+                  </div>
+                  <Switch checked={Boolean(item.in_gallery)}
+                    onChange={async () => {
+                      await mutation.run(async () => {
+                        const res = await api.admin.gallery.toggle(item.url, item.original_name || item.filename);
+                        setItems(previous => previous.map(media => media.url === item.url ? { ...media, in_gallery: res.in_gallery } : media));
+                        setEditingMetadataItem(previous => previous?.url === item.url ? { ...previous, in_gallery: res.in_gallery } : previous);
+                        await reloadLatest();
+                      });
+                    }}
+                    disabled={mutation.pending}
+                    aria-label="图片馆展示"
+                  />
+                </div>
+              )}
+            </fieldset>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button disabled={mutation.pending} onClick={() => setEditingMetadataItem(null)}
+                className="px-4 py-2 rounded-lg text-sm btn-glass" style={{ color: 'var(--text-secondary)' }}>取消</button>
+              <button disabled={mutation.pending} onClick={handleSaveMetadata}
+                className="px-4 py-2 rounded-lg text-sm font-medium text-white" style={{ background: 'var(--primary)' }}>保存</button>
+            </div>
+          </Dialog>
         );
       })()}
 

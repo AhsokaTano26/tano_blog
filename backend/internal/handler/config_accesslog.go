@@ -16,6 +16,7 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
+	"tano_blog/backend/internal/entryanimation"
 	"tano_blog/backend/internal/model"
 	"tano_blog/backend/internal/repository"
 	"tano_blog/backend/internal/service"
@@ -113,7 +114,7 @@ func (h *SiteConfigHandler) Get(c *gin.Context) {
 
 	result := make(map[string]interface{})
 	for _, cfg := range configs {
-		if cfg.Key == "sync_ssh_private_key_enc" {
+		if cfg.Key == "sync_ssh_private_key_enc" || cfg.Key == entryanimation.ConfigKey {
 			continue
 		}
 		result[cfg.Key] = cfg.Value

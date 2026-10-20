@@ -1,5 +1,7 @@
 'use client';
 
+import { Tooltip } from '@/components/ui/Tooltip';
+import { Input } from '@/components/ui/Input';
 import { useState, useCallback } from 'react';
 import { api } from '@/lib/api';
 import type { TaxonomyItem } from '@/lib/admin-types';
@@ -54,9 +56,9 @@ export default function AdminTags() {
       <div className="glass-card rounded-xl p-5 mb-4">
         <h2 className="text-sm font-semibold mb-3" style={{ color: 'var(--text-primary)' }}>{editing ? '编辑标签' : '添加标签'}</h2>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
-          <input disabled={mutation.pending} aria-label="名称" type="text" placeholder="名称" value={name} onChange={e => setName(e.target.value)}
+          <Input disabled={mutation.pending} aria-label="名称" type="text" placeholder="名称" value={name} onChange={e => setName(e.target.value)}
             className="px-3 py-2.5 rounded-lg text-sm outline-none" style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
-          <input disabled={mutation.pending} aria-label="排序（数字越小越靠前）" type="number" placeholder="排序（数字越小越靠前）" value={sortOrder} onChange={e => setSortOrder(Number(e.target.value))}
+          <Input disabled={mutation.pending} aria-label="排序（数字越小越靠前）" type="number" placeholder="排序（数字越小越靠前）" value={sortOrder} onChange={e => setSortOrder(Number(e.target.value))}
             className="px-3 py-2.5 rounded-lg text-sm outline-none" style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
         </div>
         <div className="flex gap-2">
@@ -98,14 +100,14 @@ export default function AdminTags() {
                   <td className="px-4 py-3 text-sm text-center" style={{ color: 'var(--text-primary)' }}>{item.post_count ?? 0}</td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1">
-                      <button onClick={() => { setEditing(item); setName(item.name); setSortOrder(item.sort_order ?? 0); }}
-                        className="btn-glass p-1.5 rounded transition-colors" title="编辑">
+                      <Tooltip content="编辑"><button onClick={() => { setEditing(item); setName(item.name); setSortOrder(item.sort_order ?? 0); }}
+                        className="btn-glass p-1.5 rounded transition-colors" data-tooltip="编辑" aria-label="编辑">
                         <Pencil className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
-                      </button>
-                      <button disabled={mutation.pending} onClick={() => handleDelete(item.id)}
-                        className="btn-glass p-1.5 rounded transition-colors" title="删除">
+                      </button></Tooltip>
+                      <Tooltip content="删除"><button disabled={mutation.pending} onClick={() => handleDelete(item.id)}
+                        className="btn-glass p-1.5 rounded transition-colors" data-tooltip="删除" aria-label="删除">
                         <Trash2 className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
-                      </button>
+                      </button></Tooltip>
                     </div>
                   </td>
                 </tr>
@@ -120,7 +122,7 @@ export default function AdminTags() {
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2">
               <span className="text-xs" style={{ color: 'var(--text-info)' }}>每页</span>
-              <Select value={String(pageSize)} onChange={v => { setPageSize(Number(v)); setPage(1); }}
+              <Select aria-label="每页条数" value={String(pageSize)} onChange={v => { setPageSize(Number(v)); setPage(1); }}
                 options={[10, 20, 30, 50, 100].map(v => ({ value: String(v), label: String(v) }))} />
             </div>
             <div className="flex gap-1">

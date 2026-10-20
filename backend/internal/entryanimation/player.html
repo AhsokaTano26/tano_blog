@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'">
+<style>/*ENTRY_CSS*/</style>
+</head>
+<body>
+<div class="admin-entry" style="--entry-board:2200ms;--entry-access:2600ms;--entry-identity:3900ms;--entry-request:5500ms;--entry-read:6650ms;--entry-verify:7900ms;--entry-welcome:9650ms;--entry-peak:10800ms;--entry-handoff:11600ms">
+  <p class="sr-only" role="status" data-entry="accessible_message"></p>
+  <div class="admin-entry-visual" aria-hidden="true">
+    <div class="admin-entry-plate"></div>
+    <div class="admin-entry-guides"><i></i><i></i><i></i></div>
+    <div class="admin-entry-grain"></div>
+    <div class="admin-entry-frame"><i></i><i></i><i></i><i></i></div>
+    <div class="admin-entry-scanline"></div>
+    <header class="admin-entry-brand">
+      <strong data-entry="brand_title"></strong><span data-entry="brand_subtitle"></span>
+      <b><span data-entry="brand_system"></span> <em data-entry="brand_suffix"></em></b>
+      <small><span data-entry="brand_caption"></span> <i data-entry="brand_version"></i></small>
+      <div class="admin-entry-slats"></div>
+    </header>
+    <div class="admin-entry-console">
+      <div class="admin-entry-card">
+        <div><span data-entry="identity_name_label"></span><strong data-entry="identity_name"></strong></div>
+        <div><span data-entry="identity_account_label"></span><b data-entry="identity_account"></b></div>
+        <div><span data-entry="identity_status_label"></span><b data-entry="identity_status"></b></div>
+      </div>
+      <div class="admin-entry-emblem"><div data-mark></div><span data-entry="emblem_caption"></span><i></i></div>
+      <div class="admin-entry-identity" data-entry="identity_confirmed"></div>
+    </div>
+    <svg class="admin-entry-reticle" viewBox="0 0 600 600">
+      <g class="admin-entry-orbit-outer"><path d="M176.1 476.9A216 216 0 1 1 423.9 476.9"></path><circle class="admin-entry-orbit-dot" cx="423.9" cy="476.9" r="10"></circle></g>
+      <g class="admin-entry-orbit-inner"><path d="M247.7 443.8A153 153 0 1 1 417.2 398.3"></path><circle class="admin-entry-orbit-dot" cx="247.7" cy="443.8" r="6"></circle></g>
+      <g class="admin-entry-brackets"><path d="M242 265A68 68 0 0 0 242 335M358 265A68 68 0 0 1 358 335"></path><circle cx="233" cy="206" r="3"></circle><circle cx="377" cy="392" r="3"></circle><circle cx="414" cy="224" r="3"></circle></g>
+    </svg>
+    <div class="admin-entry-data"><div id="data-stream"></div></div>
+    <footer class="admin-entry-footer">
+      <div class="admin-entry-log admin-entry-final-log">
+        <span class="admin-entry-counter">[ 06 / 06 ] <span data-entry="ready_label"></span></span>
+        <div class="admin-entry-subtitle"><span data-entry="ready_log"></span><small data-entry="ready_log_en"></small></div>
+      </div>
+      <span class="admin-entry-powered"><span data-entry="powered_label"></span> <b data-entry="powered_name"></b><i></i></span>
+      <div class="admin-entry-progress"><i></i></div>
+    </footer>
+    <div class="admin-entry-prologue">
+      <div class="admin-entry-prologue-inner"><div data-mark></div><strong data-entry="opening_title"></strong><span data-entry="opening_subtitle"></span><small data-entry="opening_caption"></small></div>
+      <div class="admin-entry-prologue-sweep"></div>
+    </div>
+    <div class="admin-entry-wash"></div>
+    <div class="admin-entry-welcome">
+      <div class="admin-entry-welcome-type">
+        <span class="admin-entry-chromatic" data-entry="welcome_prefix"></span>
+        <strong class="admin-entry-chromatic" data-entry="welcome_title"></strong>
+        <div class="admin-entry-welcome-mark"><div id="welcome-icon" data-mark></div><span data-entry="welcome_caption"></span></div>
+        <p class="admin-entry-chromatic" data-entry="welcome_message"></p>
+      </div>
+    </div>
+    <div class="admin-entry-bloom"></div><div class="admin-entry-streak"></div>
+  </div>
+  <button type="button" class="admin-entry-skip"><span data-entry="skip_label"></span><kbd>ESC</kbd><span aria-hidden="true">↗</span></button>
+</div>
+<template id="archive-mark"><svg viewBox="0 0 160 104" fill="none" aria-hidden="true"><path class="admin-entry-mark-trace" pathLength="1" d="M91 40L78 53C61 70 49 82 33 82C15 82 6 68 6 51C6 34 17 21 33 21C50 21 63 38 80 54C98 72 109 82 126 82C143 82 154 68 154 51C154 34 143 21 126 21C115 21 107 26 100 32"></path><path class="admin-entry-mark-detail" d="M33 39V65M20 52H46M114 52H138"></path></svg></template>
+<script type="application/json" id="entry-data">/*ENTRY_DATA*/</script>
+<script>/*ENTRY_JS*/</script>
+</body></html>

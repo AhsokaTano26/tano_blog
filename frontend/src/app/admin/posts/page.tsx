@@ -1,5 +1,8 @@
 'use client';
 
+import { Tooltip } from '@/components/ui/Tooltip';
+import { Checkbox } from '@/components/ui/Checkbox';
+import { Input } from '@/components/ui/Input';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import dynamic from 'next/dynamic';
@@ -192,7 +195,7 @@ export default function AdminPosts() {
         <div className="flex flex-wrap items-center gap-3 p-3 sm:p-4" style={{ borderBottom: '1px solid var(--glass-border)' }}>
           <div className="relative flex-1 min-w-[150px] max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: 'var(--text-info)' }} />
-            <input aria-label="搜索文章" type="text" placeholder="搜索文章..." value={search}
+            <Input aria-label="搜索文章" type="text" placeholder="搜索文章..." value={search}
               onChange={e => setSearch(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') { setPage(1); setSearchQuery(search.trim()); } }}
               className="w-full pl-9 pr-3 py-2 rounded-xl text-sm outline-none glass-card"
@@ -200,7 +203,7 @@ export default function AdminPosts() {
           </div>
           <button onClick={() => { setPage(1); setSearchQuery(search.trim()); }} className="admin-secondary-action">搜索</button>
           <div className="w-32">
-            <Select value={statusFilter}
+            <Select aria-label="状态筛选" value={statusFilter}
               onChange={v => { setStatusFilter(v); setPage(1); }}
               options={[
                 { value: '', label: '全部状态' },
@@ -248,7 +251,8 @@ export default function AdminPosts() {
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--glass-border)' }}>
                   <th className="px-4 py-3 text-left w-10">
-                    <input aria-label="选择全部文章" disabled={mutation.pending} type="checkbox" checked={selectedPosts.size === posts.length && posts.length > 0}
+                    <Checkbox aria-label="选择全部文章" disabled={mutation.pending} checked={selectedPosts.size === posts.length && posts.length > 0}
+                      indeterminate={selectedPosts.size > 0 && selectedPosts.size < posts.length}
                       onChange={toggleSelectAll}
                       className="w-4 h-4 rounded cursor-pointer" />
                   </th>
@@ -269,7 +273,7 @@ export default function AdminPosts() {
                 {posts.map((post, index) => (
                   <tr key={post.id || post.slug || index} className="transition-colors" style={{ borderBottom: '1px solid var(--glass-border)' }}>
                     <td className="px-4 py-3">
-                      <input aria-label={`选择文章 ${post.title}`} disabled={mutation.pending} type="checkbox" checked={selectedPosts.has(post.id)}
+                      <Checkbox aria-label={`选择文章 ${post.title}`} disabled={mutation.pending} checked={selectedPosts.has(post.id)}
                         onChange={() => toggleSelectPost(post.id)}
                         className="w-4 h-4 rounded cursor-pointer" />
                     </td>
@@ -285,12 +289,12 @@ export default function AdminPosts() {
                         <div className="flex items-center gap-2 min-w-0 group">
                           <button disabled={openingPost} className="text-sm font-medium truncate text-left hover:underline transition-opacity" style={{ color: 'var(--text-primary)' }}
                             onClick={() => openPost(post.id, 'edit')}>{post.title}</button>
-                          <button onClick={(e) => { e.stopPropagation(); window.open(`/posts/${post.slug}`, '_blank'); }}
+                          <Tooltip content="预览文章"><button onClick={(e) => { e.stopPropagation(); window.open(`/posts/${post.slug}`, '_blank'); }}
                             className="p-0.5 rounded transition-colors opacity-60 hover:opacity-100 focus-visible:opacity-100 flex-shrink-0"
                             style={{ color: 'var(--text-info)' }}
-                            title="预览文章">
+                            data-tooltip="预览文章" aria-label="预览文章">
                             <ExternalLink className="w-3.5 h-3.5" />
-                          </button>
+                          </button></Tooltip>
                           {post.is_top && (
                             <span className="px-1.5 py-0.5 text-xs rounded flex-shrink-0"
                               style={{ background: 'var(--primary-sub)', color: 'var(--primary)' }}>置顶</span>
@@ -345,30 +349,30 @@ export default function AdminPosts() {
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-1">
-                        <button onClick={() => window.open(`/posts/${post.slug}`, '_blank')}
-                          className="p-1.5 rounded-lg transition-colors btn-glass" style={{ color: 'var(--text-info)' }} title="预览">
+                        <Tooltip content="预览"><button onClick={() => window.open(`/posts/${post.slug}`, '_blank')}
+                          className="p-1.5 rounded-lg transition-colors btn-glass" style={{ color: 'var(--text-info)' }} data-tooltip="预览" aria-label="预览">
                           <ExternalLink className="w-4 h-4" />
-                        </button>
-                        <button disabled={mutation.pending} onClick={() => openPost(post.id, 'edit')}
-                          className="inline-flex items-center p-1.5 rounded-lg transition-colors btn-glass" style={{ color: 'var(--text-primary)' }} title="编辑">
+                        </button></Tooltip>
+                        <Tooltip content="编辑"><button disabled={mutation.pending} onClick={() => openPost(post.id, 'edit')}
+                          className="inline-flex items-center p-1.5 rounded-lg transition-colors btn-glass" style={{ color: 'var(--text-primary)' }} data-tooltip="编辑" aria-label="编辑">
                           <Pencil className="w-4 h-4" /><span className="text-xs ml-1">编辑</span>
-                        </button>
-                        <button disabled={mutation.pending} onClick={() => handleStatus(post.id, post.status === 'published' ? 'draft' : 'published')}
+                        </button></Tooltip>
+                        <Tooltip content={post.status === 'published' ? '下架' : '发布'}><button disabled={mutation.pending} onClick={() => handleStatus(post.id, post.status === 'published' ? 'draft' : 'published')}
                           className="p-1.5 rounded-lg transition-colors btn-glass"
                           style={{ color: post.status === 'published' ? 'var(--text-info)' : 'var(--primary)' }}
-                          title={post.status === 'published' ? '下架' : '发布'}>
+                          data-tooltip={post.status === 'published' ? '下架' : '发布'} aria-label={post.status === 'published' ? '下架' : '发布'}>
                           {post.status === 'published' ? <X className="w-4 h-4" /> : <Check className="w-4 h-4" />}
-                        </button>
-                        <button disabled={mutation.pending || metadata.loading || !!metadata.error} onClick={() => openPost(post.id, 'settings')}
+                        </button></Tooltip>
+                        <Tooltip content="设置"><button disabled={mutation.pending || metadata.loading || !!metadata.error} onClick={() => openPost(post.id, 'settings')}
                           className="p-1.5 rounded-lg transition-colors btn-glass"
-                          style={{ color: 'var(--text-info)' }} title="设置">
+                          style={{ color: 'var(--text-info)' }} data-tooltip="设置" aria-label="设置">
                           <Settings className="w-4 h-4" />
-                        </button>
-                        <button disabled={mutation.pending} onClick={() => handleDelete(post.id)}
+                        </button></Tooltip>
+                        <Tooltip content="删除"><button disabled={mutation.pending} onClick={() => handleDelete(post.id)}
                           className="p-1.5 rounded-lg transition-colors btn-glass"
-                          style={{ color: 'var(--color-error)' }} title="删除">
+                          style={{ color: 'var(--color-error)' }} data-tooltip="删除" aria-label="删除">
                           <Trash2 className="w-4 h-4" />
-                        </button>
+                        </button></Tooltip>
                       </div>
                     </td>
                   </tr>
@@ -384,7 +388,7 @@ export default function AdminPosts() {
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-2">
               <span className="text-xs whitespace-nowrap shrink-0" style={{ color: 'var(--text-info)' }}>每页</span>
-              <Select value={String(pageSize)} onChange={v => { setPageSize(Number(v)); setPage(1); }}
+              <Select aria-label="每页条数" value={String(pageSize)} onChange={v => { setPageSize(Number(v)); setPage(1); }}
                 options={[10, 20, 30, 50, 100].map(v => ({ value: String(v), label: String(v) }))} />
             </div>
             <div className="flex gap-1">

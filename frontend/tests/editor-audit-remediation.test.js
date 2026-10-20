@@ -3,6 +3,7 @@ const { input } = require('./dom-setup.js');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const React = require('react');
+const { currentDialog, dialogButton } = require('./ui-controls.js');
 const { createRoot } = require('react-dom/client');
 const { flushSync } = require('react-dom');
 const { api } = require('../src/lib/api.ts');
@@ -33,13 +34,13 @@ async function mountEditor(t, content = 'Saved A', isNew = false, overrides = {}
 }
 
 async function click(text, container = document) {
-  const button = [...container.querySelectorAll('button')].find(node => node.textContent.trim() === text);
+  const button = dialogButton(text) || [...container.querySelectorAll('button')].find(node => node.textContent.trim() === text);
   assert.equal(Boolean(button), true, `Missing button ${text}`);
   await React.act(async () => button.click());
 }
 
 async function openSettings(view) {
-  await React.act(async () => view.container.querySelector('button[title="文章详情与设置"]').click());
+  await React.act(async () => view.container.querySelector('button[data-tooltip="文章详情与设置"]').click());
 }
 
 test('a pending save preserves newer body edits and their recoverable draft', async t => {
@@ -61,10 +62,10 @@ test('a pending save keeps an open settings dialog and its uncommitted edits ava
   const view = await mountEditor(t);
   await click('保存', view.container);
   await openSettings(view);
-  await React.act(async () => input(view.container.querySelector('input[placeholder="输入作者名称"]'), 'Uncommitted author B'));
+  await React.act(async () => input(currentDialog()?.querySelector('input[placeholder="输入作者名称"]'), 'Uncommitted author B'));
   await React.act(async () => pending.resolve({ post: { id: 'saved-id', status: 'draft' } }));
   assert.equal(view.closed(), 0, 'uncommitted dialog work must keep the editor open');
-  assert.equal(view.container.querySelector('input[placeholder="输入作者名称"]')?.value, 'Uncommitted author B');
+  assert.equal(currentDialog()?.querySelector('input[placeholder="输入作者名称"]')?.value, 'Uncommitted author B');
 });
 
 test('keyboard saves do not submit another request while a save is pending', async t => {
@@ -105,15 +106,15 @@ for (const isNew of [false, true]) {
     });
     const view = await mountEditor(t, 'Saved A', isNew);
     await openSettings(view);
-    await React.act(async () => input(view.container.querySelector('input[type="password"]'), 'Secret A'));
+    await React.act(async () => input(currentDialog()?.querySelector('input[type="password"]'), 'Secret A'));
     await click('保存设置', view.container);
     await click('保存', view.container);
     await React.act(async () => input(view.textarea, 'Newer body B'));
     await React.act(async () => pending.resolve({ post: { id: 'saved-id', status: 'draft' } }));
     await openSettings(view);
-    const clear = [...view.container.querySelectorAll('button')].find(node => node.textContent.trim() === '清除密码');
+    const clear = dialogButton('清除密码');
     if (clear) await React.act(async () => clear.click());
-    else await React.act(async () => input(view.container.querySelector('input[type="password"]'), ''));
+    else await React.act(async () => input(currentDialog()?.querySelector('input[type="password"]'), ''));
     await click('保存设置', view.container);
     await click('保存', view.container);
     assert.equal(updates.at(-1).password, '', 'the server password saved by A must be removable by B');
@@ -129,11 +130,11 @@ test('saved password baseline preserves an explicit password removal made while 
   });
   const view = await mountEditor(t);
   await openSettings(view);
-  await React.act(async () => input(view.container.querySelector('input[type="password"]'), 'Secret A'));
+  await React.act(async () => input(currentDialog()?.querySelector('input[type="password"]'), 'Secret A'));
   await click('保存设置', view.container);
   await click('保存', view.container);
   await openSettings(view);
-  await React.act(async () => input(view.container.querySelector('input[type="password"]'), ''));
+  await React.act(async () => input(currentDialog()?.querySelector('input[type="password"]'), ''));
   await click('保存设置', view.container);
   await React.act(async () => pending.resolve({ post: { id: 'saved-id', status: 'draft' } }));
   await click('保存', view.container);
@@ -149,11 +150,10 @@ test('saved creation time baseline permits reverting a saved timestamp while new
     return updates.length === 1 ? pending.promise : Promise.resolve({ post: { id: 'saved-id', created_at: original } });
   });
   const view = await mountEditor(t, 'Saved A', false, { created_at: original });
-  const detailsTab = [...view.container.querySelectorAll('button')].find(button => button.textContent.trim() === '详情' && !button.hasAttribute('title'));
+  const detailsTab = [...view.container.querySelectorAll('button')].find(button => button.textContent.trim() === '详情' && !button.hasAttribute('data-tooltip'));
   assert.equal(Boolean(detailsTab), true);
   await React.act(async () => detailsTab.click());
-  const creationInput = [...view.container.querySelectorAll('input[type="datetime-local"]')]
-    .find(element => element.parentElement.querySelector('p')?.textContent === '创建时间');
+  const creationInput = view.container.querySelector('input[aria-label="文章创建时间"]');
   assert.equal(Boolean(creationInput), true, 'use the creation-time control in the sidebar');
   await React.act(async () => input(creationInput, toDateTimeLocal(changed)));
   assert.equal(creationInput.value, toDateTimeLocal(changed));
@@ -191,11 +191,11 @@ test('raw image edit replaces its source and preserves decoded attributes', asyn
   const content = '<a href="/read?a=1&amp;b=2"><img src="/photo.png?a=1&amp;b=2" alt="A &amp; B" width="320" height="160" /></a>';
   const view = await mountEditor(t, content);
   await React.act(async () => view.container.querySelector('img').click());
-  assert.equal(view.container.querySelector('input[placeholder="图片描述"]').value, 'A & B');
-  assert.equal(view.container.querySelector('input[placeholder="100%"]')?.value, '320');
-  assert.equal(view.container.querySelector('input[placeholder="auto"]')?.value, '160');
-  assert.equal(view.container.querySelector('input[placeholder="点击图片跳转的 URL"]')?.value, '/read?a=1&b=2');
-  await React.act(async () => input(view.container.querySelector('input[placeholder="图片描述"]'), 'Edited'));
+  assert.equal(currentDialog()?.querySelector('input[placeholder="图片描述"]').value, 'A & B');
+  assert.equal(currentDialog()?.querySelector('input[placeholder="100%"]')?.value, '320');
+  assert.equal(currentDialog()?.querySelector('input[placeholder="auto"]')?.value, '160');
+  assert.equal(currentDialog()?.querySelector('input[placeholder="点击图片跳转的 URL"]')?.value, '/read?a=1&b=2');
+  await React.act(async () => input(currentDialog()?.querySelector('input[placeholder="图片描述"]'), 'Edited'));
   await click('确认', view.container);
   assert.equal((view.textarea.value.match(/<img\b/g) || []).length, 1);
   assert.match(view.textarea.value, /alt="Edited"/);
@@ -205,8 +205,8 @@ test('raw image edit replaces its source and preserves decoded attributes', asyn
 test('clicking a repeated Markdown image edits the clicked source occurrence', async t => {
   const view = await mountEditor(t, '![First](/same.png)\n\n![Second](/same.png)');
   await React.act(async () => view.container.querySelectorAll('img')[1].click());
-  assert.equal(view.container.querySelector('input[placeholder="图片描述"]').value, 'Second');
-  await React.act(async () => input(view.container.querySelector('input[placeholder="图片描述"]'), 'Edited second'));
+  assert.equal(currentDialog()?.querySelector('input[placeholder="图片描述"]').value, 'Second');
+  await React.act(async () => input(currentDialog()?.querySelector('input[placeholder="图片描述"]'), 'Edited second'));
   await click('确认', view.container);
   assert.equal(view.textarea.value.startsWith('![First](/same.png)'), true);
   assert.equal(view.textarea.value.includes('![Second]'), false);
@@ -216,8 +216,8 @@ test('clicking a repeated Markdown image edits the clicked source occurrence', a
 test('editing an image preserves its reference-style link destination and replaces the complete wrapper', async t => {
   const view = await mountEditor(t, '[![Photo](/photo.png)][target]\n\n[target]: /read?a=1&amp;b=2');
   await React.act(async () => view.container.querySelector('img').click());
-  assert.equal(view.container.querySelector('input[placeholder="点击图片跳转的 URL"]')?.value, '/read?a=1&b=2');
-  await React.act(async () => input(view.container.querySelector('input[placeholder="图片描述"]'), 'Edited'));
+  assert.equal(currentDialog()?.querySelector('input[placeholder="点击图片跳转的 URL"]')?.value, '/read?a=1&b=2');
+  await React.act(async () => input(currentDialog()?.querySelector('input[placeholder="图片描述"]'), 'Edited'));
   await click('确认', view.container);
   assert.equal(view.textarea.value.includes('][target]'), false);
   assert.equal((view.textarea.value.match(/<img\b/g) || []).length, 1);
@@ -231,8 +231,8 @@ for (const [name, content] of [
   test(`mixed image wrapper editing preserves a ${name}`, async t => {
     const view = await mountEditor(t, content);
     await React.act(async () => view.container.querySelector('img').click());
-    assert.equal(view.container.querySelector('input[placeholder="点击图片跳转的 URL"]')?.value, '/read');
-    await React.act(async () => input(view.container.querySelector('input[placeholder="图片描述"]'), 'Edited A'));
+    assert.equal(currentDialog()?.querySelector('input[placeholder="点击图片跳转的 URL"]')?.value, '/read');
+    await React.act(async () => input(currentDialog()?.querySelector('input[placeholder="图片描述"]'), 'Edited A'));
     await click('确认', view.container);
     assert.equal(view.textarea.value.trim().startsWith('<figure'), true, 'replace the complete linked image wrapper');
     assert.equal(view.textarea.value.trim().endsWith('</figure>'), true);
@@ -256,7 +256,7 @@ test('an image dialog cannot switch identity when an identical image is inserted
   const imageSource = '![Photo](/photo.png)';
   const view = await mountEditor(t, imageSource);
   await React.act(async () => view.container.querySelector('img').click());
-  await React.act(async () => input(view.container.querySelector('input[placeholder="图片描述"]'), 'Changed original'));
+  await React.act(async () => input(currentDialog()?.querySelector('input[placeholder="图片描述"]'), 'Changed original'));
   const newerContent = `${imageSource}\n\n${imageSource}`;
   await React.act(async () => input(view.textarea, newerContent));
   await click('确认', view.container);
@@ -268,7 +268,7 @@ test('an image missing from the current source cannot become an insertion dialog
   const image = view.container.querySelector('img');
   image.setAttribute('data-markdown-src', '/missing.png');
   await React.act(async () => image.click());
-  assert.equal(view.container.querySelector('input[placeholder="输入图片地址"]') === null, true);
+  assert.equal(Boolean(currentDialog()?.querySelector('input[placeholder="输入图片地址"]')), false);
   assert.equal(view.textarea.value, '![Photo](/photo.png)');
 });
 
@@ -280,7 +280,7 @@ test('clicking a stale deferred preview cannot select a newly inserted identical
     flushSync(() => input(view.textarea, `${imageSource}\n\n${imageSource}`));
     image.click();
   });
-  assert.equal(view.container.querySelector('input[placeholder="输入图片地址"]') === null, true);
+  assert.equal(Boolean(currentDialog()?.querySelector('input[placeholder="输入图片地址"]')), false);
 });
 
 test('image lookup can locate raw escaped URLs by exact source position', () => {

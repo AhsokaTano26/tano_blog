@@ -32,10 +32,55 @@ async function mount(t, tree) {
 }
 
 function prepareAdmin(t) {
+  t.mock.method(api.admin.entryAnimation, 'player', async () => ({ html: '<html></html>', duration_ms: 12200 }));
   window.history.replaceState(null, '', '/admin/posts');
   t.mock.method(api.admin, 'summary', async () => ({ pending_comments: 0, pending_links: 0 }));
   t.mock.method(global, 'fetch', async () => Response.json({ count: 0 }));
 }
+
+test('fresh login loads the workbench under the entry overlay and preserves it when skipped', async t => {
+  prepareAdmin(t);
+  t.mock.method(api, 'getMe', async () => user);
+  const previousMatchMedia = window.matchMedia;
+  window.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
+  t.after(() => { window.matchMedia = previousMatchMedia; });
+  sessionStorage.setItem('jl', '1');
+  let mounts = 0;
+  function Workbench() {
+    React.useEffect(() => { mounts++; }, []);
+    return React.createElement('input', { 'aria-label': 'Workbench filter', defaultValue: 'Preserved' });
+  }
+  const render = await mount(t, () => React.createElement(AdminLayout, null, React.createElement(Workbench)));
+  const shell = document.querySelector('.admin-shell');
+  const input = document.querySelector('input[aria-label="Workbench filter"]');
+  assert.equal(shell !== null, true, 'the workbench must load while the animation plays');
+  assert.equal(shell.hasAttribute('inert'), true, 'covered controls must not receive interaction');
+  assert.equal(sessionStorage.getItem('jl'), null, 'fresh-login playback is consumed once');
+  await act(async () => document.querySelector('button[aria-label="跳过进入动画"]').click());
+  assert.equal(document.querySelector('.admin-shell') === shell, true);
+  assert.equal(document.querySelector('input[aria-label="Workbench filter"]') === input, true);
+  assert.equal(shell.hasAttribute('inert'), false);
+  assert.equal(mounts, 1);
+  await render();
+  assert.equal(document.querySelector('.admin-entry') === null, true, 'ordinary rerenders do not replay the intro');
+});
+
+test('the sidebar can replay the introduction without reloading the workbench', async t => {
+  prepareAdmin(t);
+  t.mock.method(api, 'getMe', async () => user);
+  await mount(t, () => React.createElement(AdminLayout, null,
+    React.createElement('input', { 'aria-label': 'Replay filter', defaultValue: 'Unsaved' })));
+  const input = document.querySelector('input[aria-label="Replay filter"]');
+  const replay = document.querySelector('button[aria-label="重播进入动画"]');
+  await act(async () => replay.focus());
+  await act(async () => replay.click());
+  assert.equal(document.querySelector('.admin-entry') !== null, true);
+  await act(async () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
+  assert.equal(document.querySelector('.admin-entry') === null, true);
+  assert.equal(document.querySelector('input[aria-label="Replay filter"]') === input, true);
+  assert.equal(input.value, 'Unsaved');
+  assert.equal(document.activeElement === replay, true);
+});
 
 test('route authentication rechecks preserve the mounted sidebar and unsaved controls', async t => {
   prepareAdmin(t);
@@ -104,6 +149,21 @@ test('switching an open mobile drawer to desktop restores page scrolling', async
   await act(async () => { desktop.matches = true; resize({ matches: true }); });
   assert.equal(document.body.style.overflow, '');
   assert.equal(menu.getAttribute('aria-expanded'), 'false');
+});
+
+test('replaying from mobile navigation closes the drawer and releases scrolling after the intro', async t => {
+  prepareAdmin(t);
+  t.mock.method(api, 'getMe', async () => user);
+  const previousMatchMedia = window.matchMedia;
+  window.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
+  t.after(() => { window.matchMedia = previousMatchMedia; });
+  await mount(t, () => React.createElement(AdminLayout, null, 'Content'));
+  await act(async () => document.querySelector('button[aria-label="打开导航"]').click());
+  await act(async () => button('重播进入动画').click());
+  assert.equal(document.querySelector('.admin-entry') !== null, true);
+  assert.equal(document.querySelector('button[aria-label="打开导航"]').getAttribute('aria-expanded'), 'false');
+  await act(async () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
+  assert.equal(document.body.style.overflow, '');
 });
 
 function ConfirmationHarness() {

@@ -41,12 +41,16 @@ test('header preserves defaults and lists each custom destination once', async t
     { title: '重复首页', url: '/' },
     { title: '主题专栏', url: '/series' },
     { title: '重复专栏', url: '/series' },
+    { title: '后台入口', url: '/admin' },
   ]);
   const nav = host.querySelector('nav[aria-label="主导航"]');
   assert.equal(nav === null, false);
   assert.equal(nav.querySelectorAll('a[href="/"]').length, 1);
   assert.equal(nav.querySelectorAll('a[href="/series"]').length, 1);
-  assert.equal(nav.querySelectorAll('a[href="/admin"]').length, 1);
+  assert.equal(nav.querySelectorAll('a[href="/admin"]').length, 0);
+  const tools = host.querySelector('.site-header-tools');
+  assert.equal(tools.querySelectorAll('a[href="/admin"]').length, 1);
+  assert.equal(tools.lastElementChild.getAttribute('href'), '/admin');
 });
 
 test('menu exposes its state, closes with Escape, and returns keyboard focus', async t => {

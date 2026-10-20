@@ -5,6 +5,7 @@ const test = (name, fn) => nodeTest(name, { timeout: 5000 }, fn);
 const assert = require('node:assert/strict');
 const React = require('react');
 const { act } = React;
+const { selectValue } = require('./ui-controls.js');
 const { createRoot } = require('react-dom/client');
 const { api, ApiError } = require('../src/lib/api.ts');
 const { ConfirmProvider } = require('../src/components/ConfirmDialog.tsx');
@@ -132,7 +133,7 @@ test('comment edit failure keeps the editor and text available for retry', async
   t.mock.method(api.admin.comments, 'list', async () => ({ items: [{ id: 'c', nickname: 'Reader', content: 'Original', status: 'pending', created_at: '2026-01-01T00:00:00Z', edited_count: 0, ip_address: '127.0.0.1' }], total: 1, page: 1, size: 20 }));
   t.mock.method(api.admin.comments, 'update', async () => { throw new Error('comment offline'); });
   await mount(t, 'admin/comments');
-  await act(async () => document.querySelector('button[title="详情"]').click());
+  await act(async () => document.querySelector('button[data-tooltip="详情"]').click());
   await click('编辑');
   await act(async () => input(document.querySelector('textarea'), 'Keep this correction'));
   await click('保存');
@@ -145,7 +146,7 @@ test('media metadata failure stays visible in the open editor without losing edi
   t.mock.method(api.admin.media.tags, 'list', async () => ({ items: [] }));
   t.mock.method(api.admin.media, 'updateMetadata', async () => { throw new Error('metadata offline'); });
   await mount(t, 'admin/media');
-  await act(async () => document.querySelector('button[title="编辑元信息"]').click());
+  await act(async () => document.querySelector('button[data-tooltip="编辑元信息"]').click());
   await act(async () => input(document.querySelector('textarea'), 'Keep media description'));
   await click('保存');
   assert.match(document.querySelector('[role="alert"]')?.textContent || '', /metadata offline/);
@@ -167,7 +168,7 @@ test('article list settings save includes the exact version read when opening th
   let payload;
   t.mock.method(api.admin.posts, 'update', async (_id, data) => { payload = data; return { post: { ...post, ...data } }; });
   await mount(t, 'admin/posts');
-  await act(async () => document.querySelector('button[title="设置"]').click());
+  await act(async () => document.querySelector('button[data-tooltip="设置"]').click());
   await click('保存设置');
   assert.equal(payload?.expected_updated_at, '2026-10-19T10:00:00.123456Z');
 });
@@ -180,7 +181,7 @@ test('article settings conflict keeps local values and never silently adopts the
     throw new ApiError('server newer', 409, 'post_conflict', { ...post, updated_at: '2026-10-19T11:00:00Z' });
   });
   await mount(t, 'admin/posts');
-  await act(async () => document.querySelector('button[title="设置"]').click());
+  await act(async () => document.querySelector('button[data-tooltip="设置"]').click());
   await act(async () => input(document.querySelector('input[placeholder="输入作者名称"]'), 'Keep local author'));
   await click('保存设置');
   assert.match(document.body.textContent, /其他.*更新|版本.*冲突|重新打开.*比较/);
@@ -196,13 +197,13 @@ test('article status failure is visible and repeated clicks submit only once', a
   t.mock.method(api.admin.posts, 'updateStatus', () => { submissions++; return new Promise((_, reject) => { rejectStatus = reject; }); });
   await mount(t, 'admin/posts');
   await act(async () => {
-    const publish = document.querySelector('button[title="发布"]');
+    const publish = document.querySelector('button[data-tooltip="发布"]');
     publish.click(); publish.click();
   });
   assert.equal(submissions, 1);
   await act(async () => rejectStatus(new Error('status offline')));
   assert.match(document.querySelector('[role="alert"]')?.textContent || '', /status offline/);
-  assert.equal(document.querySelector('button[title="发布"]') === null, false);
+  assert.equal(document.querySelector('button[data-tooltip="发布"]') === null, false);
 });
 
 test('post settings lock duplicate saves and prevent edits until the request settles', async t => {
@@ -230,12 +231,8 @@ test('a delayed article status change refreshes the current filter instead of it
   let finish;
   t.mock.method(api.admin.posts, 'updateStatus', () => new Promise(resolve => { finish = resolve; }));
   await mount(t, 'admin/posts');
-  await act(async () => document.querySelector('button[title="发布"]').click());
-  await act(async () => {
-    const select = document.querySelector('select');
-    select.value = 'published';
-    select.dispatchEvent(new Event('change', { bubbles: true }));
-  });
+  await act(async () => document.querySelector('button[data-tooltip="发布"]').click());
+  await selectValue(document.querySelector('[role="combobox"]'), 'published');
   await act(async () => finish());
   assert.equal(requests.at(-1).status, 'published');
   assert.match(document.body.textContent, /Current filtered article/);

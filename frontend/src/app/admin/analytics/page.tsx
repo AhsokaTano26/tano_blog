@@ -1,5 +1,7 @@
 'use client';
+import { validDateValue } from '@/lib/date-value';
 
+import { DatePicker } from '@/components/ui/DateTimePicker';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '@/lib/api';
 import { recentRequestRange } from '@/lib/request-statistics';
@@ -39,7 +41,7 @@ export default function AnalyticsPage() {
     const loadData = useCallback(async () => {
         const sequence = ++requestSequence.current;
         const days = (Date.parse(endDate) - Date.parse(startDate)) / 86400000;
-        if (!Number.isFinite(days) || days < 0 || days > 365) {
+        if (!validDateValue(startDate) || !validDateValue(endDate) || !Number.isFinite(days) || days < 0 || days > 365) {
             setError('请选择有效日期范围，开始日期不能晚于结束日期，最多 366 天');
             setLoading(false);
             return;
@@ -88,11 +90,11 @@ export default function AnalyticsPage() {
                 </div>
                 <div className={styles.dateInputs}>
                     <label htmlFor="analytics-start">开始日期</label>
-                    <input id="analytics-start" type="date" aria-label="开始日期" value={startDate}
-                        onChange={e => setRange(current => ({ ...current, start: e.target.value }))} />
+                    <DatePicker id="analytics-start" aria-label="开始日期" value={startDate}
+                        onChange={value => setRange(current => ({ ...current, start: value }))} />
                     <label htmlFor="analytics-end">结束日期</label>
-                    <input id="analytics-end" type="date" aria-label="结束日期" value={endDate}
-                        onChange={e => setRange(current => ({ ...current, end: e.target.value }))} />
+                    <DatePicker id="analytics-end" aria-label="结束日期" value={endDate}
+                        onChange={value => setRange(current => ({ ...current, end: value }))} />
                 </div>
             </div>
             <p className={styles.scope}>按 UTC+8 日期统计全部请求，包含结束日；每次最多 366 天。请求数包含接口和页面请求。</p>

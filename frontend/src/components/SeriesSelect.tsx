@@ -1,5 +1,8 @@
 'use client';
 
+import { Input } from '@/components/ui/Input';
+import { Select } from '@/components/ui/Select';
+
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 
@@ -32,14 +35,15 @@ export function SeriesSelect({ value, onChange, initialOptions = [] }: {
   }, [page, search, retry]);
   const selected = known.find(item => item.id === value);
   return <div className="space-y-2">
-    <input value={search} onChange={event => { setSearch(event.target.value); setPage(1); }}
+    <Input value={search} onChange={event => { setSearch(event.target.value); setPage(1); }}
       aria-label="搜索系列" placeholder="搜索系列..." className="w-full px-3 py-2 rounded-xl text-sm glass-card" />
-    <select aria-label="文章系列" value={value} onChange={event => onChange(event.target.value)}
-      className="w-full px-3 py-2 rounded-xl text-sm glass-card" style={{ color: 'var(--text-primary)' }}>
-      <option value="">无系列</option>
-      {value && !items.some(item => item.id === value) && <option value={value}>{selected?.name || '已选系列'}</option>}
-      {items.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
-    </select>
+    <Select aria-label="文章系列" value={value} onChange={onChange}
+      options={[
+        { value: '', label: '无系列' },
+        ...(value && !items.some(item => item.id === value) ? [{ value, label: selected?.name || '已选系列' }] : []),
+        ...items.map(item => ({ value: item.id, label: item.name })),
+      ]}
+      className="w-full px-3 py-2 rounded-xl text-sm glass-card" style={{ color: 'var(--text-primary)' }} />
     {loading && <p role="status" className="text-xs">正在读取系列...</p>}
     {error && <p role="alert" className="text-xs">{error} <button onClick={() => setRetry(value => value + 1)}>重试</button></p>}
     {total > 20 && <nav aria-label="系列分页" className="flex items-center justify-between text-xs">

@@ -1,11 +1,16 @@
 'use client';
 
+import { Checkbox } from '@/components/ui/Checkbox';
+import { Slider } from '@/components/ui/Slider';
+import { Textarea } from '@/components/ui/Textarea';
+import { Input } from '@/components/ui/Input';
 import { useState, useEffect } from 'react';
 import { api } from '@/lib/api';
 import { Save, Globe, FileText, Palette, MessageSquare, Code, Mail, User, Plus, Trash2, Cpu, Zap, AlertTriangle, Info, ArrowUpCircle, GitCompare, Shield } from 'lucide-react';
 import { Loading } from '@/components/Loading';
 import { Select } from '@/components/ConfirmDialog';
 import { MediaField } from '@/components/MediaField';
+import { EntryAnimationSettings } from '@/components/EntryAnimationSettings';
 
 
 const contactTypes = [
@@ -22,6 +27,7 @@ const tabs = [
   { key: 'basic', label: '基本设置', icon: Globe },
   { key: 'article', label: '文章设置', icon: FileText },
   { key: 'appearance', label: '外观设置', icon: Palette },
+  { key: 'entry-animation', label: '进入动画', icon: Zap },
   { key: 'comment', label: '评论设置', icon: MessageSquare },
   { key: 'turnstile', label: '人机验证', icon: Shield },
   { key: 'ai', label: 'AI 设置', icon: Cpu },
@@ -165,10 +171,10 @@ export default function AdminSettings() {
 
       <div className="glass-card rounded-xl overflow-hidden">
         {/* Tab navigation */}
-        <div className="flex" style={{ borderBottom: '1px solid var(--glass-border)' }}>
+        <div className="flex overflow-x-auto" style={{ borderBottom: '1px solid var(--glass-border)' }}>
           {tabs.map(tab => (
             <button key={tab.key} onClick={() => setActiveTab(tab.key)}
-              className="flex items-center gap-2 px-5 py-3 text-sm font-medium transition-colors relative"
+              className="flex shrink-0 items-center gap-2 px-5 py-3 text-sm font-medium transition-colors relative"
               style={{ color: activeTab === tab.key ? 'var(--primary)' : 'var(--text-secondary)' }}>
               <tab.icon className="w-4 h-4" />
               {tab.label}
@@ -181,26 +187,27 @@ export default function AdminSettings() {
 
         {/* Tab content */}
         <div className="p-6">
+          {activeTab === 'entry-animation' && <EntryAnimationSettings />}
           {activeTab === 'basic' && (
             <div className="space-y-5 max-w-2xl">
               <div>
                 <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>站点标题</label>
-                <input type="text" value={config.site_title || ''} onChange={e => setConfig({ ...config, site_title: e.target.value })}
+                <Input type="text" value={config.site_title || ''} onChange={e => setConfig({ ...config, site_title: e.target.value })}
                   className={inputClass} style={inputStyle} />
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>站点描述</label>
-                <textarea value={config.site_description || ''} onChange={e => setConfig({ ...config, site_description: e.target.value })} rows={2}
+                <Textarea value={config.site_description || ''} onChange={e => setConfig({ ...config, site_description: e.target.value })} rows={2}
                   className={`${inputClass} resize-none`} style={inputStyle} />
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>站点 URL</label>
-                <input type="url" value={config.site_url || ''} onChange={e => setConfig({ ...config, site_url: e.target.value })}
+                <Input type="url" value={config.site_url || ''} onChange={e => setConfig({ ...config, site_url: e.target.value })}
                   className={`${inputClass} font-mono`} style={inputStyle} />
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>页脚文本</label>
-                <input type="text" value={config.footer_text || ''} onChange={e => setConfig({ ...config, footer_text: e.target.value })}
+                <Input type="text" value={config.footer_text || ''} onChange={e => setConfig({ ...config, footer_text: e.target.value })}
                   className={inputClass} style={inputStyle} />
               </div>
               <div>
@@ -216,7 +223,7 @@ export default function AdminSettings() {
                   <span className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>关于页面</span>
                 </div>
                 <p className="text-xs mb-2" style={{ color: 'var(--text-info)' }}>支持 Markdown 格式，将显示在关于页面头像/简介下方</p>
-                <textarea
+                <Textarea
                   value={config.about_content || ''}
                   onChange={e => setConfig({ ...config, about_content: e.target.value })}
                   rows={12}
@@ -232,12 +239,12 @@ export default function AdminSettings() {
             <div className="space-y-5 max-w-2xl">
               <div>
                 <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>每页文章数</label>
-                <input type="number" min="1" max="50" value={config.posts_per_page || '10'} onChange={e => setConfig({ ...config, posts_per_page: e.target.value })}
+                <Input type="number" min="1" max="50" value={config.posts_per_page || '10'} onChange={e => setConfig({ ...config, posts_per_page: e.target.value })}
                   className="w-32 px-3 py-2.5 rounded-lg text-sm outline-none" style={inputStyle} />
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>摘要字数</label>
-                <input type="number" min="50" max="500" value={config.excerpt_length || '200'} onChange={e => setConfig({ ...config, excerpt_length: e.target.value })}
+                <Input type="number" min="50" max="500" value={config.excerpt_length || '200'} onChange={e => setConfig({ ...config, excerpt_length: e.target.value })}
                   className="w-32 px-3 py-2.5 rounded-lg text-sm outline-none" style={inputStyle} />
               </div>
             </div>
@@ -247,7 +254,7 @@ export default function AdminSettings() {
             <div className="space-y-5 max-w-2xl">
               <div>
                 <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>默认主题</label>
-                <Select value={config.default_theme || 'dark'}
+                <Select aria-label="默认主题" value={config.default_theme || 'dark'}
                   onChange={v => setConfig({ ...config, default_theme: v })}
                   options={[
                     { value: 'dark', label: '深色' },
@@ -258,8 +265,9 @@ export default function AdminSettings() {
               <div>
                 <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>主题色</label>
                 <div className="flex items-center gap-3">
-                  <input
+                  <Slider
                     type="range"
+                    aria-label="主题色"
                     min="0"
                     max="360"
                     value={config.accent_color || '225'}
@@ -350,14 +358,14 @@ export default function AdminSettings() {
                   <div className="space-y-4">
                     <div>
                       <label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>Site Key</label>
-                      <input type="text" value={config.turnstile_sitekey || ''} onChange={e => setConfig({ ...config, turnstile_sitekey: e.target.value })}
+                      <Input type="text" value={config.turnstile_sitekey || ''} onChange={e => setConfig({ ...config, turnstile_sitekey: e.target.value })}
                         placeholder="0x4AAAAAAA..."
                         className="w-full px-3 py-2 rounded-lg text-sm font-mono outline-none"
                         style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
                     </div>
                     <div>
                       <label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>Secret Key</label>
-                      <input type="password" value={config.turnstile_secret || ''} onChange={e => setConfig({ ...config, turnstile_secret: e.target.value })}
+                      <Input type="password" value={config.turnstile_secret || ''} onChange={e => setConfig({ ...config, turnstile_secret: e.target.value })}
                         placeholder="输入 Secret Key"
                         className="w-full px-3 py-2 rounded-lg text-sm font-mono outline-none"
                         style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
@@ -373,7 +381,7 @@ export default function AdminSettings() {
                           const checked = modules.includes(mod.key);
                           return (
                             <label key={mod.key} className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: 'var(--text-primary)' }}>
-                              <input type="checkbox" checked={checked} onChange={() => {
+                              <Checkbox checked={checked} onChange={() => {
                                 const cur = (config.turnstile_modules || 'comment,link').split(',').map(s => s.trim()).filter(Boolean);
                                 const next = checked ? cur.filter(k => k !== mod.key) : [...cur, mod.key];
                                 setConfig({ ...config, turnstile_modules: next.join(',') });
@@ -416,21 +424,21 @@ export default function AdminSettings() {
 
               <div>
                 <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>API 地址</label>
-                <input type="url" value={config.ai_api_url || ''} onChange={e => setConfig({ ...config, ai_api_url: e.target.value })}
+                <Input type="url" value={config.ai_api_url || ''} onChange={e => setConfig({ ...config, ai_api_url: e.target.value })}
                   placeholder="https://api.openai.com/v1" className={`${inputClass} font-mono`} style={inputStyle} />
                 <p className="text-xs mt-1" style={{ color: 'var(--text-info)' }}>OpenAI 兼容 API 地址，默认 https://api.openai.com/v1</p>
               </div>
 
               <div>
                 <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>API Key</label>
-                <input type="password" value={config.ai_api_key || ''} onChange={e => setConfig({ ...config, ai_api_key: e.target.value })}
+                <Input type="password" value={config.ai_api_key || ''} onChange={e => setConfig({ ...config, ai_api_key: e.target.value })}
                   placeholder="sk-..." className={inputClass} style={inputStyle} />
                 <p className="text-xs mt-1" style={{ color: 'var(--text-info)' }}>OpenAI 或兼容服务的 API 密钥</p>
               </div>
 
               <div>
                 <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>模型名称</label>
-                <input type="text" value={config.ai_model || ''} onChange={e => setConfig({ ...config, ai_model: e.target.value })}
+                <Input type="text" value={config.ai_model || ''} onChange={e => setConfig({ ...config, ai_model: e.target.value })}
                   placeholder="gpt-3.5-turbo" className={inputClass} style={inputStyle} />
                 <p className="text-xs mt-1" style={{ color: 'var(--text-info)' }}>使用的模型，如 gpt-3.5-turbo、gpt-4o、gpt-4o-mini 等</p>
               </div>
@@ -464,7 +472,7 @@ export default function AdminSettings() {
               {/* Provider selection */}
               <div>
                 <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>邮件服务商</label>
-                <Select value={config.email_provider || 'zeabur'}
+                <Select aria-label="邮件服务商" value={config.email_provider || 'zeabur'}
                   onChange={v => setConfig({ ...config, email_provider: v })}
                   options={[
                     { value: 'zeabur', label: 'Zeabur Email' },
@@ -475,7 +483,7 @@ export default function AdminSettings() {
               {/* From address */}
               <div>
                 <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>发件人地址</label>
-                <input type="email" value={config.email_from || ''} onChange={e => setConfig({ ...config, email_from: e.target.value })}
+                <Input type="email" value={config.email_from || ''} onChange={e => setConfig({ ...config, email_from: e.target.value })}
                   placeholder="noreply@yourdomain.com" className={inputClass} style={inputStyle} />
               </div>
 
@@ -484,12 +492,12 @@ export default function AdminSettings() {
                 <>
                   <div>
                     <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>API Key</label>
-                    <input type="password" value={config.email_zeabur_api_key || ''} onChange={e => setConfig({ ...config, email_zeabur_api_key: e.target.value })}
+                    <Input type="password" value={config.email_zeabur_api_key || ''} onChange={e => setConfig({ ...config, email_zeabur_api_key: e.target.value })}
                       placeholder="zs_your_api_key" className={inputClass} style={inputStyle} />
                   </div>
                   <div>
                     <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>API URL</label>
-                    <input type="url" value={config.email_zeabur_api_url || 'https://api.zeabur.com/api/v1/zsend/emails'} onChange={e => setConfig({ ...config, email_zeabur_api_url: e.target.value })}
+                    <Input type="url" value={config.email_zeabur_api_url || 'https://api.zeabur.com/api/v1/zsend/emails'} onChange={e => setConfig({ ...config, email_zeabur_api_url: e.target.value })}
                       className={`${inputClass} font-mono`} style={inputStyle} />
                   </div>
                 </>
@@ -500,23 +508,23 @@ export default function AdminSettings() {
                 <>
                   <div>
                     <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>SMTP 主机</label>
-                    <input type="text" value={config.email_smtp_host || ''} onChange={e => setConfig({ ...config, email_smtp_host: e.target.value })}
+                    <Input type="text" value={config.email_smtp_host || ''} onChange={e => setConfig({ ...config, email_smtp_host: e.target.value })}
                       placeholder="smtp.qq.com" className={inputClass} style={inputStyle} />
                   </div>
                   <div>
                     <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>SMTP 端口</label>
-                    <input type="text" value={config.email_smtp_port || '587'} onChange={e => setConfig({ ...config, email_smtp_port: e.target.value })}
+                    <Input type="text" value={config.email_smtp_port || '587'} onChange={e => setConfig({ ...config, email_smtp_port: e.target.value })}
                       placeholder="587" className={`${inputClass} w-32`} style={inputStyle} />
                     <p className="text-xs mt-1" style={{ color: 'var(--text-info)' }}>587 (STARTTLS) 或 465 (SSL/TLS)</p>
                   </div>
                   <div>
                     <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>用户名</label>
-                    <input type="text" value={config.email_smtp_username || ''} onChange={e => setConfig({ ...config, email_smtp_username: e.target.value })}
+                    <Input type="text" value={config.email_smtp_username || ''} onChange={e => setConfig({ ...config, email_smtp_username: e.target.value })}
                       placeholder="your@email.com" className={inputClass} style={inputStyle} />
                   </div>
                   <div>
                     <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>密码 / 授权码</label>
-                    <input type="password" value={config.email_smtp_password || ''} onChange={e => setConfig({ ...config, email_smtp_password: e.target.value })}
+                    <Input type="password" value={config.email_smtp_password || ''} onChange={e => setConfig({ ...config, email_smtp_password: e.target.value })}
                       placeholder="SMTP 授权码" className={inputClass} style={inputStyle} />
                     <p className="text-xs mt-1" style={{ color: 'var(--text-info)' }}>QQ邮箱请使用授权码，非登录密码</p>
                   </div>
@@ -541,7 +549,7 @@ export default function AdminSettings() {
               <div>
                 <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>全局 Head 注入</label>
                 <p className="text-xs mb-2" style={{ color: 'var(--text-info)' }}>注入到所有页面的 &lt;head&gt; 中，可用于添加统计代码、自定义样式等</p>
-                <textarea
+                <Textarea
                   value={config.head_injection || ''}
                   onChange={e => setConfig({ ...config, head_injection: e.target.value })}
                   rows={6}
@@ -552,7 +560,7 @@ export default function AdminSettings() {
               <div>
                 <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>内容页 Head 注入</label>
                 <p className="text-xs mb-2" style={{ color: 'var(--text-info)' }}>仅注入到文章详情页的 &lt;head&gt; 中</p>
-                <textarea
+                <Textarea
                   value={config.content_head_injection || ''}
                   onChange={e => setConfig({ ...config, content_head_injection: e.target.value })}
                   rows={6}
@@ -563,7 +571,7 @@ export default function AdminSettings() {
               <div>
                 <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>页脚注入</label>
                 <p className="text-xs mb-2" style={{ color: 'var(--text-info)' }}>注入到所有前台页面的页脚区域之前</p>
-                <textarea
+                <Textarea
                   value={config.footer_injection || ''}
                   onChange={e => setConfig({ ...config, footer_injection: e.target.value })}
                   rows={6}
@@ -605,7 +613,7 @@ export default function AdminSettings() {
                     <p className="text-sm font-medium" style={{ color: 'hsl(0, 60%, 55%)' }}>
                       请在下方输入 <span className="font-mono font-bold">CLEAR_ALL</span> 确认清空所有数据：
                     </p>
-                    <input type="text" autoFocus
+                    <Input type="text" autoFocus
                       onChange={e => { if (e.target.value === 'CLEAR_ALL') setClearStep(2); }}
                       placeholder="输入 CLEAR_ALL 确认"
                       className="w-full px-3 py-2.5 rounded-lg text-sm outline-none font-mono"
@@ -749,7 +757,7 @@ export default function AdminSettings() {
             </div>
           )}
 
-          {activeTab !== 'danger' && activeTab !== 'about' && (
+          {activeTab !== 'danger' && activeTab !== 'about' && activeTab !== 'entry-animation' && (
             <div className="pt-4 mt-6" style={{ borderTop: '1px solid var(--glass-border)' }}>
               <button onClick={handleSave} disabled={saving}
                 className="flex items-center gap-1.5 px-6 py-2.5 rounded-lg text-sm font-medium text-white disabled:opacity-50 transition-colors"

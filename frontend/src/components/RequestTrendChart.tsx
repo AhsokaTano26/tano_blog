@@ -1,4 +1,5 @@
 'use client';
+import { Tooltip } from '@/components/ui/Tooltip';
 
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react';
 import { BarChart3, LineChart } from 'lucide-react';
@@ -149,8 +150,8 @@ export default function RequestTrendChart({ data, title, subtitle, metricLabel, 
         {controls}
         <div className={styles.segmented} role="group" aria-label="图表类型">
           {([{ value: 'line', label: '折线图', icon: LineChart }, { value: 'bar', label: '柱状图', icon: BarChart3 }] as const).map(item =>
-            <button type="button" key={item.value} aria-label={item.label} title={item.label} aria-pressed={mode === item.value}
-              className={styles.modeButton} disabled={unavailable} onClick={() => setMode(item.value)}><item.icon size={16} strokeWidth={1.8} aria-hidden="true" /></button>)}
+            <Tooltip key={item.value} content={item.label}><button type="button" aria-label={item.label} data-tooltip={item.label} aria-pressed={mode === item.value}
+              className={styles.modeButton} disabled={unavailable} onClick={() => setMode(item.value)}><item.icon size={16} strokeWidth={1.8} aria-hidden="true" /></button></Tooltip>)}
         </div>
       </div>
     </header>

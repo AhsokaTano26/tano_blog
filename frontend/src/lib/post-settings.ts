@@ -1,3 +1,5 @@
+import { localDateTimeTimestamp } from './date-value';
+
 export type ExcerptMode = 'manual' | 'auto';
 
 export function toDateTimeLocal(value?: string | null): string {
@@ -9,5 +11,5 @@ export function toDateTimeLocal(value?: string | null): string {
 }
 
 export function scheduledTimestamp(value: string, status: string): string | null {
-  return value && status === 'draft' ? new Date(value).toISOString() : null;
+  return value && status === 'draft' ? localDateTimeTimestamp(value, '定时发布时间') : null;
 }

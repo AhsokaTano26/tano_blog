@@ -1,5 +1,6 @@
 'use client';
 
+import { Input } from '@/components/ui/Input';
 import { useState } from 'react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
@@ -51,7 +52,7 @@ export default function ForgotPasswordPage() {
             </div>
           )}
           <form onSubmit={handleSubmit} className="space-y-4">
-            <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+            <Input type="email" value={email} onChange={e => setEmail(e.target.value)}
               placeholder="请输入注册邮箱" required
               className="w-full px-4 py-3 rounded-xl text-sm outline-none glass-card"
               style={{ color: 'var(--text-primary)' }} />

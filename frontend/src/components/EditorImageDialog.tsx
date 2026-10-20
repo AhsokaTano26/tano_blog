@@ -1,5 +1,9 @@
 'use client';
 
+import { Input } from '@/components/ui/Input';
+import { Textarea } from '@/components/ui/Textarea';
+import { Dialog } from '@/components/ui/Dialog';
+
 import { useState } from 'react';
 import { X } from 'lucide-react';
 import { MediaPickerModal } from './MediaField';
@@ -34,12 +38,12 @@ export default function ImageEditDialog({ attrs, onSave, onClose }: {
   }
 
   return (
-    <div className="admin-overlay fixed inset-0 z-[100] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.5)' }} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="admin-dialog-panel rounded-2xl w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden" style={{ background: 'var(--color-bg)', border: '1px solid var(--glass-border)' }} onClick={e => e.stopPropagation()}>
+    <Dialog title="编辑图片" onClose={onClose}
+      className="rounded-2xl w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden" style={{ background: 'var(--color-bg)', border: '1px solid var(--glass-border)' }}>
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 flex-shrink-0" style={{ borderBottom: '1px solid var(--glass-border)' }}>
           <h2 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>编辑图片</h2>
-          <button onClick={onClose} className="p-1.5 rounded-lg transition-colors btn-glass" style={{ color: 'var(--text-info)' }}>
+          <button onClick={onClose} aria-label="关闭图片编辑" className="p-1.5 rounded-lg transition-colors btn-glass" style={{ color: 'var(--text-info)' }}>
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -50,7 +54,7 @@ export default function ImageEditDialog({ attrs, onSave, onClose }: {
           <div>
             <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-info)' }}>图片 URL</label>
             <div className="flex gap-2">
-              <input type="text" value={url} onChange={e => setUrl(e.target.value)}
+              <Input type="text" value={url} onChange={e => setUrl(e.target.value)}
                 className="flex-1 px-3 py-2 rounded-xl text-sm outline-none glass-card"
                 style={{ color: 'var(--text-primary)' }}
                 placeholder="输入图片地址" />
@@ -64,7 +68,7 @@ export default function ImageEditDialog({ attrs, onSave, onClose }: {
           {/* Alt Text */}
           <div>
             <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-info)' }}>替代文本 (Alt)</label>
-            <input type="text" value={alt} onChange={e => setAlt(e.target.value)}
+            <Input type="text" value={alt} onChange={e => setAlt(e.target.value)}
               className="w-full px-3 py-2 rounded-xl text-sm outline-none glass-card"
               style={{ color: 'var(--text-primary)' }}
               placeholder="图片描述" />
@@ -89,14 +93,14 @@ export default function ImageEditDialog({ attrs, onSave, onClose }: {
             <div className="flex gap-2">
               <div className="flex-1">
                 <label className="block text-xs mb-1" style={{ color: 'var(--text-info)' }}>宽度</label>
-                <input type="text" value={width} onChange={e => setWidth(e.target.value)}
+                <Input type="text" value={width} onChange={e => setWidth(e.target.value)}
                   className="w-full px-3 py-2 rounded-xl text-sm outline-none glass-card"
                   style={{ color: 'var(--text-primary)' }}
                   placeholder="100%" />
               </div>
               <div className="flex-1">
                 <label className="block text-xs mb-1" style={{ color: 'var(--text-info)' }}>高度</label>
-                <input type="text" value={height} onChange={e => setHeight(e.target.value)}
+                <Input type="text" value={height} onChange={e => setHeight(e.target.value)}
                   className="w-full px-3 py-2 rounded-xl text-sm outline-none glass-card"
                   style={{ color: 'var(--text-primary)' }}
                   placeholder="auto" />
@@ -125,7 +129,7 @@ export default function ImageEditDialog({ attrs, onSave, onClose }: {
           {/* Caption */}
           <div>
             <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-info)' }}>描述文本</label>
-            <textarea value={caption} onChange={e => setCaption(e.target.value)} rows={2}
+            <Textarea value={caption} onChange={e => setCaption(e.target.value)} rows={2}
               className="w-full px-3 py-2 rounded-xl text-sm outline-none resize-none glass-card"
               style={{ color: 'var(--text-primary)' }}
               placeholder="图片下方的描述文字" />
@@ -134,7 +138,7 @@ export default function ImageEditDialog({ attrs, onSave, onClose }: {
           {/* Link URL */}
           <div>
             <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-info)' }}>跳转链接</label>
-            <input type="text" value={linkUrl} onChange={e => setLinkUrl(e.target.value)}
+            <Input type="text" value={linkUrl} onChange={e => setLinkUrl(e.target.value)}
               className="w-full px-3 py-2 rounded-xl text-sm outline-none glass-card"
               style={{ color: 'var(--text-primary)' }}
               placeholder="点击图片跳转的 URL" />
@@ -153,8 +157,6 @@ export default function ImageEditDialog({ attrs, onSave, onClose }: {
             确认
           </button>
         </div>
-      </div>
-
       {showMediaPicker && (
         <MediaPickerModal
           filterType="image"
@@ -162,6 +164,6 @@ export default function ImageEditDialog({ attrs, onSave, onClose }: {
           onClose={() => setShowMediaPicker(false)}
         />
       )}
-    </div>
+    </Dialog>
   );
 }
