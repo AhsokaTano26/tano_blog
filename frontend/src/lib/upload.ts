@@ -1,3 +1,5 @@
+import { httpErrorMessage } from './http-error';
+
 export interface UploadProgress {
   loaded: number;
   total: number;
@@ -34,9 +36,12 @@ export function uploadForm<T>(url: string, form: FormData, csrfToken: string, op
       cleanup();
       let response: T & { error?: string };
       try { response = JSON.parse(xhr.responseText); }
-      catch { reject(new Error(`上传响应无效 (${xhr.status})`)); return; }
+      catch {
+        reject(new Error(xhr.status >= 200 && xhr.status < 300 ? `上传响应无效 (HTTP ${xhr.status})` : httpErrorMessage(xhr.status)));
+        return;
+      }
       if (xhr.status >= 200 && xhr.status < 300) resolve(response);
-      else reject(new Error(response?.error || `上传失败 (${xhr.status})`));
+      else reject(new Error(httpErrorMessage(xhr.status, response?.error)));
     });
     xhr.addEventListener('error', () => { cleanup(); reject(new Error('网络连接失败')); });
     xhr.addEventListener('timeout', () => { cleanup(); reject(new Error('上传超时，请重试')); });

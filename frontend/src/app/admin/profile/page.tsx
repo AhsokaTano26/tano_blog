@@ -3,7 +3,9 @@
 import { Textarea } from '@/components/ui/Textarea';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { requestError, useLatestRequest } from '@/lib/request-feedback';
+import { RequestFeedback } from '@/components/RequestFeedback';
 import { api } from '@/lib/api';
 import QRCode from 'qrcode';
 import { Save, Lock, User, Shield, KeyRound, Trash2, Plus, AlertTriangle, Globe } from 'lucide-react';
@@ -16,6 +18,8 @@ export default function AdminProfile() {
   const { confirm, prompt } = useConfirm();
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [userError, setUserError] = useState('');
+  const [passkeyError, setPasskeyError] = useState('');
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [tab, setTab] = useState<'profile' | 'password' | 'totp' | 'passkey'>('profile');
@@ -63,22 +67,22 @@ export default function AdminProfile() {
   const [passkeys, setPasskeys] = useState<{ id: string; nickname: string; created_at: string }[]>([]);
   const [passkeyLoading, setPasskeyLoading] = useState(false);
 
-  useEffect(() => {
-    api.getMe().then(u => {
+  const loadUser = useCallback(async () => {
+    setLoading(true);
+    setUserError('');
+    try {
+      const u = await api.getMe();
       setUser(u);
-      setDisplayName(u.display_name || '');
-      setEmail(u.email || '');
-      setAvatarUrl(u.avatar_url || '');
-      setBio(u.bio || '');
+      setDisplayName(u.display_name || ''); setEmail(u.email || '');
+      setAvatarUrl(u.avatar_url || ''); setBio(u.bio || '');
       setTotpEnabled(u.totp_enabled || false);
-      // Force password tab if redirected from MustChangePassword check
-      if ((u as any).must_change_password || forcePassword) {
-        setTab('password');
-      }
-    }).finally(() => setLoading(false));
-
-    api.admin.config.get().then(res => setSiteConfig(res.config)).catch(() => {});
-  }, []);
+      if (u.must_change_password || forcePassword) setTab('password');
+    } catch (cause) { setUserError(requestError(cause, '加载个人资料失败')); }
+    finally { setLoading(false); }
+  }, [forcePassword]);
+  useEffect(() => { void loadUser(); }, [loadUser]);
+  const publicSettings = useLatestRequest(useCallback(() => api.admin.config.get(), []), '加载公开资料失败');
+  useEffect(() => { if (publicSettings.data) setSiteConfig(publicSettings.data.config); }, [publicSettings.data]);
 
   useEffect(() => {
     if (tab === 'passkey') loadPasskeys();
@@ -95,21 +99,20 @@ export default function AdminProfile() {
         bio,
       });
       setMessage('个人信息已保存');
-      setTimeout(() => setMessage(''), 3000);
     } catch (e: any) {
-      setMessage(e.message || '保存失败');
+      setMessage(requestError(e, '保存失败'));
     }
     setSaving(false);
   }
 
   async function handleSavePublicProfile() {
+    if (!publicSettings.data) return;
     setPubSaving(true);
     try {
       await api.admin.config.update(siteConfig);
       setMessage('公开资料已保存');
-      setTimeout(() => setMessage(''), 3000);
     } catch (e: any) {
-      setMessage(e.message || '保存失败');
+      setMessage(requestError(e, '保存失败'));
     }
     setPubSaving(false);
   }
@@ -141,9 +144,8 @@ export default function AdminProfile() {
       if (window.location.search.includes('force_password=1')) {
         window.history.replaceState({}, document.title, '/admin/profile');
       }
-      setTimeout(() => setMessage(''), 3000);
     } catch (e: any) {
-      setMessage(e.message || '修改失败');
+      setMessage(requestError(e, '修改失败'));
     }
     setSaving(false);
   }
@@ -155,7 +157,7 @@ export default function AdminProfile() {
       const dataUrl = await QRCode.toDataURL(res.qr_code, { width: 192, margin: 2 });
       setTotpQrCode(dataUrl);
     } catch (e: any) {
-      setMessage(e.message || '设置失败');
+      setMessage(requestError(e, '设置失败'));
     }
   }
 
@@ -171,9 +173,8 @@ export default function AdminProfile() {
       setTotpQrCode('');
       setTotpCode('');
       setMessage('两步验证已启用');
-      setTimeout(() => setMessage(''), 3000);
     } catch (e: any) {
-      setMessage(e.message || '验证失败');
+      setMessage(requestError(e, '验证失败'));
     }
   }
 
@@ -183,18 +184,18 @@ export default function AdminProfile() {
       await api.disableTOTP();
       setTotpEnabled(false);
       setMessage('两步验证已关闭');
-      setTimeout(() => setMessage(''), 3000);
     } catch (e: any) {
-      setMessage(e.message || '操作失败');
+      setMessage(requestError(e, '操作失败'));
     }
   }
 
   async function loadPasskeys() {
     setPasskeyLoading(true);
+    setPasskeyError('');
     try {
       const list = await api.passkeysList();
       setPasskeys(list);
-    } catch {}
+    } catch (cause) { setPasskeyError(requestError(cause, '读取通行密钥失败')); }
     setPasskeyLoading(false);
   }
 
@@ -227,11 +228,10 @@ export default function AdminProfile() {
         },
       });
       setMessage('通行密钥已添加');
-      setTimeout(() => setMessage(''), 3000);
       loadPasskeys();
     } catch (e: any) {
       if (e.name !== 'NotAllowedError') {
-        setMessage(e.message || '注册失败');
+        setMessage(requestError(e, '注册失败'));
       }
     }
   }
@@ -242,9 +242,8 @@ export default function AdminProfile() {
       await api.passkeyDelete(id);
       setPasskeys(passkeys.filter(p => p.id !== id));
       setMessage('通行密钥已删除');
-      setTimeout(() => setMessage(''), 3000);
     } catch (e: any) {
-      setMessage(e.message || '删除失败');
+      setMessage(requestError(e, '删除失败'));
     }
   }
 
@@ -255,9 +254,8 @@ export default function AdminProfile() {
       await api.passkeyRename(id, name);
       setPasskeys(passkeys.map(p => p.id === id ? { ...p, nickname: name } : p));
       setMessage('已重命名');
-      setTimeout(() => setMessage(''), 3000);
     } catch (e: any) {
-      setMessage(e.message || '重命名失败');
+      setMessage(requestError(e, '重命名失败'));
     }
   }
 
@@ -265,6 +263,7 @@ export default function AdminProfile() {
   const inputStyle = { border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' };
 
   if (loading) return <Loading />;
+  if (userError) return <RequestFeedback error={userError} onRetry={loadUser} pending={loading} />;
 
   return (
     <div>
@@ -272,9 +271,10 @@ export default function AdminProfile() {
         <h1 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>个人资料</h1>
       </div>
 
+      <RequestFeedback error={publicSettings.error} onRetry={publicSettings.reload} pending={publicSettings.loading} />
       {message && (
-        <div className="mb-4 px-4 py-2.5 rounded-lg text-sm glass-card"
-          style={{ color: message.includes('已') ? 'hsl(142, 60%, 50%)' : 'hsl(0, 60%, 55%)' }}>
+        <div role={message.includes('失败') || !message.includes('已') ? 'alert' : 'status'} className="mb-4 px-4 py-2.5 rounded-lg text-sm glass-card"
+          style={{ color: !message.includes('失败') && message.includes('已') ? 'hsl(142, 60%, 50%)' : 'hsl(0, 60%, 55%)' }}>
           {message}
         </div>
       )}
@@ -421,7 +421,7 @@ export default function AdminProfile() {
                   </button>
                 </div>
 
-                <button onClick={handleSavePublicProfile} disabled={pubSaving}
+                <button onClick={handleSavePublicProfile} disabled={pubSaving || !publicSettings.data}
                   className="mt-6 flex items-center gap-1.5 px-6 py-2.5 rounded-lg text-sm font-medium text-white disabled:opacity-50 transition-colors"
                   style={{ background: 'var(--primary)' }}>
                   <Save className="w-4 h-4" />
@@ -499,7 +499,10 @@ export default function AdminProfile() {
                       或手动输入密钥：
                       <span className="font-mono cursor-pointer hover:opacity-80 underline underline-offset-2"
                         style={{ color: 'var(--primary)' }}
-                        onClick={() => { navigator.clipboard.writeText(totpSecret); setMessage('密钥已复制'); setTimeout(() => setMessage(''), 2000); }}>
+                        onClick={async () => {
+                          try { await navigator.clipboard.writeText(totpSecret); setMessage('密钥已复制'); }
+                          catch (cause) { setMessage(requestError(cause, '复制密钥失败，请手动复制')); }
+                        }}>
                         {totpSecret}
                       </span>
                     </p>
@@ -538,7 +541,8 @@ export default function AdminProfile() {
                 通行密钥（Passkey）让您无需输入密码即可安全登录。支持指纹、面容识别或设备密码。
               </p>
 
-              {passkeyLoading ? (
+              <RequestFeedback error={passkeyError} onRetry={loadPasskeys} pending={passkeyLoading} />
+              {passkeyError ? null : passkeyLoading ? (
                 <Loading text="加载中..." />
               ) : passkeys.length > 0 ? (
                 <div className="space-y-3">

@@ -7,6 +7,8 @@ import { FilePicker } from '@/components/ui/FilePicker';
 
 import { useState, useRef, useEffect } from 'react';
 import { api } from '@/lib/api';
+import { requestError } from '@/lib/request-feedback';
+import { RequestFeedback } from '@/components/RequestFeedback';
 import { ImageWithFallback } from '@/components/ImageWithFallback';
 import type { MediaItem } from '@/lib/admin-types';
 
@@ -23,18 +25,20 @@ interface MediaFieldProps {
 export function MediaField({ value, onChange, accept, placeholder, previewSize = 64, rounded = 'square', filterType }: MediaFieldProps) {
   const [showPicker, setShowPicker] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploading(true);
+    setUploadError('');
     try {
       const res = await api.admin.media.upload(file);
       const url = res.media?.url;
       if (url) onChange(url);
     } catch (err) {
-      console.error('Upload failed', err);
+      setUploadError(requestError(err, '上传附件失败'));
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -42,7 +46,7 @@ export function MediaField({ value, onChange, accept, placeholder, previewSize =
   };
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex flex-wrap items-center gap-2">
       {value && (
         <ImageWithFallback
           src={value}
@@ -80,6 +84,7 @@ export function MediaField({ value, onChange, accept, placeholder, previewSize =
         compact
         className="flex-shrink-0"
       />
+      {uploadError && <div className="w-full"><RequestFeedback error={uploadError} /></div>}
       {showPicker && (
         <MediaPickerModal
           onSelect={(url) => { onChange(url); setShowPicker(false); }}
@@ -109,14 +114,16 @@ export function MediaPickerModal({ onSelect, onClose, onUpload, filterType }: { 
   const [loadedPage, setLoadedPage] = useState(0);
   const [tagFilter, setTagFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState(filterType || '');
+  const [tagError, setTagError] = useState('');
   const [mediaTags, setMediaTags] = useState<{ id: string; name: string }[]>([]);
   const pageSize = 30;
 
   const loadTags = async () => {
+    setTagError('');
     try {
       const res = await api.admin.media.tags.list();
       setMediaTags(res.items || []);
-    } catch { /* ignore */ }
+    } catch (cause) { setTagError(requestError(cause, '加载媒体标签失败')); }
   };
 
   useEffect(() => { loadTags(); }, []);
@@ -144,6 +151,7 @@ export function MediaPickerModal({ onSelect, onClose, onUpload, filterType }: { 
 
   const modalContent = (
     <>
+      <RequestFeedback error={tagError} onRetry={loadTags} />
       <div className="flex items-center justify-between mb-2">
         <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>从媒体库选择</span>
         <div className="flex items-center gap-2">

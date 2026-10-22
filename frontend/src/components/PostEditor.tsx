@@ -8,8 +8,10 @@ import { Select } from '@/components/ui/Select';
 import { DateTimePicker } from '@/components/ui/DateTimePicker';
 import { FilePicker } from '@/components/ui/FilePicker';
 
-import { useState, useEffect, useLayoutEffect, useRef, useMemo, useDeferredValue } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useMemo, useDeferredValue, useCallback } from 'react';
 import dynamic from 'next/dynamic';
+import { requestError, useLatestRequest } from '@/lib/request-feedback';
+import { RequestFeedback } from '@/components/RequestFeedback';
 import { api, ApiError, type Post, type PostMutation, type PostRevision } from '@/lib/api';
 import { draftFromPost, postVersion, type EditorDraft } from '@/lib/editor-draft';
 import { useEditorDraft } from '@/lib/use-editor-draft';
@@ -91,8 +93,12 @@ export default function PostEditor({ post, onClose }: { post: Partial<Post> | nu
   const [allowComment, setAllowComment] = useState(post?.allow_comment !== false);
   const seriesList: { id: string; name: string }[] = [];
   const [selectedSeriesId, setSelectedSeriesId] = useState(post?.series?.[0]?.id || '');
-  const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
-  const [tags, setTags] = useState<{ id: string; name: string }[]>([]);
+  const metadata = useLatestRequest(useCallback(async () => {
+    const [categories, tags] = await Promise.all([api.getCategories(), api.getTags()]);
+    return { categories: categories.items, tags: tags.items };
+  }, []), '加载分类与标签失败');
+  const categories = metadata.data?.categories || [];
+  const tags = metadata.data?.tags || [];
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [authorName, setAuthorName] = useState(post?.author_name || '');
@@ -111,6 +117,8 @@ export default function PostEditor({ post, onClose }: { post: Partial<Post> | nu
   const passwordSet = serverPasswordSet && !passwordCleared;
   const [rightTab, setRightTab] = useState<'outline' | 'history' | 'details'>('outline');
   const [revisions, setRevisions] = useState<PostRevision[]>([]);
+  const [revisionsError, setRevisionsError] = useState('');
+  const [revisionsLoading, setRevisionsLoading] = useState(false);
   const [showRightPanel, setShowRightPanel] = useState(false);
   const [showMoreTools, setShowMoreTools] = useState(false);
   const [showMarkdownReference, setShowMarkdownReference] = useState(false);
@@ -187,10 +195,6 @@ export default function PostEditor({ post, onClose }: { post: Partial<Post> | nu
     setStatus(value);
   }
 
-  useEffect(() => {
-    api.getCategories().then(res => setCategories(res.items)).catch(() => {});
-    api.getTags().then(res => setTags(res.items)).catch(() => {});
-  }, []);
 
   const draft = useMemo<EditorDraft>(() => ({ title, slug, content, excerpt, excerptMode, coverImage, categoryId, tagIds, status, isTop,
     allowComment, authorName, selectedSeriesId, scheduledAt, createdAt, passwordHint, passwordCleared,
@@ -252,7 +256,10 @@ export default function PostEditor({ post, onClose }: { post: Partial<Post> | nu
 
   function loadRevisions() {
     if (!savedPostId) return;
-    api.admin.posts.revisions.list(savedPostId).then(res => setRevisions(res.items)).catch(() => {});
+    setRevisionsError(''); setRevisionsLoading(true);
+    api.admin.posts.revisions.list(savedPostId).then(res => setRevisions(res.items))
+      .catch(cause => setRevisionsError(requestError(cause, '加载修订历史失败')))
+      .finally(() => setRevisionsLoading(false));
   }
 
   async function handleRestoreRevision(revId: string) {
@@ -697,12 +704,16 @@ export default function PostEditor({ post, onClose }: { post: Partial<Post> | nu
         <div className="editor-header-actions flex items-center gap-2">
           {savedPostId && status === 'draft' && (
             <Tooltip content="复制预览链接"><button onClick={async () => {
+              let previewUrl = '';
               try {
                 const res = await api.admin.posts.generatePreviewToken(savedPostId);
                 const url = `${window.location.origin}/posts/preview?token=${res.token}`;
+                previewUrl = url;
                 await navigator.clipboard.writeText(url);
                 await alert('预览链接已复制到剪贴板');
-              } catch { await alert('生成失败'); }
+              } catch (cause) {
+                await alert(previewUrl ? `${requestError(cause, '预览链接已生成，但复制失败')}\n${previewUrl}` : requestError(cause, '生成预览链接失败'));
+              }
             }}
               className="p-2 rounded-xl transition-colors btn-glass"
               style={{ color: 'var(--text-info)' }}
@@ -754,6 +765,7 @@ export default function PostEditor({ post, onClose }: { post: Partial<Post> | nu
         {mediaUploading ? `正在上传 ${mediaUploadCount} 个文件，可继续编辑，完成后会自动插入原位置` : '支持粘贴截图、图片文件或拖入多张图片，自动上传并插入正文'}
       </div>
 
+      <div className="mx-4 flex-shrink-0"><RequestFeedback error={metadata.error} onRetry={metadata.reload} pending={metadata.loading} /></div>
       {/* Error */}
       {error && (
         <div role="alert" className="mx-4 mt-3 px-4 py-2.5 rounded-xl text-sm flex-shrink-0 glass-card pe-slide-down"
@@ -1017,7 +1029,8 @@ export default function PostEditor({ post, onClose }: { post: Partial<Post> | nu
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {revisions.length === 0 ? (
+                  <RequestFeedback error={revisionsError} onRetry={loadRevisions} pending={revisionsLoading} />
+                  {revisionsError ? null : revisionsLoading ? <p role="status">正在加载修订历史...</p> : revisions.length === 0 ? (
                     <p className="text-sm" style={{ color: 'var(--text-info)' }}>暂无修订历史</p>
                   ) : (
                     revisions.map(rev => (

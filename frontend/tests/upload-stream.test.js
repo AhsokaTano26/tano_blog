@@ -76,6 +76,21 @@ class UploadXHR extends EventTarget {
   elapse(milliseconds) { if (this.timeout > 0 && milliseconds >= this.timeout) this.dispatchEvent(new Event('timeout')); }
 }
 
+test('HTML upload rejections explain proxy status instead of reporting invalid JSON', async () => {
+  const { uploadForm } = require('../src/lib/upload.ts');
+  global.XMLHttpRequest = UploadXHR;
+  const failed = uploadForm('/upload', new FormData(), '');
+  UploadXHR.current.status = 413;
+  UploadXHR.current.responseText = '<html>proxy failure</html>';
+  UploadXHR.current.dispatchEvent(new Event('load'));
+  await assert.rejects(failed, error => {
+    assert.match(error.message, /HTTP 413/);
+    assert.match(error.message, /过大/);
+    assert.doesNotMatch(error.message, /响应无效|<html>/);
+    return true;
+  });
+});
+
 test('upload helper exposes byte progress, CSRF credentials and successful JSON', async () => {
   const { uploadForm } = require('../src/lib/upload.ts');
   global.XMLHttpRequest = UploadXHR;
@@ -125,4 +140,24 @@ test('an upload that never finishes times out within thirty minutes and releases
   await pending;
   controller.abort();
   assert.equal(aborts, 0);
+});
+
+test('non-string JSON upload errors reject instead of leaving the transfer pending', async t => {
+  const { uploadForm } = require('../src/lib/upload.ts');
+  global.XMLHttpRequest = UploadXHR;
+  let listenerError;
+  // Browsers report listener exceptions without rejecting the caller's promise.
+  t.mock.method(UploadXHR.prototype, 'addEventListener', function (type, listener, options) {
+    return EventTarget.prototype.addEventListener.call(this, type, event => {
+      try { listener.call(this, event); } catch (error) { listenerError = error; }
+    }, options);
+  });
+  const pending = uploadForm('/upload', new FormData(), '').then(() => null, error => error);
+  UploadXHR.current.status = 503;
+  UploadXHR.current.responseText = '{"error":{"message":"malformed upstream error"}}';
+  UploadXHR.current.dispatchEvent(new Event('load'));
+  const result = await Promise.race([pending, new Promise(resolve => setTimeout(() => resolve(null), 20))]);
+  assert.equal(listenerError === undefined, true, 'error handling must not throw from the XHR listener');
+  assert.equal(result instanceof Error, true, 'a rejected HTTP response must settle the upload promise');
+  assert.match(result.message, /HTTP 503/);
 });

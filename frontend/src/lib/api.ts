@@ -2,6 +2,7 @@ import type { TaxonomyItem, SeriesItem, NavLinkItem, FriendLinkItem, IpBanItem, 
 import { isPublicAuthRoute } from './auth-routes';
 import { uploadFilename } from './editor-upload';
 import { uploadForm, type UploadOptions } from './upload';
+import { httpErrorMessage } from './http-error';
 import type { Post, PostMutation, PostRevision } from './post-types';
 import type { SystemMetrics } from './system-health-types';
 import type { EntryAnimationConfig, EntryAnimationDocument, EntryAnimationSettings } from './entry-animation';
@@ -9,7 +10,7 @@ export type { Post, PostMutation, PostRevision } from './post-types';
 
 export class ApiError extends Error {
   constructor(message: string, public readonly status: number, public readonly code?: string, public readonly currentPost?: Post) {
-    super(message);
+    super(httpErrorMessage(status, message));
     this.name = 'ApiError';
   }
 }
@@ -80,7 +81,7 @@ async function request<T>(path: string, options: FetchOptions = {}): Promise<T> 
       window.location.href = '/admin/login';
     }
 
-    let errMsg = `HTTP ${res.status}`;
+    let errMsg = '';
     let code: string | undefined;
     let currentPost: Post | undefined;
     try {
@@ -222,7 +223,7 @@ export const api = {
   resetPassword: (token: string, new_password: string) =>
     request<{ message: string }>('/api/v1/auth/reset-password', { method: 'POST', body: JSON.stringify({ token, new_password }) }),
   getMe: () =>
-    request<{ id: string; username: string; email: string; display_name: string; avatar_url: string; bio: string; role: string; totp_enabled: boolean }>('/api/v1/auth/me'),
+    request<{ id: string; username: string; email: string; display_name: string; avatar_url: string; bio: string; role: string; totp_enabled: boolean; must_change_password: boolean }>('/api/v1/auth/me'),
   updateProfile: (data: { display_name?: string; email?: string; avatar_url?: string; bio?: string }) =>
     request('/api/v1/auth/profile', { method: 'PUT', body: JSON.stringify(data) }),
   changePassword: (data: { old_password: string; new_password: string }) =>

@@ -205,3 +205,66 @@ test('reopening a confirmation during its exit cannot dismiss the new confirmati
   await act(async () => button('确定').click());
   assert.equal(document.querySelector('output').textContent, 'true');
 });
+
+test('standby sessions show a persistent notice before any editing request', async t => {
+  prepareAdmin(t);
+  t.mock.method(api, 'getMe', async () => user);
+  t.mock.method(api.admin.sync, 'status', async () => ({ enabled: true, role: 'standby', running: false }));
+  await mount(t, () => React.createElement(AdminLayout, null, 'Workbench'));
+  assert.match(document.body.textContent, /备服务器.*只读/);
+  assert.match(document.body.textContent, /主服务器/);
+});
+
+test('server status can refresh after a role change without reloading unsaved controls', async t => {
+  prepareAdmin(t);
+  t.mock.method(api, 'getMe', async () => user);
+  let role = 'standby';
+  t.mock.method(api.admin.sync, 'status', async () => ({ enabled: true, role, running: false }));
+  await mount(t, () => React.createElement(AdminLayout, null,
+    React.createElement('input', { 'aria-label': 'Role change draft', defaultValue: 'Unsaved' })));
+  const input = document.querySelector('[aria-label="Role change draft"]');
+  assert.match(document.body.textContent, /备服务器.*只读/);
+  role = 'primary';
+  const refresh = button('刷新主备状态');
+  assert.equal(!!refresh, true, 'the notice must allow refreshing server status');
+  await act(async () => refresh.click());
+  assert.doesNotMatch(document.body.textContent, /备服务器.*只读/);
+  assert.equal(document.querySelector('[aria-label="Role change draft"]') === input, true);
+  assert.equal(input.value, 'Unsaved');
+});
+
+test('failed logout remains on the workbench and displays the revocation error', async t => {
+  prepareAdmin(t);
+  t.mock.method(api, 'getMe', async () => user);
+  t.mock.method(api, 'logout', async () => { throw new Error('revocation offline'); });
+  await mount(t, () => React.createElement(AdminLayout, null, 'Preserved workbench'));
+  await act(async () => document.querySelector('[aria-label="退出登录"]').click());
+  assert.match(document.querySelector('[role=alert]')?.textContent || '', /revocation offline/);
+  assert.match(document.body.textContent, /Preserved workbench/);
+});
+
+test('failed authentication checks expose service errors and retry without claiming an expired session', async t => {
+  prepareAdmin(t);
+  let failed = true;
+  t.mock.method(api, 'getMe', async () => { if (failed) throw new Error('authentication service offline'); return user; });
+  await mount(t, () => React.createElement(AdminLayout, null, 'Recovered workbench'));
+  assert.match(document.querySelector('[role=alert]')?.textContent || '', /authentication service offline/);
+  failed = false;
+  await act(async () => button('重试').click());
+  assert.match(document.body.textContent, /Recovered workbench/);
+});
+
+test('failed background counters are marked with their reasons and can recover', async t => {
+  prepareAdmin(t);
+  t.mock.method(api, 'getMe', async () => user);
+  let failed = true;
+  t.mock.method(api.admin, 'summary', async () => { if (failed) throw new Error('summary offline'); return { pending_comments: 0, pending_links: 0 }; });
+  t.mock.method(api, 'getUnreadCount', async () => { if (failed) throw new Error('unread count offline'); return { count: 0 }; });
+  await mount(t, () => React.createElement(AdminLayout, null, 'Workbench'));
+  const errors = () => [...document.querySelectorAll('[role=alert]')].map(node => node.textContent).join(' ');
+  assert.match(errors(), /summary offline/);
+  assert.match(errors(), /unread count offline/);
+  failed = false;
+  await act(async () => button('重试').click());
+  assert.doesNotMatch(errors(), /summary offline|unread count offline/);
+});

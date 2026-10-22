@@ -4,13 +4,15 @@ import { Checkbox } from '@/components/ui/Checkbox';
 import { Slider } from '@/components/ui/Slider';
 import { Textarea } from '@/components/ui/Textarea';
 import { Input } from '@/components/ui/Input';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useLayoutEffect, useRef } from 'react';
 import { api } from '@/lib/api';
 import { Save, Globe, FileText, Palette, MessageSquare, Code, Mail, User, Plus, Trash2, Cpu, Zap, AlertTriangle, Info, ArrowUpCircle, GitCompare, Shield } from 'lucide-react';
 import { Loading } from '@/components/Loading';
 import { Select } from '@/components/ConfirmDialog';
 import { MediaField } from '@/components/MediaField';
 import { EntryAnimationSettings } from '@/components/EntryAnimationSettings';
+import { requestError, useLatestRequest } from '@/lib/request-feedback';
+import { RequestFeedback } from '@/components/RequestFeedback';
 
 
 const contactTypes = [
@@ -39,7 +41,8 @@ const tabs = [
 
 export default function AdminSettings() {
   const [config, setConfig] = useState<Record<string, string>>({});
-  const [loading, setLoading] = useState(true);
+  const latestConfig = useRef(config);
+  useLayoutEffect(() => { latestConfig.current = config; }, [config]);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [activeTab, setActiveTab] = useState('basic');
@@ -48,7 +51,8 @@ export default function AdminSettings() {
   const [clearStep, setClearStep] = useState(0); // 0=hidden, 1=first confirm, 2=type CLEAR_ALL
   const [latestVersion, setLatestVersion] = useState<string | null>(null);
   const [checkingVersion, setCheckingVersion] = useState(true);
-  const [versionError, setVersionError] = useState(false);
+  const [versionError, setVersionError] = useState('');
+  const [versionRetry, setVersionRetry] = useState(0);
   const [changelog, setChangelog] = useState<string[]>([]);
 
   function parseSemver(v: string): number[] {
@@ -72,15 +76,16 @@ export default function AdminSettings() {
     setConfig({ ...config, profile_contacts: JSON.stringify(contacts) });
   }
 
-  useEffect(() => {
-    api.admin.config.get().then(res => setConfig(res.config)).finally(() => setLoading(false));
-  }, []);
+  const settings = useLatestRequest(useCallback(() => api.admin.config.get(), []), '加载设置失败');
+  useEffect(() => { if (settings.data) setConfig(settings.data.config); }, [settings.data]);
 
   useEffect(() => {
     setClearStep(0);
   }, [activeTab]);
 
   useEffect(() => {
+    setCheckingVersion(true);
+    setVersionError('');
     async function fetchVersionInfo() {
       const current = process.env.NEXT_PUBLIC_APP_VERSION;
       const isDev = !current || current === 'dev';
@@ -105,21 +110,27 @@ export default function AdminSettings() {
       }
     }
 
-    fetchVersionInfo().catch(() => setVersionError(true)).finally(() => setCheckingVersion(false));
-  }, []);
+    fetchVersionInfo().catch(cause => setVersionError(requestError(cause, '检查版本更新失败'))).finally(() => setCheckingVersion(false));
+  }, [versionRetry]);
 
   async function handleSave() {
     setSaving(true);
     setMessage('');
+    let saved = false;
+    const submitted = config;
     try {
-      await api.admin.config.update(config);
+      await api.admin.config.update(submitted);
+      saved = true;
       // Re-fetch config to ensure UI is in sync with server
       const res = await api.admin.config.get();
-      setConfig(res.config);
-      setMessage('设置已保存');
-      setTimeout(() => setMessage(''), 3000);
-    } catch (e) { setMessage('保存失败'); }
-    setSaving(false);
+      const newerEdits = latestConfig.current !== submitted;
+      setConfig(current => current === submitted ? res.config : current);
+      setMessage(newerEdits ? '提交的设置已保存，仍有未保存的修改' : '设置已保存');
+    } catch (cause) {
+      setMessage(requestError(cause, saved ? '设置已保存，但重新读取配置失败' : '保存失败'));
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function handleTestEmail() {
@@ -128,10 +139,8 @@ export default function AdminSettings() {
     try {
       const res = await api.admin.config.testEmail();
       setMessage(res.message || '测试邮件已发送');
-      setTimeout(() => setMessage(''), 5000);
     } catch (e: any) {
-      setMessage(e.message || '发送失败');
-      setTimeout(() => setMessage(''), 5000);
+      setMessage(requestError(e, '发送测试邮件失败'));
     }
     setTesting(false);
   }
@@ -142,10 +151,8 @@ export default function AdminSettings() {
     try {
       const res = await api.admin.restore.clearAll();
       setMessage(res.message || '已清空全站数据');
-      setTimeout(() => setMessage(''), 5000);
     } catch (e: any) {
-      setMessage(e.message || '清空失败');
-      setTimeout(() => setMessage(''), 5000);
+      setMessage(requestError(e, '清空数据失败'));
     }
     setClearing(false);
     setClearStep(0);
@@ -154,7 +161,8 @@ export default function AdminSettings() {
   const inputClass = "w-full px-3 py-2.5 rounded-lg text-sm outline-none";
   const inputStyle = { border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' };
 
-  if (loading) return <Loading />;
+  if (settings.loading && !settings.data) return <Loading />;
+  if (!settings.data) return <RequestFeedback error={settings.error} onRetry={settings.reload} pending={settings.loading} />;
 
   return (
     <div>
@@ -163,7 +171,7 @@ export default function AdminSettings() {
       </div>
 
       {message && (
-        <div className="mb-4 px-4 py-2.5 rounded-lg text-sm flex items-center gap-2 glass-card"
+        <div role={message.includes('失败') ? 'alert' : 'status'} className="mb-4 px-4 py-2.5 rounded-lg text-sm flex items-center gap-2 glass-card"
           style={{ color: message.includes('失败') ? 'hsl(0, 60%, 55%)' : 'hsl(142, 60%, 50%)' }}>
           {message}
         </div>
@@ -732,11 +740,7 @@ export default function AdminSettings() {
                   </div>
                 </div>
               )}
-              {!checkingVersion && versionError && (
-                <div className="p-3 rounded-xl text-xs" style={{ background: 'rgba(255, 200, 0, 0.08)', border: '1px solid rgba(255, 200, 0, 0.2)', color: 'var(--text-secondary)' }}>
-                  无法检查版本更新
-                </div>
-              )}
+              <RequestFeedback error={versionError} onRetry={() => setVersionRetry(value => value + 1)} pending={checkingVersion} />
 
               {/* Links */}
               <div className="p-5 rounded-xl" style={{ background: 'var(--glass-bg)', border: '1px solid var(--glass-border)' }}>

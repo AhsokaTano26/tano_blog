@@ -2,6 +2,10 @@
 
 import { Tooltip } from '@/components/ui/Tooltip';
 import { useState, useEffect, useRef } from 'react';
+import { ApiError } from '@/lib/api';
+import { requestError, useFeedbackMutation } from '@/lib/request-feedback';
+import { RequestFeedback } from '@/components/RequestFeedback';
+import { AdminServerNotice } from '@/components/AdminServerNotice';
 import './admin.css';
 import { api } from '@/lib/api';
 import { isPublicAuthRoute } from '@/lib/auth-routes';
@@ -53,6 +57,13 @@ const navSections = [
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [authError, setAuthError] = useState('');
+  const [authRetry, setAuthRetry] = useState(0);
+  const [summaryError, setSummaryError] = useState('');
+  const [notificationError, setNotificationError] = useState('');
+  const [countsRetry, setCountsRetry] = useState(0);
+  const logout = useFeedbackMutation();
+  const handleLogout = () => logout.run(async () => { await api.logout(); window.location.href = '/admin/login'; }, '退出登录失败');
   const [collapsed, setCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const mobileSidebarPresent = useExitPresence(mobileSidebarOpen);
@@ -95,6 +106,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     if (isPublicAuthRoute(pathname)) { setUser(null); setShowWelcome(false); setPreviewDocument(undefined); setLoading(false); return; }
     let active = true;
     setLoading(true);
+    setAuthError('');
     api.getMe().then(u => {
       if (!active) return;
       // Batch the overlay with the authenticated shell to avoid a frame of the
@@ -108,39 +120,41 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       if ((u as any).must_change_password && !pathname.includes('/admin/profile') && !isPublicAuthRoute(pathname)) {
         window.location.href = '/admin/profile?force_password=1';
       }
-    }).catch(() => {
+    }).catch(cause => {
       if (active && !isPublicAuthRoute(pathname)) {
         setUser(null);
         setShowWelcome(false);
         setPreviewDocument(undefined);
-        window.location.href = '/admin/login';
+        setAuthError(requestError(cause, '会话检查失败'));
+        if (cause instanceof ApiError && cause.status === 401) window.location.href = '/admin/login';
       }
     }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [pathname]);
+  }, [pathname, authRetry]);
 
   useEffect(() => {
     if (!user) return;
     api.admin.summary().then(summary => {
       setPendingCounts({ comments: summary.pending_comments, links: summary.pending_links });
-    }).catch(() => {});
-  }, [user]);
+      setSummaryError('');
+    }).catch(cause => setSummaryError(requestError(cause, '读取待办数量失败')));
+  }, [user, countsRetry]);
 
   useEffect(() => {
     if (!user) return;
+    let disposed = false;
     const fetchNotifCount = async () => {
       try {
-        const res = await fetch('/api/v1/notifications/unread-count', { credentials: 'include' });
-        if (res.ok) {
-          const data = await res.json();
-          setNotifCount(data.count);
-        }
-      } catch {}
+        const data = await api.getUnreadCount();
+        if (!disposed) { setNotifCount(data.count); setNotificationError(''); }
+      } catch (cause) {
+        if (!disposed) setNotificationError(requestError(cause, '读取未读通知数量失败'));
+      }
     };
     fetchNotifCount();
     const interval = setInterval(fetchNotifCount, 30000);
-    return () => clearInterval(interval);
-  }, [user]);
+    return () => { disposed = true; clearInterval(interval); };
+  }, [user, countsRetry]);
 
   // Update document title with unread count
   useEffect(() => {
@@ -164,11 +178,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
 
   if (!user) {
-    return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--color-bg)' }}>
-        <Loading />
-      </div>
-    );
+    return <div className="p-6"><RequestFeedback error={authError} onRetry={() => setAuthRetry(value => value + 1)} pending={loading} /></div>;
   }
 
   return (
@@ -266,7 +276,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                   <img src={user?.avatar_url || '/aimi.png'} alt="" className="w-7 h-7 rounded-full object-cover" />
                   <span className="text-sm truncate" style={{ color: 'var(--text-primary)' }}>{user?.display_name || user?.username}</span>
                 </div>
-                <button onClick={async () => { await api.logout(); window.location.href = '/admin/login'; }}
+                <button onClick={handleLogout} disabled={logout.pending}
                   aria-label="退出登录" className="p-1.5 rounded-lg hover:bg-white/10 transition-colors" style={{ color: 'var(--text-info)' }}>
                   <LogOut className="w-4 h-4" />
                 </button>
@@ -421,7 +431,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               </div>
             )}
             {!collapsed && (
-              <Tooltip content="退出登录"><button onClick={async () => { await api.logout(); window.location.href = '/admin/login'; }}
+              <Tooltip content="退出登录"><button onClick={handleLogout} disabled={logout.pending}
                 className="p-1 transition-all hover:opacity-80 btn-press" style={{ color: 'var(--text-info)' }}
                 data-tooltip="退出登录" aria-label="退出登录">
                 <LogOut className="w-4 h-4" />
@@ -437,6 +447,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         <div className="mx-auto w-full max-w-[1600px] p-4 sm:p-6 lg:p-8">
           <ConfirmProvider>
             <EntryAnimationPreviewContext.Provider value={document => { setPreviewDocument(document); setShowWelcome(true); }}>
+              <AdminServerNotice key={pathname} />
+              <RequestFeedback error={logout.error} />
+              <RequestFeedback error={summaryError} onRetry={() => setCountsRetry(value => value + 1)} />
+              <RequestFeedback error={notificationError} onRetry={() => setCountsRetry(value => value + 1)} />
               {children}
             </EntryAnimationPreviewContext.Provider>
           </ConfirmProvider>

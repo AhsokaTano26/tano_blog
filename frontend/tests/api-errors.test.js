@@ -18,7 +18,30 @@ test('non-JSON HTTP failures retain status without swallowing the fallback messa
   t.mock.method(global, 'fetch', async () => new Response('Unavailable', { status: 503 }));
   await assert.rejects(api.getPosts(), error => {
     assert.equal(error.status, 503);
-    assert.equal(error.message, 'HTTP 503');
+    assert.match(error.message, /HTTP 503/);
+    assert.match(error.message, /服务.*不可用/);
+    return true;
+  });
+});
+
+for (const [status, hint] of [[401, /登录/], [403, /权限/], [413, /过大/], [429, /频繁/], [502, /后端/], [504, /超时/]]) {
+  test(`HTTP ${status} without JSON provides an actionable reason and retains its status`, async t => {
+    t.mock.method(global, 'fetch', async () => new Response('<html>proxy failure</html>', { status }));
+    await assert.rejects(api.admin.config.update({}), error => {
+      assert.equal(error.status, status);
+      assert.match(error.message, new RegExp(`HTTP ${status}`));
+      assert.match(error.message, hint);
+      assert.doesNotMatch(error.message, /<html>/);
+      return true;
+    });
+  });
+}
+
+test('explicit standby reasons remain visible together with HTTP status', async t => {
+  t.mock.method(global, 'fetch', async () => Response.json({ error: '备服务器为只读模式，请在主服务器执行编辑操作' }, { status: 503 }));
+  await assert.rejects(api.admin.config.update({}), error => {
+    assert.match(error.message, /备服务器为只读模式/);
+    assert.match(error.message, /HTTP 503/);
     return true;
   });
 });

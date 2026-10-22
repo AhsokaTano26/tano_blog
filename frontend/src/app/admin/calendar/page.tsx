@@ -1,7 +1,9 @@
 'use client';
 
 import { Dialog } from '@/components/ui/Dialog';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
+import { useLatestRequest } from '@/lib/request-feedback';
+import { RequestFeedback } from '@/components/RequestFeedback';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { api } from '@/lib/api';
 
@@ -9,28 +11,14 @@ export default function CalendarPage() {
     const now = new Date();
     const [year, setYear] = useState(now.getFullYear());
     const [month, setMonth] = useState(now.getMonth() + 1);
-    const [posts, setPosts] = useState<any[]>([]);
-    const [loading, setLoading] = useState(true);
     const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
     const weekDays = ['日', '一', '二', '三', '四', '五', '六'];
 
-    const loadPosts = useCallback(async () => {
-        setLoading(true);
-        try {
-            const res = await api.admin.posts.calendar({
-                year: year.toString(),
-                month: month.toString().padStart(2, '0'),
-            });
-            setPosts(res.items);
-        } catch (e) {
-            console.error(e);
-        } finally {
-            setLoading(false);
-        }
-    }, [year, month]);
-
-    useEffect(() => { loadPosts(); }, [loadPosts]);
+    const calendar = useLatestRequest(useCallback(() => api.admin.posts.calendar({
+        year: year.toString(), month: month.toString().padStart(2, '0'),
+    }), [year, month]), '加载文章日历失败');
+    const posts = calendar.data?.items || [];
 
     const prevMonth = () => {
         if (month === 1) { setYear(y => y - 1); setMonth(12); }
@@ -84,6 +72,8 @@ export default function CalendarPage() {
                 </div>
             </div>
 
+            <RequestFeedback error={calendar.error} onRetry={calendar.reload} pending={calendar.loading} />
+            {calendar.loading && <p role="status">正在加载日历...</p>}
             <div className="grid grid-cols-7 gap-px bg-white/5 rounded-xl overflow-hidden">
                 {weekDays.map(d => (
                     <div key={d} className="p-3 text-center text-sm font-medium text-gray-400 bg-black/20">

@@ -1,7 +1,9 @@
 'use client';
 
 import { Tooltip } from '@/components/ui/Tooltip';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
+import { useLatestRequest, useFeedbackMutation } from '@/lib/request-feedback';
+import { RequestFeedback } from '@/components/RequestFeedback';
 import { api } from '@/lib/api';
 import { Bell, CheckCheck, MessageSquare, Link as LinkIcon, ExternalLink, LogIn, KeyRound } from 'lucide-react';
 
@@ -24,51 +26,39 @@ const typeLabels: Record<string, string> = {
 };
 
 export default function NotificationsPage() {
-  const [notifications, setNotifications] = useState<any[]>([]);
-  const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
-  const [loading, setLoading] = useState(true);
   const pageSize = 20;
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await api.getNotifications({ page: page.toString(), page_size: pageSize.toString() });
-      setNotifications(res.items);
-      setTotal(res.total);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
-    }
-  }, [page]);
-
-  useEffect(() => { load(); }, [load]);
+  const { data, setData, loading, error, reload: load } = useLatestRequest(
+    useCallback(() => api.getNotifications({ page: page.toString(), page_size: pageSize.toString() }), [page]), '加载通知失败');
+  const notifications = data?.items || [];
+  const total = data?.total || 0;
+  const mutation = useFeedbackMutation();
 
   const handleMarkAllRead = async () => {
-    await api.markAllNotificationsRead();
-    load();
+    await mutation.run(async () => { await api.markAllNotificationsRead(); await load(); }, '标记通知已读失败');
   };
-
   const handleMarkRead = async (id: string) => {
-    await api.markNotificationRead(id);
-    setNotifications(prev =>
-      prev.map(n => n.id === id ? { ...n, is_read: true } : n)
-    );
+    await mutation.run(async () => {
+      await api.markNotificationRead(id);
+      setData(prev => prev ? { ...prev, items: prev.items.map(n => n.id === id ? { ...n, is_read: true } : n) } : prev);
+    }, '标记通知已读失败');
   };
 
   return (
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">通知中心</h1>
-        <button onClick={handleMarkAllRead}
+        <button onClick={handleMarkAllRead} disabled={mutation.pending || loading || !data}
           className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 transition-colors text-sm btn-press">
           <CheckCheck className="w-4 h-4" />
           全部标记已读
         </button>
       </div>
 
-      {loading ? (
+      <RequestFeedback error={error} onRetry={load} pending={loading} />
+      <RequestFeedback error={mutation.error} />
+      {error ? null : loading ? (
         <div className="text-center py-12 text-gray-400">加载中...</div>
       ) : notifications.length === 0 ? (
         <div className="text-center py-12 text-gray-400">

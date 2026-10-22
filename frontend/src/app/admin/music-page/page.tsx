@@ -2,7 +2,9 @@
 
 import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react';
+import { requestError, useLatestRequest } from '@/lib/request-feedback';
+import { RequestFeedback } from '@/components/RequestFeedback';
 import { api } from '@/lib/api';
 import { Save, Music, Plus, Trash2, ArrowUp, ArrowDown, Image, Headphones, X } from 'lucide-react';
 import { Loading } from '@/components/Loading';
@@ -38,22 +40,25 @@ const defaultConfig: MusicPageConfig = {
 
 export default function AdminMusicPage() {
   const [configStr, setConfigStr] = useState('');
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [activeTab, setActiveTab] = useState<'settings' | 'playlists'>('settings');
   const [selectedPlaylistId, setSelectedPlaylistId] = useState<string | null>(null);
   const [musicPassword, setMusicPassword] = useState('');
   const [passwordSet, setPasswordSet] = useState(false);
+  const latestDraft = useRef({ configStr, musicPassword, passwordSet });
+  useLayoutEffect(() => { latestDraft.current = { configStr, musicPassword, passwordSet }; }, [configStr, musicPassword, passwordSet]);
 
+  const settings = useLatestRequest(useCallback(() => api.admin.config.get(), []), '加载音乐馆设置失败');
   useEffect(() => {
-    api.admin.config.get().then(res => {
+    const res = settings.data;
+    if (res) {
       setConfigStr(res.config?.music_page_config || '');
       if (res.config?.music_password) {
         setPasswordSet(true);
       }
-    }).finally(() => setLoading(false));
-  }, []);
+    }
+  }, [settings.data]);
 
   // Migrate old format (playlist) to new format (playlists)
   const config: MusicPageConfig = (() => {
@@ -169,6 +174,8 @@ export default function AdminMusicPage() {
   async function handleSave() {
     setSaving(true);
     setMessage('');
+    let saved = false;
+    const submitted = { configStr, musicPassword, passwordSet };
     try {
       const updates: Record<string, string> = { music_page_config: configStr };
       if (musicPassword) {
@@ -178,14 +185,15 @@ export default function AdminMusicPage() {
         updates.music_password = '';
       }
       await api.admin.config.update(updates);
+      saved = true;
       const res = await api.admin.config.get();
-      setConfigStr(res.config?.music_page_config || '');
-      setPasswordSet(!!res.config?.music_password);
-      setMusicPassword('');
-      setMessage('已保存');
-      setTimeout(() => setMessage(''), 3000);
-    } catch {
-      setMessage('保存失败');
+      const newerEdits = latestDraft.current.configStr !== submitted.configStr || latestDraft.current.musicPassword !== submitted.musicPassword || latestDraft.current.passwordSet !== submitted.passwordSet;
+      setConfigStr(current => current === submitted.configStr ? res.config?.music_page_config || '' : current);
+      setPasswordSet(current => current === submitted.passwordSet ? !!res.config?.music_password : current);
+      setMusicPassword(current => current === submitted.musicPassword ? '' : current);
+      setMessage(newerEdits ? '提交的音乐馆设置已保存，仍有未保存的修改' : '已保存');
+    } catch (cause) {
+      setMessage(requestError(cause, saved ? '音乐馆设置已保存，但重新读取配置失败' : '保存音乐馆设置失败'));
     }
     setSaving(false);
   }
@@ -193,7 +201,8 @@ export default function AdminMusicPage() {
   const inputClass = "w-full px-3 py-2.5 rounded-lg text-sm outline-none";
   const inputStyle = { border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' };
 
-  if (loading) return <Loading />;
+  if (settings.loading && !settings.data) return <Loading />;
+  if (!settings.data) return <RequestFeedback error={settings.error} onRetry={settings.reload} pending={settings.loading} />;
 
   return (
     <div>
@@ -205,7 +214,7 @@ export default function AdminMusicPage() {
       </div>
 
       {message && (
-        <div className="mb-4 px-4 py-2.5 rounded-lg text-sm glass-card"
+        <div role={message.includes('失败') ? 'alert' : 'status'} className="mb-4 px-4 py-2.5 rounded-lg text-sm glass-card"
           style={{ color: message.includes('失败') ? 'hsl(0, 60%, 55%)' : 'hsl(142, 60%, 50%)' }}>
           {message}
         </div>

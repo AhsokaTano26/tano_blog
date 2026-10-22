@@ -10,6 +10,8 @@ import { Input } from '@/components/ui/Input';
 import { Checkbox } from '@/components/ui/Checkbox';
 import { useState, useEffect, useRef } from 'react';
 import { api } from '@/lib/api';
+import { requestError } from '@/lib/request-feedback';
+import { RequestFeedback } from '@/components/RequestFeedback';
 import { Download, Upload, Trash2, Plus, Link, FolderOpen, AlertTriangle, HardDrive, ServerCog, Play, RefreshCw, Save, Square } from 'lucide-react';
 import { Loading } from '@/components/Loading';
 import { useConfirm, Select } from '@/components/ConfirmDialog';
@@ -48,7 +50,11 @@ export default function AdminBackup() {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [message, setMessage] = useState('');
-  const [backupProgress, setBackupProgress] = useState<{ running: boolean; phase: string; table: string; rows: number; bytes: number } | null>(null);
+  const [listError, setListError] = useState('');
+  const [progressError, setProgressError] = useState('');
+  const [syncError, setSyncError] = useState('');
+  const [syncLoaded, setSyncLoaded] = useState(false);
+  const [backupProgress, setBackupProgress] = useState<{ running: boolean; phase: string; table: string; rows: number; bytes: number; error?: string } | null>(null);
   const [cancelling, setCancelling] = useState(false);
 
   useEffect(() => {
@@ -57,9 +63,12 @@ export default function AdminBackup() {
     async function poll() {
       try {
         const status = await api.admin.backups.status();
-        if (!disposed) setBackupProgress(status);
-      } catch {
-        // The operation request reports failures; a transient polling error can retry.
+        if (!disposed) {
+          setBackupProgress(status);
+          setProgressError(status.error ? `后台任务失败：${status.error}` : status.phase === 'failed' ? '后台任务失败，请查看服务器日志' : '');
+        }
+      } catch (cause) {
+        if (!disposed) setProgressError(requestError(cause, '读取任务进度失败，当前状态未知'));
       }
       if (!disposed) timer = setTimeout(poll, 1500);
     }
@@ -73,7 +82,7 @@ export default function AdminBackup() {
       await api.admin.backups.cancel();
       setMessage('已请求取消，正在清理临时文件或回滚事务');
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : '取消任务失败');
+      setMessage(requestError(error, '取消任务失败'));
     } finally {
       setCancelling(false);
     }
@@ -96,11 +105,12 @@ export default function AdminBackup() {
 
   async function loadBackups() {
     setLoading(true);
+    setListError('');
     try {
       const res = await api.admin.backups.list();
       setBackups(res.items || []);
-    } catch {
-      setMessage('加载备份列表失败');
+    } catch (cause) {
+      setListError(requestError(cause, '加载备份列表失败'));
     }
     setLoading(false);
   }
@@ -111,14 +121,17 @@ export default function AdminBackup() {
   }, [activeTab]);
 
   async function loadSync() {
+    setSyncError('');
     try {
       const [configRes, statusRes] = await Promise.all([api.admin.config.get(), api.admin.sync.status()]);
       setSyncConfig(configRes.config);
       setSyncStatus(statusRes);
-    } catch (e: any) { setMessage(e.message || '加载同步配置失败'); }
+      setSyncLoaded(true);
+    } catch (cause) { setSyncError(requestError(cause, '加载同步配置失败')); }
   }
 
   async function saveSync() {
+    if (!syncLoaded) return;
     setSyncSaving(true);
     try {
       if (!validTimeValue(syncConfig.sync_time_of_day || '02:00')) throw new Error('请输入有效的执行时间，格式为 HH:mm');
@@ -130,17 +143,18 @@ export default function AdminBackup() {
       setClearSyncPrivateKey(false);
       setMessage('跨机同步配置已保存');
       await loadSync();
-    } catch (e: any) { setMessage(e.message || '保存同步配置失败'); }
+    } catch (e: any) { setMessage(requestError(e, '保存同步配置失败')); }
     setSyncSaving(false);
   }
 
   async function runSync() {
+    if (!syncLoaded) return;
     setSyncRunning(true);
     try {
       const result = await api.admin.sync.run();
       setMessage(result.message || '同步任务已启动');
       window.setTimeout(loadSync, 1000);
-    } catch (e: any) { setMessage(e.message || '启动同步失败'); }
+    } catch (e: any) { setMessage(requestError(e, '启动同步失败')); }
     setSyncRunning(false);
   }
 
@@ -152,7 +166,7 @@ export default function AdminBackup() {
       setMessage(`备份创建成功：${res.filename}`);
       await loadBackups();
     } catch (e: any) {
-      setMessage(e.message || '创建备份失败');
+      setMessage(requestError(e, '创建备份失败'));
     }
     setCreating(false);
   }
@@ -164,7 +178,7 @@ export default function AdminBackup() {
       setMessage('已删除');
       await loadBackups();
     } catch (e: any) {
-      setMessage(e.message || '删除失败');
+      setMessage(requestError(e, '删除失败'));
     }
   }
 
@@ -180,7 +194,7 @@ export default function AdminBackup() {
       setRestoreFile(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
     } catch (e: any) {
-      setRestoreMessage(e.message || '恢复失败');
+      setRestoreMessage(requestError(e, '恢复失败'));
     }
     setRestoring(false);
   }
@@ -195,7 +209,7 @@ export default function AdminBackup() {
       setRestoreMessage(res.message || '恢复完成');
       if (res.warning) setRestoreMessage(prev => `${prev}（${res.warning}）`);
     } catch (e: any) {
-      setRestoreMessage(e.message || '恢复失败');
+      setRestoreMessage(requestError(e, '恢复失败'));
     }
     setRestoring(false);
   }
@@ -210,7 +224,7 @@ export default function AdminBackup() {
       setRestoreMessage(res.message || '恢复完成');
       if (res.warning) setRestoreMessage(prev => `${prev}（${res.warning}）`);
     } catch (e: any) {
-      setRestoreMessage(e.message || '恢复失败');
+      setRestoreMessage(requestError(e, '恢复失败'));
     }
     setRestoring(false);
   }
@@ -226,12 +240,15 @@ export default function AdminBackup() {
       </div>
 
       {message && (
-        <div className="mb-4 px-4 py-2.5 rounded-lg text-sm flex items-center gap-2 glass-card"
+        <div role={message.includes('失败') ? 'alert' : 'status'} className="mb-4 px-4 py-2.5 rounded-lg text-sm flex items-center gap-2 glass-card"
           style={{ color: message.includes('失败') ? 'hsl(0, 60%, 55%)' : 'hsl(142, 60%, 50%)' }}>
           {message}
         </div>
       )}
 
+      <RequestFeedback error={progressError} />
+      <RequestFeedback error={listError} onRetry={loadBackups} pending={loading} />
+      {activeTab === 'sync' && <RequestFeedback error={syncError} onRetry={loadSync} pending={syncSaving || syncRunning} />}
       {backupProgress?.running && (
         <div role="status" aria-live="polite" className="mb-4 rounded-xl px-4 py-3 glass-card flex flex-wrap items-center justify-between gap-3">
           <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>
@@ -282,7 +299,7 @@ export default function AdminBackup() {
                 </button>
               </div>
 
-              {loading ? (
+              {listError ? null : loading ? (
                 <Loading />
               ) : backups.length === 0 ? (
                 <div className="text-center py-12" style={{ color: 'var(--text-info)' }}>
@@ -391,7 +408,7 @@ export default function AdminBackup() {
                 <div><label className="block text-sm mb-1.5" style={{ color: 'var(--text-secondary)' }}>限速（KB/s，0 为不限）</label><Input type="number" min="0" value={syncConfig.sync_bandwidth_kbps || '0'} onChange={e => setSyncConfig({ ...syncConfig, sync_bandwidth_kbps: e.target.value })} className={inputClass} style={inputStyle} /></div>
               </div>
 
-              <div className="flex flex-wrap gap-3"><button onClick={saveSync} disabled={syncSaving} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm text-white disabled:opacity-50" style={{ background: 'var(--primary)' }}><Save className="w-4 h-4" />{syncSaving ? '保存中...' : '保存配置'}</button><button onClick={runSync} disabled={syncRunning || syncStatus?.running} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm btn-glass disabled:opacity-50" style={{ color: 'var(--text-primary)' }}><Play className="w-4 h-4" />{syncStatus?.running || syncRunning ? '同步中...' : '立即执行'}</button><Tooltip content="刷新状态"><button onClick={loadSync} className="p-2 rounded-lg btn-glass" style={{ color: 'var(--text-secondary)' }} data-tooltip="刷新状态" aria-label="刷新状态"><RefreshCw className="w-4 h-4" /></button></Tooltip></div>
+              <div className="flex flex-wrap gap-3"><button onClick={saveSync} disabled={syncSaving || !syncLoaded} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm text-white disabled:opacity-50" style={{ background: 'var(--primary)' }}><Save className="w-4 h-4" />{syncSaving ? '保存中...' : '保存配置'}</button><button onClick={runSync} disabled={syncRunning || syncStatus?.running || !syncLoaded} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm btn-glass disabled:opacity-50" style={{ color: 'var(--text-primary)' }}><Play className="w-4 h-4" />{syncStatus?.running || syncRunning ? '同步中...' : '立即执行'}</button><Tooltip content="刷新状态"><button onClick={loadSync} className="p-2 rounded-lg btn-glass" style={{ color: 'var(--text-secondary)' }} data-tooltip="刷新状态" aria-label="刷新状态"><RefreshCw className="w-4 h-4" /></button></Tooltip></div>
               {syncStatus && <div className="rounded-xl p-4 text-sm space-y-1" style={{ background: 'var(--btn-card-bg)', color: 'var(--text-secondary)' }}><p>状态：<span style={{ color: syncStatus.last_status === 'success' ? 'var(--color-success)' : 'var(--text-primary)' }}>{syncStatus.running ? '运行中' : (syncStatus.last_status || '未执行')}</span></p><p>SSH 私钥：{syncStatus.has_private_key ? '已加密保存' : (syncConfig.sync_ssh_key_path ? '使用文件路径' : '未配置')}</p><p>最近完成：{syncStatus.last_finished_at ? formatTime(syncStatus.last_finished_at) : '—'}</p><p>快照：{syncStatus.last_snapshot || '—'}</p>{syncStatus.last_message && <p className="break-all">信息：{syncStatus.last_message}</p>}</div>}
             </div>
           )}
@@ -474,7 +491,7 @@ export default function AdminBackup() {
 
               {/* Restore message */}
               {restoreMessage && (
-                <div className="text-sm p-3 rounded-lg"
+                <div role={restoreMessage.includes('失败') ? 'alert' : 'status'} className="text-sm p-3 rounded-lg"
                   style={{
                     color: restoreMessage.includes('失败') ? 'hsl(0, 60%, 55%)' : 'hsl(142, 60%, 50%)',
                     background: restoreMessage.includes('失败')

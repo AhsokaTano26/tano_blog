@@ -78,7 +78,7 @@ test('a failed detail request leaves the list available without opening an empty
   await mountPostList(t, '# Article', () => Response.json({ error: '读取正文失败' }, { status: 500 }));
   await act(async () => document.querySelector('button[data-tooltip="编辑"]').click());
   assert.equal(Boolean(document.querySelector('textarea[placeholder^="输入 Markdown"]')), false);
-  assert.equal(document.querySelector('[role="alert"]')?.textContent, '读取正文失败');
+  assert.match(document.querySelector('[role="alert"]')?.textContent || '', /读取正文失败.*HTTP 500/);
   assert.ok(document.querySelector('button[data-tooltip="编辑"]'));
 });
 
