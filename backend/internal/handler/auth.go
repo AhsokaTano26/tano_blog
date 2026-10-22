@@ -179,9 +179,18 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 	h = h.withContext(c.Request.Context())
 	// Increment token_version to invalidate all existing JWTs
 	userID := c.GetString("user_id")
-	if uid, err := uuid.Parse(userID); err == nil {
-		h.db.Model(&model.User{}).Where("id = ?", uid).
-			Update("token_version", gorm.Expr("token_version + 1"))
+	uid, err := uuid.Parse(userID)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "登录状态无效"})
+		return
+	}
+	if err := h.db.Model(&model.User{}).Where("id = ?", uid).
+		Update("token_version", gorm.Expr("token_version + 1")).Error; err != nil {
+		// Keep the cookie until revocation succeeds: clearing only the browser
+		// cookie would leave a copied credential authorized after "logout".
+		utils.LogError("撤销登录会话失败", "error", err)
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "暂时无法退出登录，请重试"})
+		return
 	}
 
 	secure := c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https"
