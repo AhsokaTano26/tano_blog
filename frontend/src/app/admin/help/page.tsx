@@ -1,5 +1,7 @@
 'use client';
 
+import { AdminPageHeader } from '@/components/AdminPageHeader';
+
 import { useState } from 'react';
 import {
   HelpCircle, ChevronDown, ChevronRight, FileText, FolderTree, Tags,
@@ -564,22 +566,20 @@ export default function AdminHelp() {
   const currentSection = sections.find(s => s.id === activeSection) || sections[0];
 
   return (
-    <div>
-      <div className="flex items-center gap-2 mb-6">
-        <HelpCircle className="w-5 h-5" style={{ color: 'var(--primary)' }} />
-        <h1 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>帮助中心</h1>
-      </div>
+    <div className="admin-page">
+      <AdminPageHeader title="帮助中心" description="查找功能说明、常见问题与部署维护指引。" section="使用指南" />
 
       <div className="flex gap-6 flex-col lg:flex-row">
         {/* Sidebar navigation */}
         <div className="lg:w-56 flex-shrink-0">
-          <div className="glass-card rounded-xl p-2 sticky top-6">
+          <div className="admin-help-nav glass-card rounded-xl p-2 sticky top-6" role="group" aria-label="帮助主题">
             {sections.map(s => {
               const Icon = s.icon;
               const isActive = s.id === activeSection;
               return (
                 <button
                   key={s.id}
+                  aria-pressed={isActive}
                   onClick={() => setActiveSection(s.id)}
                   className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-left transition-all cursor-pointer mb-0.5"
                   style={{

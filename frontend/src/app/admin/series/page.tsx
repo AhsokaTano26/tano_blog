@@ -1,5 +1,7 @@
 'use client';
 
+import { AdminPageHeader } from '@/components/AdminPageHeader';
+
 import { Tooltip } from '@/components/ui/Tooltip';
 import { Dialog } from '@/components/ui/Dialog';
 import { Textarea } from '@/components/ui/Textarea';
@@ -72,18 +74,17 @@ export default function AdminSeries() {
   }
 
   return (
-    <div>
+    <div className="admin-page">
       <RequestFeedback error={loadError} onRetry={load} pending={loading} />
       {!showForm && <RequestFeedback error={mutation.error} />}
-      <div className="flex items-center justify-between mb-5">
-        <h1 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>文章系列</h1>
+      <AdminPageHeader title="文章系列" description="把相关内容编排成系列，维护文章的阅读顺序。">
         <button disabled={mutation.pending} onClick={openCreate}
           className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium text-white transition-all hover:opacity-90"
           style={{ background: 'var(--primary)', boxShadow: '0 0 16px var(--primary-glow)' }}>
           <Plus className="w-4 h-4" />
           新建系列
         </button>
-      </div>
+      </AdminPageHeader>
 
       {loading ? <Loading /> : loadError && items.length === 0 ? null : items.length === 0 ? (
         <div className="text-center py-20" style={{ color: 'var(--text-secondary)' }}>
@@ -92,55 +93,57 @@ export default function AdminSeries() {
         </div>
       ) : (
         <div className="glass-card rounded-2xl overflow-hidden">
-          <table className="w-full">
-            <thead>
-              <tr style={{ borderBottom: '1px solid var(--glass-border)' }}>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-info)' }}>排序</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-info)' }}>封面</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-info)' }}>名称</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-info)' }}>Slug</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-info)' }}>描述</th>
-                <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-info)' }}>文章数</th>
-                <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-info)' }}>操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item: SeriesItem) => (
-                <tr key={item.id} style={{ borderBottom: '1px solid var(--glass-border)' }}>
-                  <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-info)' }}>{item.sort_order ?? 0}</td>
-                  <td className="px-4 py-3">
-                    {item.cover_image ? (
-                      <img src={item.cover_image} alt=""
-                        className="w-9 h-9 rounded-lg object-cover"
-                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-                    ) : (
-                      <div className="w-9 h-9 rounded-lg" style={{ background: 'var(--btn-card-bg)' }} />
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{item.name}</td>
-                  <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>{item.slug}</td>
-                  <td className="px-4 py-3 text-sm line-clamp-1" style={{ color: 'var(--text-info)' }}>{item.description || '-'}</td>
-                  <td className="px-4 py-3 text-sm text-center" style={{ color: 'var(--text-primary)' }}>{item.post_count ?? 0}</td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      <Tooltip content="设置文章"><button disabled={mutation.pending} onClick={() => setShowPosts(item)}
-                        className="p-1.5 rounded-lg btn-glass" style={{ color: 'var(--primary)' }} data-tooltip="设置文章" aria-label="设置文章">
-                        <Bookmark className="w-4 h-4" />
-                      </button></Tooltip>
-                      <Tooltip content="编辑基本信息"><button disabled={mutation.pending} onClick={() => openEdit(item)}
-                        className="p-1.5 rounded-lg btn-glass" style={{ color: 'var(--text-info)' }} data-tooltip="编辑基本信息" aria-label="编辑基本信息">
-                        <Pencil className="w-4 h-4" />
-                      </button></Tooltip>
-                      <Tooltip content="删除"><button disabled={mutation.pending} onClick={() => handleDelete(item.id)}
-                        className="p-1.5 rounded-lg btn-glass" style={{ color: 'var(--color-error)' }} data-tooltip="删除" aria-label="删除">
-                        <Trash2 className="w-4 h-4" />
-                      </button></Tooltip>
-                    </div>
-                  </td>
+          <div className="admin-table-scroll" role="region" aria-label="文章系列列表" tabIndex={0}>
+            <table className="admin-data-table w-full">
+              <thead>
+                <tr style={{ borderBottom: '1px solid var(--glass-border)' }}>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-info)' }}>排序</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-info)' }}>封面</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-info)' }}>名称</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-info)' }}>Slug</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-info)' }}>描述</th>
+                  <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-info)' }}>文章数</th>
+                  <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-info)' }}>操作</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {items.map((item: SeriesItem) => (
+                  <tr key={item.id} style={{ borderBottom: '1px solid var(--glass-border)' }}>
+                    <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-info)' }}>{item.sort_order ?? 0}</td>
+                    <td className="px-4 py-3">
+                      {item.cover_image ? (
+                        <img src={item.cover_image} alt=""
+                          className="w-9 h-9 rounded-lg object-cover"
+                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                      ) : (
+                        <div className="w-9 h-9 rounded-lg" style={{ background: 'var(--btn-card-bg)' }} />
+                      )}
+                    </td>
+                    <td className="min-w-40 px-4 py-3 text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{item.name}</td>
+                    <td className="min-w-32 px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>{item.slug}</td>
+                    <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-info)' }}><span className="block max-w-xs truncate">{item.description || '-'}</span></td>
+                    <td className="px-4 py-3 text-sm text-center" style={{ color: 'var(--text-primary)' }}>{item.post_count ?? 0}</td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <Tooltip content="设置文章"><button disabled={mutation.pending} onClick={() => setShowPosts(item)}
+                          className="p-1.5 rounded-lg btn-glass" style={{ color: 'var(--primary)' }} data-tooltip="设置文章" aria-label="设置文章">
+                          <Bookmark className="w-4 h-4" />
+                        </button></Tooltip>
+                        <Tooltip content="编辑基本信息"><button disabled={mutation.pending} onClick={() => openEdit(item)}
+                          className="p-1.5 rounded-lg btn-glass" style={{ color: 'var(--text-info)' }} data-tooltip="编辑基本信息" aria-label="编辑基本信息">
+                          <Pencil className="w-4 h-4" />
+                        </button></Tooltip>
+                        <Tooltip content="删除"><button disabled={mutation.pending} onClick={() => handleDelete(item.id)}
+                          className="p-1.5 rounded-lg btn-glass" style={{ color: 'var(--color-error)' }} data-tooltip="删除" aria-label="删除">
+                          <Trash2 className="w-4 h-4" />
+                        </button></Tooltip>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -187,11 +190,11 @@ export default function AdminSeries() {
         </Dialog>
       )}
 
-      <div className="flex items-center justify-between text-sm mt-4">
+      <div className="admin-pagination flex items-center justify-between text-sm mt-4">
           <span style={{ color: 'var(--text-secondary)' }}>共 {total} 个</span>
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2">
-              <span className="text-xs" style={{ color: 'var(--text-info)' }}>每页</span>
+              <span className="text-xs whitespace-nowrap shrink-0" style={{ color: 'var(--text-info)' }}>每页</span>
               <Select aria-label="每页条数" value={String(pageSize)} onChange={v => { setPageSize(Number(v)); setPage(1); }}
                 options={[10, 20, 30, 50, 100].map(v => ({ value: String(v), label: String(v) }))} />
             </div>

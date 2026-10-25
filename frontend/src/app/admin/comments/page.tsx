@@ -1,5 +1,7 @@
 'use client';
 
+import { AdminPageHeader } from '@/components/AdminPageHeader';
+
 import { Tooltip } from '@/components/ui/Tooltip';
 import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
@@ -354,9 +356,8 @@ export default function AdminComments() {
   };
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-5">
-        <h1 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>评论</h1>
+    <div className="admin-page">
+      <AdminPageHeader title="评论" description="审核读者留言、处理回复并管理评论秩序。">
         <div className="flex items-center gap-2">
           <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>共 {filter === 'commenter' ? commenterTotal : filter === 'blocked' ? blockedTotal : total} 条</span>
           {isCommentTab && (
@@ -367,7 +368,7 @@ export default function AdminComments() {
             </button>
           )}
         </div>
-      </div>
+      </AdminPageHeader>
 
       <RequestFeedback error={loadError} onRetry={reloadLatest} pending={loading} />
       <RequestFeedback error={mutation.error} />
@@ -390,9 +391,9 @@ export default function AdminComments() {
       )}
 
       {/* Tabs - segmented pill style */}
-      <div className="flex gap-1 mb-4 p-1 rounded-xl" style={{ background: 'var(--card-bg)', border: '1px solid var(--glass-border)' }}>
+      <div className="admin-tabs admin-tabs-segmented mb-4 p-1 rounded-xl" role="group" aria-label="评论筛选" style={{ background: 'var(--card-bg)', border: '1px solid var(--glass-border)' }}>
         {tabs.map(tab => (
-          <button key={tab.key} onClick={() => { setFilter(tab.key); setPage(1); setCommenterPage(1); setBlockedPage(1); setCommenterSearchKey(0); }}
+          <button key={tab.key} aria-pressed={filter === tab.key} onClick={() => { setFilter(tab.key); setPage(1); setCommenterPage(1); setBlockedPage(1); setCommenterSearchKey(0); }}
             className="flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer"
             style={{
               background: filter === tab.key ? 'var(--primary)' : 'transparent',
@@ -408,14 +409,14 @@ export default function AdminComments() {
             {/* Search form */}
             <div className="flex items-end gap-3 mb-4">
               <div className="flex-1">
-                <label className="text-xs mb-1 block" style={{ color: 'var(--text-info)' }}>邮箱</label>
-                <Input type="text" aria-label="搜索评论者邮箱" value={commenterEmail} onChange={e => setCommenterEmail(e.target.value)}
+                <label htmlFor="admin-comments-field-1" className="text-xs mb-1 block" style={{ color: 'var(--text-info)' }}>邮箱</label>
+                <Input id="admin-comments-field-1" type="text" aria-label="搜索评论者邮箱" value={commenterEmail} onChange={e => setCommenterEmail(e.target.value)}
                   placeholder="输入邮箱搜索" className="w-full px-3 py-2 rounded-lg text-sm"
                   style={{ background: 'var(--card-bg)', color: 'var(--text-primary)', border: '1px solid var(--glass-border)' }} />
               </div>
               <div className="flex-1">
-                <label className="text-xs mb-1 block" style={{ color: 'var(--text-info)' }}>IP 地址</label>
-                <Input type="text" aria-label="搜索评论者 IP" value={commenterIP} onChange={e => setCommenterIP(e.target.value)}
+                <label htmlFor="admin-comments-field-2" className="text-xs mb-1 block" style={{ color: 'var(--text-info)' }}>IP 地址</label>
+                <Input id="admin-comments-field-2" type="text" aria-label="搜索评论者 IP" value={commenterIP} onChange={e => setCommenterIP(e.target.value)}
                   placeholder="输入IP地址搜索" className="w-full px-3 py-2 rounded-lg text-sm"
                   style={{ background: 'var(--card-bg)', color: 'var(--text-primary)', border: '1px solid var(--glass-border)' }} />
               </div>
@@ -486,11 +487,11 @@ export default function AdminComments() {
             )}
             {/* Commenter pagination */}
             {commenterTotal > pageSize && (
-              <div className="flex items-center justify-between text-sm mt-4">
+              <div className="admin-pagination flex items-center justify-between text-sm mt-4">
                 <span style={{ color: 'var(--text-secondary)' }}>共 {commenterTotal} 条</span>
                 <div className="flex items-center gap-3">
                   <div className="flex items-center gap-2">
-                    <span className="text-xs" style={{ color: 'var(--text-info)' }}>每页</span>
+                    <span className="text-xs whitespace-nowrap shrink-0" style={{ color: 'var(--text-info)' }}>每页</span>
                     <Select aria-label="每页条数" value={String(pageSize)} onChange={v => { setPageSize(Number(v)); setCommenterPage(1); }}
                       options={[10, 20, 30, 50, 100].map(v => ({ value: String(v), label: String(v) }))} />
                   </div>
@@ -642,11 +643,11 @@ export default function AdminComments() {
 
       {/* Pagination */}
       {isCommentTab && (
-        <div className="flex items-center justify-between text-sm">
+        <div className="admin-pagination flex items-center justify-between text-sm">
           <span style={{ color: 'var(--text-secondary)' }}>共 {total} 条</span>
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2">
-              <span className="text-xs" style={{ color: 'var(--text-info)' }}>每页</span>
+              <span className="text-xs whitespace-nowrap shrink-0" style={{ color: 'var(--text-info)' }}>每页</span>
               <Select aria-label="每页条数" value={String(pageSize)} onChange={v => { setPageSize(Number(v)); setPage(1); }}
                 options={[10, 20, 30, 50, 100].map(v => ({ value: String(v), label: String(v) }))} />
             </div>

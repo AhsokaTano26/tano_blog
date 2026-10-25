@@ -1,5 +1,7 @@
 'use client';
 
+import { AdminPageHeader } from '@/components/AdminPageHeader';
+
 import { Tooltip } from '@/components/ui/Tooltip';
 import { useState, useCallback } from 'react';
 import { useLatestRequest, useFeedbackMutation } from '@/lib/request-feedback';
@@ -46,15 +48,14 @@ export default function NotificationsPage() {
   };
 
   return (
-    <div className="p-6">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">通知中心</h1>
+    <div className="admin-page">
+      <AdminPageHeader title="通知中心" description="查看博客动态、审核提醒与账户安全通知。" section="工作台">
         <button onClick={handleMarkAllRead} disabled={mutation.pending || loading || !data}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 transition-colors text-sm btn-press">
+          className="admin-secondary-action btn-press">
           <CheckCheck className="w-4 h-4" />
           全部标记已读
         </button>
-      </div>
+      </AdminPageHeader>
 
       <RequestFeedback error={error} onRetry={load} pending={loading} />
       <RequestFeedback error={mutation.error} />
@@ -71,9 +72,8 @@ export default function NotificationsPage() {
             const Icon = typeIcons[n.type] || Bell;
             return (
               <div key={n.id}
-                className={`flex items-start gap-4 p-4 rounded-xl transition-colors cursor-pointer ${
-                  n.is_read ? 'bg-white/5 hover:bg-white/10' : 'bg-blue-500/10 border border-blue-500/20 hover:bg-blue-500/15'
-                }`}
+                className="admin-notification flex items-start gap-4 p-4 rounded-xl transition-colors"
+                data-unread={!n.is_read || undefined}
                 onClick={() => { if (n.link) window.location.href = n.link; }}>
                 <div className={`p-2 rounded-lg ${
                   n.is_read ? 'bg-white/10' : 'bg-blue-500/20'

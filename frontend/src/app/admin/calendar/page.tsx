@@ -1,5 +1,7 @@
 'use client';
 
+import { AdminPageHeader } from '@/components/AdminPageHeader';
+
 import { Dialog } from '@/components/ui/Dialog';
 import { useState, useCallback } from 'react';
 import { useLatestRequest } from '@/lib/request-feedback';
@@ -56,32 +58,32 @@ export default function CalendarPage() {
     };
 
     return (
-        <div className="p-6">
-            <div className="flex items-center justify-between mb-6">
-                <h1 className="text-2xl font-bold">文章日历</h1>
-                <div className="flex items-center gap-4">
+        <div className="admin-page">
+            <AdminPageHeader title="文章日历" description="按日期查看发布与草稿，安排接下来的创作。">
+              <div className="flex items-center gap-4">
                     <span className="text-lg font-medium">{year}年{month}月</span>
                     <div className="flex gap-1">
-                        <button onClick={prevMonth} className="p-2 rounded-lg hover:bg-white/10 transition-colors">
+                        <button aria-label="上个月" onClick={prevMonth} className="admin-calendar-nav p-2 rounded-lg transition-colors">
                             <ChevronLeft className="w-5 h-5" />
                         </button>
-                        <button onClick={nextMonth} className="p-2 rounded-lg hover:bg-white/10 transition-colors">
+                        <button aria-label="下个月" onClick={nextMonth} className="admin-calendar-nav p-2 rounded-lg transition-colors">
                             <ChevronRight className="w-5 h-5" />
                         </button>
                     </div>
                 </div>
-            </div>
+            </AdminPageHeader>
 
             <RequestFeedback error={calendar.error} onRetry={calendar.reload} pending={calendar.loading} />
             {calendar.loading && <p role="status">正在加载日历...</p>}
-            <div className="grid grid-cols-7 gap-px bg-white/5 rounded-xl overflow-hidden">
+            <div className="admin-calendar-scroll" role="region" aria-label="文章月历" tabIndex={0}>
+            <div className="admin-calendar-grid grid grid-cols-7 gap-px rounded-xl overflow-hidden">
                 {weekDays.map(d => (
-                    <div key={d} className="p-3 text-center text-sm font-medium text-gray-400 bg-black/20">
+                    <div key={d} className="admin-calendar-weekday p-3 text-center text-sm font-medium">
                         {d}
                     </div>
                 ))}
                 {Array.from({ length: firstDay }).map((_, i) => (
-                    <div key={`empty-${i}`} className="min-h-[120px] bg-black/10 p-2" />
+                    <div key={`empty-${i}`} className="admin-calendar-empty min-h-[120px] p-2" />
                 ))}
                 {Array.from({ length: daysInMonth }).map((_, i) => {
                     const day = i + 1;
@@ -92,12 +94,20 @@ export default function CalendarPage() {
                     return (
                         <div
                             key={day}
-                            className={`min-h-[120px] p-2 bg-black/20 hover:bg-white/5 transition-colors ${
-                                isToday ? 'ring-1 ring-inset ring-blue-500/50' : ''
-                            }`}
+                            className="admin-calendar-day min-h-[120px] p-2 transition-colors"
+                            data-today={isToday || undefined}
                         >
-                            <div className="text-sm font-medium mb-1 text-gray-400">{day}</div>
-                            <div className="space-y-0.5">
+                            <div className="admin-calendar-date text-sm font-medium mb-1">{day}</div>
+                            {dayPosts.length > 0 ? (
+                                <button className="admin-calendar-compact" onClick={() => setSelectedDate(dateKey)}
+                                    aria-label={`${dateKey}，共 ${dayPosts.length} 篇文章`}>
+                                    <span className="admin-calendar-date">{day}</span>
+                                    <span>{dayPosts.length} 篇</span>
+                                </button>
+                            ) : (
+                                <div className="admin-calendar-compact"><span className="admin-calendar-date">{day}</span></div>
+                            )}
+                            <div className="admin-calendar-posts space-y-0.5">
                                 {dayPosts.slice(0, 3).map(p => (
                                     <a
                                         key={p.id}
@@ -121,7 +131,9 @@ export default function CalendarPage() {
                 })}
             </div>
 
-            <div className="flex gap-4 mt-4 text-sm text-gray-400">
+            </div>
+            <p className="admin-calendar-hint">点击有文章的日期查看详情</p>
+            <div className="admin-calendar-legend flex gap-4 mt-4 text-sm">
                 <div className="flex items-center gap-1">
                     <span className="w-2.5 h-2.5 rounded-full bg-green-500" />
                     已发布

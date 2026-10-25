@@ -1,4 +1,6 @@
 'use client';
+
+import { AdminPageHeader } from '@/components/AdminPageHeader';
 import { validDateValue } from '@/lib/date-value';
 
 import { DatePicker } from '@/components/ui/DateTimePicker';
@@ -76,10 +78,8 @@ export default function AnalyticsPage() {
     const total = timeRangeStats?.total_requests ?? 0;
 
     return (
-        <div className="space-y-5">
-            <header className="admin-page-heading">
-                <div><h1>访问统计</h1><p>了解请求趋势、流量来源与访问设备。</p></div>
-            </header>
+        <div className="admin-page space-y-5">
+            <AdminPageHeader title="访问统计" description="了解请求趋势、流量来源与访问设备。" section="系统管理" />
             <div className={styles.toolbar}>
                 <div className={styles.presets} role="group" aria-label="统计日期范围">
                     {([7, 30, 90] as const).map(days => {

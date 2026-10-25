@@ -1,4 +1,6 @@
 'use client';
+
+import { AdminPageHeader } from '@/components/AdminPageHeader';
 import { validTimeValue } from '@/lib/date-value';
 
 import { Tooltip } from '@/components/ui/Tooltip';
@@ -234,10 +236,8 @@ export default function AdminBackup() {
   const inputStyle = { border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' };
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-5">
-        <h1 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>备份与恢复</h1>
-      </div>
+    <div className="admin-page">
+      <AdminPageHeader title="备份与恢复" description="管理数据备份、恢复任务与主备同步。" section="系统管理" />
 
       {message && (
         <div role={message.includes('失败') ? 'alert' : 'status'} className="mb-4 px-4 py-2.5 rounded-lg text-sm flex items-center gap-2 glass-card"
@@ -266,9 +266,9 @@ export default function AdminBackup() {
 
       <div className="glass-card rounded-xl overflow-hidden">
         {/* Tab navigation */}
-        <div className="flex" style={{ borderBottom: '1px solid var(--glass-border)' }}>
+        <div className="admin-tabs" role="group" aria-label="备份与同步分区" style={{ borderBottom: '1px solid var(--glass-border)' }}>
           {tabs.map(tab => (
-            <button key={tab.key} onClick={() => setActiveTab(tab.key)}
+            <button key={tab.key} aria-pressed={activeTab === tab.key} onClick={() => setActiveTab(tab.key)}
               className="flex items-center gap-2 px-5 py-3 text-sm font-medium transition-colors relative"
               style={{ color: activeTab === tab.key ? 'var(--primary)' : 'var(--text-secondary)' }}>
               <tab.icon className="w-4 h-4" />
@@ -285,7 +285,7 @@ export default function AdminBackup() {
           {/* ===== Backup Management ===== */}
           {activeTab === 'manage' && (
             <div>
-              <div className="flex items-center justify-between mb-6">
+              <div className="admin-action-row flex items-center justify-between mb-6">
                 <div>
                   <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
                     备份文件保存在服务器本地，超过 7 天自动删除
@@ -309,46 +309,48 @@ export default function AdminBackup() {
                 </div>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr style={{ color: 'var(--text-info)', borderBottom: '1px solid var(--glass-border)' }}>
-                        <th className="text-left py-3 px-3 font-medium">文件名</th>
-                        <th className="text-left py-3 px-3 font-medium w-28">大小</th>
-                        <th className="text-left py-3 px-3 font-medium w-44">创建时间</th>
-                        <th className="text-right py-3 px-3 font-medium w-28">操作</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {backups.map((b, i) => (
-                        <tr key={b.filename}
-                          style={{ borderBottom: i < backups.length - 1 ? '1px solid var(--glass-border)' : 'none' }}>
-                          <td className="py-3 px-3" style={{ color: 'var(--text-primary)' }}>
-                            <span className="font-mono text-xs">{b.filename}</span>
-                          </td>
-                          <td className="py-3 px-3" style={{ color: 'var(--text-secondary)' }}>
-                            {formatSize(b.size)}
-                          </td>
-                          <td className="py-3 px-3" style={{ color: 'var(--text-secondary)' }}>
-                            {formatTime(b.created_at)}
-                          </td>
-                          <td className="py-3 px-3 text-right">
-                            <div className="flex items-center justify-end gap-1">
-                              <Tooltip content="下载"><button onClick={() => api.admin.backups.download(b.filename)}
-                                className="p-1.5 rounded-lg transition-colors hover:bg-white/5"
-                                data-tooltip="下载" aria-label="下载" style={{ color: 'var(--text-info)' }}>
-                                <Download className="w-4 h-4" />
-                              </button></Tooltip>
-                              <Tooltip content="删除"><button onClick={() => handleDelete(b.filename)}
-                                className="p-1.5 rounded-lg transition-colors hover:bg-red-500/10"
-                                data-tooltip="删除" aria-label="删除" style={{ color: 'hsl(0, 60%, 55%)' }}>
-                                <Trash2 className="w-4 h-4" />
-                              </button></Tooltip>
-                            </div>
-                          </td>
+                  <div className="admin-table-scroll" role="region" aria-label="备份与恢复列表" tabIndex={0}>
+                    <table className="admin-data-table w-full text-sm">
+                      <thead>
+                        <tr style={{ color: 'var(--text-info)', borderBottom: '1px solid var(--glass-border)' }}>
+                          <th className="text-left py-3 px-3 font-medium">文件名</th>
+                          <th className="text-left py-3 px-3 font-medium w-28">大小</th>
+                          <th className="text-left py-3 px-3 font-medium w-44">创建时间</th>
+                          <th className="text-right py-3 px-3 font-medium w-28">操作</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {backups.map((b, i) => (
+                          <tr key={b.filename}
+                            style={{ borderBottom: i < backups.length - 1 ? '1px solid var(--glass-border)' : 'none' }}>
+                            <td className="py-3 px-3" style={{ color: 'var(--text-primary)' }}>
+                              <span className="font-mono text-xs">{b.filename}</span>
+                            </td>
+                            <td className="py-3 px-3" style={{ color: 'var(--text-secondary)' }}>
+                              {formatSize(b.size)}
+                            </td>
+                            <td className="py-3 px-3" style={{ color: 'var(--text-secondary)' }}>
+                              {formatTime(b.created_at)}
+                            </td>
+                            <td className="py-3 px-3 text-right">
+                              <div className="flex items-center justify-end gap-1">
+                                <Tooltip content="下载"><button onClick={() => api.admin.backups.download(b.filename)}
+                                  className="p-1.5 rounded-lg transition-colors hover:bg-white/5"
+                                  data-tooltip="下载" aria-label="下载" style={{ color: 'var(--text-info)' }}>
+                                  <Download className="w-4 h-4" />
+                                </button></Tooltip>
+                                <Tooltip content="删除"><button onClick={() => handleDelete(b.filename)}
+                                  className="p-1.5 rounded-lg transition-colors hover:bg-red-500/10"
+                                  data-tooltip="删除" aria-label="删除" style={{ color: 'hsl(0, 60%, 55%)' }}>
+                                  <Trash2 className="w-4 h-4" />
+                                </button></Tooltip>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               )}
             </div>
@@ -379,18 +381,18 @@ export default function AdminBackup() {
                   启用跨机同步
                 </label>
                 <div>
-                  <label className="block text-sm mb-1.5" style={{ color: 'var(--text-secondary)' }}>本机角色</label>
-                  <Select aria-label="本机角色" value={syncConfig.sync_role || 'standby'} onChange={v => setSyncConfig({ ...syncConfig, sync_role: v })} options={[{ value: 'primary', label: '主服务器（生成快照）' }, { value: 'standby', label: '备服务器（拉取并应用）' }]} />
+                  <label htmlFor="admin-backup-field-2" className="block text-sm mb-1.5" style={{ color: 'var(--text-secondary)' }}>本机角色</label>
+                  <Select id="admin-backup-field-2" aria-label="本机角色" value={syncConfig.sync_role || 'standby'} onChange={v => setSyncConfig({ ...syncConfig, sync_role: v })} options={[{ value: 'primary', label: '主服务器（生成快照）' }, { value: 'standby', label: '备服务器（拉取并应用）' }]} />
                 </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm mb-1.5" style={{ color: 'var(--text-secondary)' }}>计划类型</label>
-                  <Select aria-label="计划类型" value={syncConfig.sync_schedule_mode || 'interval'} onChange={v => setSyncConfig({ ...syncConfig, sync_schedule_mode: v })} options={[{ value: 'interval', label: '固定间隔' }, { value: 'weekly', label: '每周计划' }]} />
+                  <label htmlFor="admin-backup-field-3" className="block text-sm mb-1.5" style={{ color: 'var(--text-secondary)' }}>计划类型</label>
+                  <Select id="admin-backup-field-3" aria-label="计划类型" value={syncConfig.sync_schedule_mode || 'interval'} onChange={v => setSyncConfig({ ...syncConfig, sync_schedule_mode: v })} options={[{ value: 'interval', label: '固定间隔' }, { value: 'weekly', label: '每周计划' }]} />
                 </div>
                 {syncConfig.sync_schedule_mode !== 'weekly' ? (
-                  <div><label className="block text-sm mb-1.5" style={{ color: 'var(--text-secondary)' }}>间隔（分钟，至少 5）</label><Input type="number" min="5" max="10080" value={syncConfig.sync_interval_minutes || '60'} onChange={e => setSyncConfig({ ...syncConfig, sync_interval_minutes: e.target.value })} className={inputClass} style={inputStyle} /></div>
+                  <div><label htmlFor="admin-backup-field-4" className="block text-sm mb-1.5" style={{ color: 'var(--text-secondary)' }}>间隔（分钟，至少 5）</label><Input id="admin-backup-field-4" type="number" min="5" max="10080" value={syncConfig.sync_interval_minutes || '60'} onChange={e => setSyncConfig({ ...syncConfig, sync_interval_minutes: e.target.value })} className={inputClass} style={inputStyle} /></div>
                 ) : (
                   <div><label htmlFor="sync-time-of-day" className="block text-sm mb-1.5" style={{ color: 'var(--text-secondary)' }}>执行时间</label><TimePicker id="sync-time-of-day" aria-label="执行时间" value={syncConfig.sync_time_of_day || '02:00'} onChange={value => setSyncConfig({ ...syncConfig, sync_time_of_day: value })} className={inputClass} style={inputStyle} /></div>
                 )}
@@ -401,11 +403,11 @@ export default function AdminBackup() {
 
               <div className="pt-5 space-y-4" style={{ borderTop: '1px solid var(--glass-border)' }}>
                 <h2 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>备机 SSH 拉取配置</h2>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4"><div><label className="block text-sm mb-1.5" style={{ color: 'var(--text-secondary)' }}>主机 SSH 目标</label><Input value={syncConfig.sync_ssh_target || ''} onChange={e => setSyncConfig({ ...syncConfig, sync_ssh_target: e.target.value })} placeholder="sync@primary.example.com" className={inputClass} style={inputStyle} /><p className="text-xs mt-1" style={{ color: 'var(--text-info)' }}>仅备服务器需要填写。</p></div><div><label className="block text-sm mb-1.5" style={{ color: 'var(--text-secondary)' }}>SSH 端口</label><Input type="number" min="1" max="65535" value={syncConfig.sync_ssh_port || '22'} onChange={e => setSyncConfig({ ...syncConfig, sync_ssh_port: e.target.value })} className={inputClass} style={inputStyle} /></div></div>
-                <div><label className="block text-sm mb-1.5" style={{ color: 'var(--text-secondary)' }}>SSH 私钥（粘贴后加密保存）</label><Textarea value={syncPrivateKey} onChange={e => { setSyncPrivateKey(e.target.value); setClearSyncPrivateKey(false); }} rows={6} placeholder="-----BEGIN OPENSSH PRIVATE KEY-----" autoComplete="off" spellCheck={false} className={inputClass} style={{ ...inputStyle, fontFamily: 'monospace', resize: 'vertical' }} /><p className="text-xs mt-1" style={{ color: 'var(--text-info)' }}>{syncStatus?.has_private_key ? '已保存加密私钥；为安全起见不会回显。粘贴新私钥并保存可替换它。' : '私钥仅用于备机拉取，保存时使用服务器环境中的加密主密钥加密。'}</p>{syncStatus?.has_private_key && <label className="inline-flex items-center gap-2 text-xs mt-2" style={{ color: 'var(--text-secondary)' }}><Checkbox checked={clearSyncPrivateKey} onChange={checked => setClearSyncPrivateKey(checked)} />保存时清除已保存的私钥</label>}</div>
-                <div><label className="block text-sm mb-1.5" style={{ color: 'var(--text-secondary)' }}>已有私钥文件路径（可选）</label><Input value={syncConfig.sync_ssh_key_path || ''} onChange={e => setSyncConfig({ ...syncConfig, sync_ssh_key_path: e.target.value })} placeholder="/run/secrets/tano_sync_ed25519" className={inputClass} style={inputStyle} /><p className="text-xs mt-1" style={{ color: 'var(--text-info)' }}>未保存粘贴私钥时，才会使用此路径。</p></div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4"><div><label className="block text-sm mb-1.5" style={{ color: 'var(--text-secondary)' }}>主机快照目录</label><Input value={syncConfig.sync_remote_backup_dir || '/data/backups/sync'} onChange={e => setSyncConfig({ ...syncConfig, sync_remote_backup_dir: e.target.value })} className={inputClass} style={inputStyle} /><p className="text-xs mt-1" style={{ color: 'var(--text-info)' }}>Docker 通常填写主机上的绝对路径，例如 /srv/tano_blog/data/backups/sync。</p></div><div><label className="block text-sm mb-1.5" style={{ color: 'var(--text-secondary)' }}>主机上传目录</label><Input value={syncConfig.sync_remote_upload_dir || '/data/uploads'} onChange={e => setSyncConfig({ ...syncConfig, sync_remote_upload_dir: e.target.value })} className={inputClass} style={inputStyle} /><p className="text-xs mt-1" style={{ color: 'var(--text-info)' }}>Docker 通常填写主机上的绝对路径，例如 /srv/tano_blog/data/uploads。</p></div></div>
-                <div><label className="block text-sm mb-1.5" style={{ color: 'var(--text-secondary)' }}>限速（KB/s，0 为不限）</label><Input type="number" min="0" value={syncConfig.sync_bandwidth_kbps || '0'} onChange={e => setSyncConfig({ ...syncConfig, sync_bandwidth_kbps: e.target.value })} className={inputClass} style={inputStyle} /></div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4"><div><label htmlFor="admin-backup-field-5" className="block text-sm mb-1.5" style={{ color: 'var(--text-secondary)' }}>主机 SSH 目标</label><Input id="admin-backup-field-5" value={syncConfig.sync_ssh_target || ''} onChange={e => setSyncConfig({ ...syncConfig, sync_ssh_target: e.target.value })} placeholder="sync@primary.example.com" className={inputClass} style={inputStyle} /><p className="text-xs mt-1" style={{ color: 'var(--text-info)' }}>仅备服务器需要填写。</p></div><div><label htmlFor="admin-backup-field-6" className="block text-sm mb-1.5" style={{ color: 'var(--text-secondary)' }}>SSH 端口</label><Input id="admin-backup-field-6" type="number" min="1" max="65535" value={syncConfig.sync_ssh_port || '22'} onChange={e => setSyncConfig({ ...syncConfig, sync_ssh_port: e.target.value })} className={inputClass} style={inputStyle} /></div></div>
+                <div><label htmlFor="admin-backup-field-7" className="block text-sm mb-1.5" style={{ color: 'var(--text-secondary)' }}>SSH 私钥（粘贴后加密保存）</label><Textarea id="admin-backup-field-7" value={syncPrivateKey} onChange={e => { setSyncPrivateKey(e.target.value); setClearSyncPrivateKey(false); }} rows={6} placeholder="-----BEGIN OPENSSH PRIVATE KEY-----" autoComplete="off" spellCheck={false} className={inputClass} style={{ ...inputStyle, fontFamily: 'monospace', resize: 'vertical' }} /><p className="text-xs mt-1" style={{ color: 'var(--text-info)' }}>{syncStatus?.has_private_key ? '已保存加密私钥；为安全起见不会回显。粘贴新私钥并保存可替换它。' : '私钥仅用于备机拉取，保存时使用服务器环境中的加密主密钥加密。'}</p>{syncStatus?.has_private_key && <label className="inline-flex items-center gap-2 text-xs mt-2" style={{ color: 'var(--text-secondary)' }}><Checkbox checked={clearSyncPrivateKey} onChange={checked => setClearSyncPrivateKey(checked)} />保存时清除已保存的私钥</label>}</div>
+                <div><label htmlFor="admin-backup-field-8" className="block text-sm mb-1.5" style={{ color: 'var(--text-secondary)' }}>已有私钥文件路径（可选）</label><Input id="admin-backup-field-8" value={syncConfig.sync_ssh_key_path || ''} onChange={e => setSyncConfig({ ...syncConfig, sync_ssh_key_path: e.target.value })} placeholder="/run/secrets/tano_sync_ed25519" className={inputClass} style={inputStyle} /><p className="text-xs mt-1" style={{ color: 'var(--text-info)' }}>未保存粘贴私钥时，才会使用此路径。</p></div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4"><div><label htmlFor="admin-backup-field-9" className="block text-sm mb-1.5" style={{ color: 'var(--text-secondary)' }}>主机快照目录</label><Input id="admin-backup-field-9" value={syncConfig.sync_remote_backup_dir || '/data/backups/sync'} onChange={e => setSyncConfig({ ...syncConfig, sync_remote_backup_dir: e.target.value })} className={inputClass} style={inputStyle} /><p className="text-xs mt-1" style={{ color: 'var(--text-info)' }}>Docker 通常填写主机上的绝对路径，例如 /srv/tano_blog/data/backups/sync。</p></div><div><label htmlFor="admin-backup-field-10" className="block text-sm mb-1.5" style={{ color: 'var(--text-secondary)' }}>主机上传目录</label><Input id="admin-backup-field-10" value={syncConfig.sync_remote_upload_dir || '/data/uploads'} onChange={e => setSyncConfig({ ...syncConfig, sync_remote_upload_dir: e.target.value })} className={inputClass} style={inputStyle} /><p className="text-xs mt-1" style={{ color: 'var(--text-info)' }}>Docker 通常填写主机上的绝对路径，例如 /srv/tano_blog/data/uploads。</p></div></div>
+                <div><label htmlFor="admin-backup-field-11" className="block text-sm mb-1.5" style={{ color: 'var(--text-secondary)' }}>限速（KB/s，0 为不限）</label><Input id="admin-backup-field-11" type="number" min="0" value={syncConfig.sync_bandwidth_kbps || '0'} onChange={e => setSyncConfig({ ...syncConfig, sync_bandwidth_kbps: e.target.value })} className={inputClass} style={inputStyle} /></div>
               </div>
 
               <div className="flex flex-wrap gap-3"><button onClick={saveSync} disabled={syncSaving || !syncLoaded} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm text-white disabled:opacity-50" style={{ background: 'var(--primary)' }}><Save className="w-4 h-4" />{syncSaving ? '保存中...' : '保存配置'}</button><button onClick={runSync} disabled={syncRunning || syncStatus?.running || !syncLoaded} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm btn-glass disabled:opacity-50" style={{ color: 'var(--text-primary)' }}><Play className="w-4 h-4" />{syncStatus?.running || syncRunning ? '同步中...' : '立即执行'}</button><Tooltip content="刷新状态"><button onClick={loadSync} className="p-2 rounded-lg btn-glass" style={{ color: 'var(--text-secondary)' }} data-tooltip="刷新状态" aria-label="刷新状态"><RefreshCw className="w-4 h-4" /></button></Tooltip></div>

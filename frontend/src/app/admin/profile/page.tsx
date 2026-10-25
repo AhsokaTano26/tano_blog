@@ -1,5 +1,7 @@
 'use client';
 
+import { AdminPageHeader } from '@/components/AdminPageHeader';
+
 import { Textarea } from '@/components/ui/Textarea';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
@@ -266,10 +268,8 @@ export default function AdminProfile() {
   if (userError) return <RequestFeedback error={userError} onRetry={loadUser} pending={loading} />;
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-5">
-        <h1 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>个人资料</h1>
-      </div>
+    <div className="admin-page">
+      <AdminPageHeader title="个人资料" description="管理个人展示信息、密码与登录安全。" section="账户管理" />
 
       <RequestFeedback error={publicSettings.error} onRetry={publicSettings.reload} pending={publicSettings.loading} />
       {message && (
@@ -281,29 +281,29 @@ export default function AdminProfile() {
 
       <div className="glass-card rounded-xl overflow-hidden">
         {/* Tabs */}
-        <div className="flex" style={{ borderBottom: '1px solid var(--glass-border)' }}>
-          <button onClick={() => setTab('profile')}
+        <div className="admin-tabs" role="group" aria-label="账户分区" style={{ borderBottom: '1px solid var(--glass-border)' }}>
+          <button aria-pressed={tab === 'profile'} onClick={() => setTab('profile')}
             className="flex items-center gap-2 px-5 py-3 text-sm font-medium transition-colors relative"
             style={{ color: tab === 'profile' ? 'var(--primary)' : 'var(--text-secondary)' }}>
             <User className="w-4 h-4" />
             个人信息
             {tab === 'profile' && <div className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full" style={{ background: 'var(--primary)' }} />}
           </button>
-          <button onClick={() => setTab('password')}
+          <button aria-pressed={tab === 'password'} onClick={() => setTab('password')}
             className="flex items-center gap-2 px-5 py-3 text-sm font-medium transition-colors relative"
             style={{ color: tab === 'password' ? 'var(--primary)' : 'var(--text-secondary)' }}>
             <Lock className="w-4 h-4" />
             修改密码
             {tab === 'password' && <div className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full" style={{ background: 'var(--primary)' }} />}
           </button>
-          <button onClick={() => setTab('totp')}
+          <button aria-pressed={tab === 'totp'} onClick={() => setTab('totp')}
             className="flex items-center gap-2 px-5 py-3 text-sm font-medium transition-colors relative"
             style={{ color: tab === 'totp' ? 'var(--primary)' : 'var(--text-secondary)' }}>
             <Shield className="w-4 h-4" />
             两步验证
             {tab === 'totp' && <div className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full" style={{ background: 'var(--primary)' }} />}
           </button>
-          <button onClick={() => setTab('passkey')}
+          <button aria-pressed={tab === 'passkey'} onClick={() => setTab('passkey')}
             className="flex items-center gap-2 px-5 py-3 text-sm font-medium transition-colors relative"
             style={{ color: tab === 'passkey' ? 'var(--primary)' : 'var(--text-secondary)' }}>
             <KeyRound className="w-4 h-4" />
@@ -328,21 +328,21 @@ export default function AdminProfile() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>显示名称</label>
-                <Input type="text" value={displayName} onChange={e => setDisplayName(e.target.value)}
+                <label htmlFor="admin-profile-field-1" className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>显示名称</label>
+                <Input id="admin-profile-field-1" type="text" value={displayName} onChange={e => setDisplayName(e.target.value)}
                   placeholder="显示名称" className={inputClass} style={inputStyle} />
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>邮箱</label>
-                <Input type="email" value={email} onChange={e => setEmail(e.target.value)}
+                <label htmlFor="admin-profile-field-2" className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>邮箱</label>
+                <Input id="admin-profile-field-2" type="email" value={email} onChange={e => setEmail(e.target.value)}
                   placeholder="admin@example.com" className={inputClass} style={inputStyle} />
                 <p className="text-xs mt-1" style={{ color: 'var(--text-info)' }}>用于接收评论通知等邮件</p>
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>个人简介</label>
-                <Textarea value={bio} onChange={e => setBio(e.target.value)} rows={3}
+                <label htmlFor="admin-profile-field-3" className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>个人简介</label>
+                <Textarea id="admin-profile-field-3" value={bio} onChange={e => setBio(e.target.value)} rows={3}
                   placeholder="介绍一下自己..." className={`${inputClass} resize-none`} style={inputStyle} />
               </div>
 
@@ -367,13 +367,13 @@ export default function AdminProfile() {
                   <p className="text-xs mt-1" style={{ color: 'var(--text-info)' }}>图片路径或 URL</p>
                 </div>
                 <div className="mt-4">
-                  <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>显示名称</label>
-                  <Input type="text" value={siteConfig.profile_name || ''} onChange={e => setSiteConfig({ ...siteConfig, profile_name: e.target.value })}
+                  <label htmlFor="admin-profile-field-4" className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>显示名称</label>
+                  <Input id="admin-profile-field-4" type="text" value={siteConfig.profile_name || ''} onChange={e => setSiteConfig({ ...siteConfig, profile_name: e.target.value })}
                     placeholder="Tano" className={inputClass} style={inputStyle} />
                 </div>
                 <div className="mt-4">
-                  <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>个人简介</label>
-                  <Textarea value={siteConfig.profile_bio || ''} onChange={e => setSiteConfig({ ...siteConfig, profile_bio: e.target.value })}
+                  <label htmlFor="admin-profile-field-5" className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>个人简介</label>
+                  <Textarea id="admin-profile-field-5" value={siteConfig.profile_bio || ''} onChange={e => setSiteConfig({ ...siteConfig, profile_bio: e.target.value })}
                     rows={2} placeholder="A BanG Dreamer!" className={`${inputClass} resize-none`} style={inputStyle} />
                 </div>
 
@@ -443,20 +443,20 @@ export default function AdminProfile() {
                 </div>
               )}
               <div>
-                <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>旧密码</label>
-                <Input type="password" value={oldPassword} onChange={e => setOldPassword(e.target.value)}
+                <label htmlFor="admin-profile-field-6" className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>旧密码</label>
+                <Input id="admin-profile-field-6" type="password" value={oldPassword} onChange={e => setOldPassword(e.target.value)}
                   placeholder="输入当前密码" className={inputClass} style={inputStyle} />
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>新密码</label>
-                <Input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)}
+                <label htmlFor="admin-profile-field-7" className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>新密码</label>
+                <Input id="admin-profile-field-7" type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)}
                   placeholder="至少6个字符" className={inputClass} style={inputStyle} />
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>确认新密码</label>
-                <Input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)}
+                <label htmlFor="admin-profile-field-8" className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>确认新密码</label>
+                <Input id="admin-profile-field-8" type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)}
                   placeholder="再次输入新密码" className={inputClass} style={inputStyle} />
               </div>
 
@@ -508,8 +508,8 @@ export default function AdminProfile() {
                     </p>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>验证码</label>
-                    <Input type="text" value={totpCode} onChange={e => setTotpCode(e.target.value)}
+                    <label htmlFor="admin-profile-field-9" className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>验证码</label>
+                    <Input id="admin-profile-field-9" type="text" value={totpCode} onChange={e => setTotpCode(e.target.value)}
                       placeholder="输入6位验证码" maxLength={6}
                       className={inputClass} style={inputStyle} />
                   </div>

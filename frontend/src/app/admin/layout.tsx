@@ -100,6 +100,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     };
   }, [mobileSidebarOpen]);
   const pathname = usePathname();
+  const currentPage = pathname === '/admin' ? '概览' : pathname === '/admin/notifications' ? '通知中心'
+    : navSections.flatMap(section => section.items).find(item => pathname.startsWith(item.href))?.label || '管理后台';
   const { theme, setTheme } = useTheme();
 
   useEffect(() => {
@@ -160,11 +162,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   useEffect(() => {
     const base = '管理后台';
     if (notifCount > 0) {
-      document.title = `(${notifCount}) ${base}`;
+      document.title = `(${notifCount}) ${currentPage} · ${base}`;
     } else {
-      document.title = base;
+      document.title = `${currentPage} · ${base}`;
     }
-  }, [notifCount]);
+  }, [notifCount, currentPage]);
 
   if (isPublicAuthRoute(pathname)) return <>{children}</>;
 
@@ -187,6 +189,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       <div className="admin-shell min-h-screen flex" inert={showWelcome || undefined} style={{ background: 'var(--color-bg)' }}
         onPointerDownCapture={() => { document.documentElement.dataset.adminInput = 'pointer'; }}
         onKeyDownCapture={() => { document.documentElement.dataset.adminInput = 'keyboard'; }}>
+      <a href="#admin-main-content" className="admin-skip-link" onClick={() => document.getElementById('admin-main-content')?.focus()}>跳至主要内容</a>
       {/* Mobile header bar */}
       <div className="fixed top-0 left-0 right-0 h-12 flex items-center justify-between px-4 z-50 lg:hidden"
         style={{
@@ -202,7 +205,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </button>
         <NavLink href="/admin" className="flex items-center gap-2">
           <img src="/aimi.png" alt="T" className="w-6 h-6 rounded object-cover" />
-          <span className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>管理后台</span>
+          <span className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{currentPage}</span>
         </NavLink>
         <div className="w-8" />
       </div>
@@ -443,8 +446,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       </aside>
 
       {/* Main content */}
-      <main aria-busy={loading} className={`flex-1 min-w-0 pt-12 lg:pt-0 ${collapsed ? 'ml-0 lg:ml-[72px]' : 'ml-0 lg:ml-[220px]'}`}>
-        <div className="mx-auto w-full max-w-[1600px] p-4 sm:p-6 lg:p-8">
+      <main id="admin-main-content" tabIndex={-1} aria-busy={loading} className={`flex-1 min-w-0 pt-12 lg:pt-0 ${collapsed ? 'ml-0 lg:ml-[72px]' : 'ml-0 lg:ml-[220px]'}`}>
+        <div className="admin-content mx-auto w-full max-w-[1600px] p-4 sm:p-6 lg:p-8">
+          <nav aria-label="当前位置" className="admin-breadcrumb"><NavLink href="/admin">管理后台</NavLink><span aria-hidden="true">/</span><span aria-current="page">{currentPage}</span></nav>
           <ConfirmProvider>
             <EntryAnimationPreviewContext.Provider value={document => { setPreviewDocument(document); setShowWelcome(true); }}>
               <AdminServerNotice key={pathname} />

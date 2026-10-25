@@ -1,5 +1,7 @@
 'use client';
 
+import { AdminPageHeader } from '@/components/AdminPageHeader';
+
 import { Tooltip } from '@/components/ui/Tooltip';
 import { Input } from '@/components/ui/Input';
 import { useState, useCallback } from 'react';
@@ -45,21 +47,23 @@ export default function AdminTags() {
   }
 
   return (
-    <div>
+    <div className="admin-page">
       <RequestFeedback error={loadError} onRetry={load} pending={loading} />
       <RequestFeedback error={mutation.error} />
-      <div className="flex items-center justify-between mb-5">
-        <h1 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>标签</h1>
-      </div>
+      <AdminPageHeader title="标签" description="用灵活的关键词连接内容，维护博客的主题索引。" />
 
       {/* Add form */}
       <div className="glass-card rounded-xl p-5 mb-4">
         <h2 className="text-sm font-semibold mb-3" style={{ color: 'var(--text-primary)' }}>{editing ? '编辑标签' : '添加标签'}</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+          <label className="admin-inline-field"><span className="admin-field-label">名称</span>
           <Input disabled={mutation.pending} aria-label="名称" type="text" placeholder="名称" value={name} onChange={e => setName(e.target.value)}
             className="px-3 py-2.5 rounded-lg text-sm outline-none" style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
+          </label>
+          <label className="admin-inline-field"><span className="admin-field-label">排序（数字越小越靠前）</span>
           <Input disabled={mutation.pending} aria-label="排序（数字越小越靠前）" type="number" placeholder="排序（数字越小越靠前）" value={sortOrder} onChange={e => setSortOrder(Number(e.target.value))}
             className="px-3 py-2.5 rounded-lg text-sm outline-none" style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
+          </label>
         </div>
         <div className="flex gap-2">
           <button disabled={mutation.pending} onClick={handleSave} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors cursor-pointer" style={{ background: 'var(--primary)' }}>
@@ -81,47 +85,49 @@ export default function AdminTags() {
             <p>暂无标签</p>
           </div>
         ) : (
-          <table className="w-full">
-            <thead>
-              <tr style={{ borderBottom: '1px solid var(--glass-border)' }}>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>排序</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>名称</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>Slug</th>
-                <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>文章数</th>
-                <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item) => (
-                <tr key={item.id} className="transition-colors" style={{ borderBottom: '1px solid var(--glass-border)', background: 'var(--card-bg)' }}>
-                  <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-info)' }}>{item.sort_order ?? 0}</td>
-                  <td className="px-4 py-3 text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{item.name}</td>
-                  <td className="px-4 py-3 text-sm font-mono" style={{ color: 'var(--text-secondary)' }}>{item.slug}</td>
-                  <td className="px-4 py-3 text-sm text-center" style={{ color: 'var(--text-primary)' }}>{item.post_count ?? 0}</td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      <Tooltip content="编辑"><button onClick={() => { setEditing(item); setName(item.name); setSortOrder(item.sort_order ?? 0); }}
-                        className="btn-glass p-1.5 rounded transition-colors" data-tooltip="编辑" aria-label="编辑">
-                        <Pencil className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
-                      </button></Tooltip>
-                      <Tooltip content="删除"><button disabled={mutation.pending} onClick={() => handleDelete(item.id)}
-                        className="btn-glass p-1.5 rounded transition-colors" data-tooltip="删除" aria-label="删除">
-                        <Trash2 className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
-                      </button></Tooltip>
-                    </div>
-                  </td>
+          <div className="admin-table-scroll" role="region" aria-label="标签列表" tabIndex={0}>
+            <table className="admin-data-table w-full">
+              <thead>
+                <tr style={{ borderBottom: '1px solid var(--glass-border)' }}>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>排序</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>名称</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>Slug</th>
+                  <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>文章数</th>
+                  <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>操作</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {items.map((item) => (
+                  <tr key={item.id} className="transition-colors" style={{ borderBottom: '1px solid var(--glass-border)', background: 'var(--card-bg)' }}>
+                    <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-info)' }}>{item.sort_order ?? 0}</td>
+                    <td className="px-4 py-3 text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{item.name}</td>
+                    <td className="px-4 py-3 text-sm font-mono" style={{ color: 'var(--text-secondary)' }}>{item.slug}</td>
+                    <td className="px-4 py-3 text-sm text-center" style={{ color: 'var(--text-primary)' }}>{item.post_count ?? 0}</td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <Tooltip content="编辑"><button onClick={() => { setEditing(item); setName(item.name); setSortOrder(item.sort_order ?? 0); }}
+                          className="btn-glass p-1.5 rounded transition-colors" data-tooltip="编辑" aria-label="编辑">
+                          <Pencil className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
+                        </button></Tooltip>
+                        <Tooltip content="删除"><button disabled={mutation.pending} onClick={() => handleDelete(item.id)}
+                          className="btn-glass p-1.5 rounded transition-colors" data-tooltip="删除" aria-label="删除">
+                          <Trash2 className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
+                        </button></Tooltip>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 
-      <div className="flex items-center justify-between text-sm mt-4">
+      <div className="admin-pagination flex items-center justify-between text-sm mt-4">
           <span style={{ color: 'var(--text-secondary)' }}>共 {total} 个</span>
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2">
-              <span className="text-xs" style={{ color: 'var(--text-info)' }}>每页</span>
+              <span className="text-xs whitespace-nowrap shrink-0" style={{ color: 'var(--text-info)' }}>每页</span>
               <Select aria-label="每页条数" value={String(pageSize)} onChange={v => { setPageSize(Number(v)); setPage(1); }}
                 options={[10, 20, 30, 50, 100].map(v => ({ value: String(v), label: String(v) }))} />
             </div>

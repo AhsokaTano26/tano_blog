@@ -31,12 +31,13 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4" style={{ background: 'var(--color-bg)' }}>
+    <div className="admin-auth min-h-screen flex items-center justify-center px-4" style={{ background: 'var(--color-bg)' }}>
       <div className="w-full max-w-sm">
-        <div className="glass-card rounded-2xl p-8">
+        <div className="admin-auth-card glass-card rounded-2xl p-8">
           <h1 className="text-xl font-bold text-center mb-6" style={{ color: 'var(--text-primary)' }}>忘记密码</h1>
+          <p className="admin-auth-description">输入账户邮箱，获取密码重置链接。</p>
           {message && (
-            <div className="mb-4 px-4 py-2.5 rounded-xl text-sm" style={{ background: 'var(--primary-sub)', color: 'var(--primary)' }}>
+            <div role="status" className="mb-4 px-4 py-2.5 rounded-xl text-sm" style={{ background: 'var(--primary-sub)', color: 'var(--primary)' }}>
               <p>{message}</p>
               {resetLink && (
                 <a href={resetLink} className="block mt-2 break-all hover:underline font-medium"
@@ -47,12 +48,13 @@ export default function ForgotPasswordPage() {
             </div>
           )}
           {error && (
-            <div className="mb-4 px-4 py-2.5 rounded-xl text-sm" style={{ color: 'var(--color-error)' }}>
+            <div role="alert" className="mb-4 px-4 py-2.5 rounded-xl text-sm" style={{ color: 'var(--color-error)' }}>
               {error}
             </div>
           )}
           <form onSubmit={handleSubmit} className="space-y-4">
-            <Input type="email" value={email} onChange={e => setEmail(e.target.value)}
+            <label htmlFor="recovery-email" className="admin-field-label">注册邮箱</label>
+            <Input id="recovery-email" autoComplete="email" type="email" value={email} onChange={e => setEmail(e.target.value)}
               placeholder="请输入注册邮箱" required
               className="w-full px-4 py-3 rounded-xl text-sm outline-none glass-card"
               style={{ color: 'var(--text-primary)' }} />

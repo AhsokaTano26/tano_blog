@@ -1,5 +1,7 @@
 'use client';
 
+import { AdminPageHeader } from '@/components/AdminPageHeader';
+
 import { Tooltip } from '@/components/ui/Tooltip';
 import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
@@ -111,11 +113,10 @@ export default function AdminLinks() {
   const filtered = items;
 
   return (
-    <div>
+    <div className="admin-page">
       <RequestFeedback error={loadError} onRetry={load} pending={loading} />
       {!showModal && <RequestFeedback error={mutation.error} />}
-      <div className="flex items-center justify-between mb-5">
-        <h1 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>友链管理</h1>
+      <AdminPageHeader title="友链管理" description="审核友链申请，维护博客之间的连接。">
         <div className="flex items-center gap-2">
           <button onClick={() => window.open(`${process.env.NEXT_PUBLIC_API_URL || ''}/api/v1/admin/links/export`, '_blank')}
             className="btn-glass px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer"
@@ -128,12 +129,12 @@ export default function AdminLinks() {
             <Plus className="w-4 h-4" />添加友链
           </button>
         </div>
-      </div>
+      </AdminPageHeader>
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-4 p-1 rounded-xl" style={{ background: 'var(--card-bg)', border: '1px solid var(--glass-border)' }}>
+      <div className="admin-tabs admin-tabs-segmented mb-4 p-1 rounded-xl" role="group" aria-label="友链筛选" style={{ background: 'var(--card-bg)', border: '1px solid var(--glass-border)' }}>
         {tabs.map(tab => (
-          <button key={tab.key} onClick={() => { setActiveTab(tab.key); setPage(1); }}
+          <button key={tab.key} aria-pressed={activeTab === tab.key} onClick={() => { setActiveTab(tab.key); setPage(1); }}
             className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer ${activeTab === tab.key ? 'text-white' : ''}`}
             style={{
               background: activeTab === tab.key ? 'var(--primary)' : 'transparent',
@@ -155,76 +156,78 @@ export default function AdminLinks() {
             <p>暂无友链</p>
           </div>
         ) : (
-          <table className="w-full">
-            <thead>
-              <tr style={{ borderBottom: '1px solid var(--glass-border)' }}>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>名称</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider hidden md:table-cell" style={{ color: 'var(--text-secondary)' }}>网站地址</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>状态</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider hidden sm:table-cell" style={{ color: 'var(--text-secondary)' }}>时间</th>
-                <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((item) => (
-                <tr key={item.id} className="transition-colors" style={{ borderBottom: '1px solid var(--glass-border)' }}>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0" style={{ background: 'var(--primary-sub)' }}>
-                        {item.avatar ? (
-                          <img src={item.avatar} alt="" className="w-full h-full object-cover" />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center text-xs font-bold" style={{ color: 'var(--primary)' }}>
-                            {item.name?.charAt(0)}
-                          </div>
-                        )}
-                      </div>
-                      <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{item.name}</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-sm hidden md:table-cell" style={{ color: 'var(--text-info)' }}>
-                    <span className="max-w-[200px] truncate block">{item.url}</span>
-                  </td>
-                  <td className="px-4 py-3">{statusBadge(item.status)}</td>
-                  <td className="px-4 py-3 text-xs hidden sm:table-cell" style={{ color: 'var(--text-info)' }}>
-                    {item.created_at ? new Date(item.created_at).toLocaleDateString('zh-CN') : '-'}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      {item.status === 'pending' && (
-                        <>
-                          <Tooltip content="通过"><button disabled={mutation.pending} onClick={() => handleUpdateStatus(item.id, 'approved')}
-                            className="btn-glass p-1.5 rounded transition-colors cursor-pointer" data-tooltip="通过" aria-label="通过">
-                            <Check className="w-4 h-4" style={{ color: '#22c55e' }} />
-                          </button></Tooltip>
-                          <Tooltip content="拒绝"><button disabled={mutation.pending} onClick={() => handleUpdateStatus(item.id, 'rejected')}
-                            className="btn-glass p-1.5 rounded transition-colors cursor-pointer" data-tooltip="拒绝" aria-label="拒绝">
-                            <X className="w-4 h-4" style={{ color: '#ef4444' }} />
-                          </button></Tooltip>
-                        </>
-                      )}
-                      <Tooltip content="编辑"><button disabled={mutation.pending} onClick={() => openEdit(item)}
-                        className="btn-glass p-1.5 rounded transition-colors cursor-pointer" data-tooltip="编辑" aria-label="编辑">
-                        <Pencil className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
-                      </button></Tooltip>
-                      <Tooltip content="删除"><button disabled={mutation.pending} onClick={() => handleDelete(item.id)}
-                        className="btn-glass p-1.5 rounded transition-colors cursor-pointer" data-tooltip="删除" aria-label="删除">
-                        <Trash2 className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
-                      </button></Tooltip>
-                    </div>
-                  </td>
+          <div className="admin-table-scroll" role="region" aria-label="友链管理列表" tabIndex={0}>
+            <table className="admin-data-table w-full">
+              <thead>
+                <tr style={{ borderBottom: '1px solid var(--glass-border)' }}>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>名称</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider hidden md:table-cell" style={{ color: 'var(--text-secondary)' }}>网站地址</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>状态</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider hidden sm:table-cell" style={{ color: 'var(--text-secondary)' }}>时间</th>
+                  <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>操作</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {filtered.map((item) => (
+                  <tr key={item.id} className="transition-colors" style={{ borderBottom: '1px solid var(--glass-border)' }}>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0" style={{ background: 'var(--primary-sub)' }}>
+                          {item.avatar ? (
+                            <img src={item.avatar} alt="" className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-xs font-bold" style={{ color: 'var(--primary)' }}>
+                              {item.name?.charAt(0)}
+                            </div>
+                          )}
+                        </div>
+                        <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{item.name}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-sm hidden md:table-cell" style={{ color: 'var(--text-info)' }}>
+                      <span className="max-w-[200px] truncate block">{item.url}</span>
+                    </td>
+                    <td className="px-4 py-3">{statusBadge(item.status)}</td>
+                    <td className="px-4 py-3 text-xs hidden sm:table-cell" style={{ color: 'var(--text-info)' }}>
+                      {item.created_at ? new Date(item.created_at).toLocaleDateString('zh-CN') : '-'}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        {item.status === 'pending' && (
+                          <>
+                            <Tooltip content="通过"><button disabled={mutation.pending} onClick={() => handleUpdateStatus(item.id, 'approved')}
+                              className="btn-glass p-1.5 rounded transition-colors cursor-pointer" data-tooltip="通过" aria-label="通过">
+                              <Check className="w-4 h-4" style={{ color: '#22c55e' }} />
+                            </button></Tooltip>
+                            <Tooltip content="拒绝"><button disabled={mutation.pending} onClick={() => handleUpdateStatus(item.id, 'rejected')}
+                              className="btn-glass p-1.5 rounded transition-colors cursor-pointer" data-tooltip="拒绝" aria-label="拒绝">
+                              <X className="w-4 h-4" style={{ color: '#ef4444' }} />
+                            </button></Tooltip>
+                          </>
+                        )}
+                        <Tooltip content="编辑"><button disabled={mutation.pending} onClick={() => openEdit(item)}
+                          className="btn-glass p-1.5 rounded transition-colors cursor-pointer" data-tooltip="编辑" aria-label="编辑">
+                          <Pencil className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
+                        </button></Tooltip>
+                        <Tooltip content="删除"><button disabled={mutation.pending} onClick={() => handleDelete(item.id)}
+                          className="btn-glass p-1.5 rounded transition-colors cursor-pointer" data-tooltip="删除" aria-label="删除">
+                          <Trash2 className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
+                        </button></Tooltip>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 
-      <div className="flex items-center justify-between text-sm mt-4">
+      <div className="admin-pagination flex items-center justify-between text-sm mt-4">
           <span style={{ color: 'var(--text-secondary)' }}>共 {total} 个</span>
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2">
-              <span className="text-xs" style={{ color: 'var(--text-info)' }}>每页</span>
+              <span className="text-xs whitespace-nowrap shrink-0" style={{ color: 'var(--text-info)' }}>每页</span>
               <Select aria-label="每页条数" value={String(pageSize)} onChange={v => { setPageSize(Number(v)); setPage(1); }}
                 options={[10, 20, 30, 50, 100].map(v => ({ value: String(v), label: String(v) }))} />
             </div>
@@ -265,46 +268,46 @@ export default function AdminLinks() {
           <fieldset disabled={mutation.pending} className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>名称 *</label>
-                <Input aria-label="名称" type="text" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                <label htmlFor="admin-links-field-1" className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>名称 *</label>
+                <Input id="admin-links-field-1" aria-label="名称" type="text" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
                   className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
                   style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
               </div>
               <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>URL *</label>
-                <Input aria-label="网址" type="text" value={form.url} onChange={e => setForm(f => ({ ...f, url: e.target.value }))}
+                <label htmlFor="admin-links-field-2" className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>URL *</label>
+                <Input id="admin-links-field-2" aria-label="网址" type="text" value={form.url} onChange={e => setForm(f => ({ ...f, url: e.target.value }))}
                   className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
                   style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
               </div>
               <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>头像</label>
-                <Input aria-label="头像" type="text" value={form.avatar} onChange={e => setForm(f => ({ ...f, avatar: e.target.value }))}
+                <label htmlFor="admin-links-field-3" className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>头像</label>
+                <Input id="admin-links-field-3" aria-label="头像" type="text" value={form.avatar} onChange={e => setForm(f => ({ ...f, avatar: e.target.value }))}
                   className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
                   style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
               </div>
               <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>邮箱</label>
-                <Input aria-label="邮箱" type="text" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+                <label htmlFor="admin-links-field-4" className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>邮箱</label>
+                <Input id="admin-links-field-4" aria-label="邮箱" type="text" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
                   className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
                   style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
               </div>
             </div>
             <div>
-              <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>描述</label>
-              <Input aria-label="描述" type="text" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+              <label htmlFor="admin-links-field-5" className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>描述</label>
+              <Input id="admin-links-field-5" aria-label="描述" type="text" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
                 className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
                 style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>排序</label>
-                <Input aria-label="排序" type="number" value={form.sort_order} onChange={e => setForm(f => ({ ...f, sort_order: parseInt(e.target.value) || 0 }))}
+                <label htmlFor="admin-links-field-6" className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>排序</label>
+                <Input id="admin-links-field-6" aria-label="排序" type="number" value={form.sort_order} onChange={e => setForm(f => ({ ...f, sort_order: parseInt(e.target.value) || 0 }))}
                   className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
                   style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
               </div>
               <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>状态</label>
-                <Select aria-label="状态" value={form.status} onChange={value => setForm(f => ({ ...f, status: value }))}
+                <label htmlFor="admin-links-field-7" className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>状态</label>
+                <Select id="admin-links-field-7" aria-label="状态" value={form.status} onChange={value => setForm(f => ({ ...f, status: value }))}
                   options={[{ value: 'pending', label: '待审核' }, { value: 'approved', label: '已通过' }, { value: 'rejected', label: '已拒绝' }]}
                   className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
                   style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />

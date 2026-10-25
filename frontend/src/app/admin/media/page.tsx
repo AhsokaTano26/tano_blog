@@ -1,4 +1,6 @@
 'use client';
+
+import { AdminPageHeader } from '@/components/AdminPageHeader';
 import { Switch } from '@/components/ui/Switch';
 
 import { Tooltip } from '@/components/ui/Tooltip';
@@ -483,7 +485,7 @@ export default function AdminMedia() {
   }
 
   return (
-    <div onDragOver={e => {
+    <div className="admin-page" onDragOver={e => {
       if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); setDragOver(true); }
     }} onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(false); }}
       onDrop={e => {
@@ -495,8 +497,7 @@ export default function AdminMedia() {
         <p className="glass-card rounded-xl px-6 py-4" style={{ color: 'var(--primary)' }}>释放文件以上传到媒体库</p>
       </div>}
       {/* Header */}
-      <div className="admin-page-heading">
-        <div><h1>附件</h1><p>集中管理文章素材，支持批量上传与拖拽添加。</p></div>
+      <AdminPageHeader title="附件" description="集中管理文章素材，支持批量上传与拖拽添加。">
         <div className="flex items-center gap-2">
           <div className="flex rounded-lg p-0.5" style={{ background: 'var(--surface-bg)' }}>
             <button onClick={() => setViewMode('grid')} aria-label="网格视图" aria-pressed={viewMode === 'grid'}
@@ -514,7 +515,7 @@ export default function AdminMedia() {
             label={uploading ? `上传中${uploadProgress ? ` (${uploadProgress})` : '...'}` : '上传'}
             className="text-sm font-medium" onChange={handleUpload} disabled={uploading} multiple />
         </div>
-      </div>
+      </AdminPageHeader>
 
       <div role="status" aria-live="polite" className="mb-3 text-xs" style={{ color: 'var(--text-info)' }}>
         {uploading ? `正在上传 ${uploadProgress}，请稍候…` : uploadNotice || '支持选择多个文件或拖拽上传，点击缩略图查看原图'}
@@ -822,113 +823,115 @@ export default function AdminMedia() {
           </div>
         ) : (
           <div>
-            <table className="w-full">
-              <thead>
-                <tr style={{ borderBottom: '1px solid var(--glass-border)' }}>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider w-10" style={{ color: 'var(--text-secondary)' }}>
-                    <Checkbox aria-label="选择全部文件" checked={filtered.length > 0 && filtered.every(item => selectedIds.has(item.id))}
-                      indeterminate={filtered.some(item => selectedIds.has(item.id)) && !filtered.every(item => selectedIds.has(item.id))} onChange={toggleSelectAll} />
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider w-12" style={{ color: 'var(--text-secondary)' }}></th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>文件名</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider w-32" style={{ color: 'var(--text-secondary)' }}>类型</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider w-24" style={{ color: 'var(--text-secondary)' }}>大小</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>标签</th>
-                  <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider w-32" style={{ color: 'var(--text-secondary)' }}>操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((item) => {
-                  const Icon = getMediaIcon(item.mime_type);
-                  return (
-                    <tr key={item.id} className="transition-colors" style={{ borderBottom: '1px solid var(--glass-border)' }}>
-                      <td className="px-4 py-3">
-                        <Checkbox aria-label={`选择文件 ${item.original_name || item.filename}`} checked={selectedIds.has(item.id)} onChange={() => toggleSelect(item.id)} />
-                      </td>
-                      <td className="px-4 py-3">
-                        <button aria-label={`预览 ${item.original_name || item.filename}`} onClick={() => setViewerItem(item)}>
-                          {item.mime_type?.startsWith('image/') ? (
-                            <ImageWithFallback src={item.thumbnail_url || item.url} fallbackSrc={item.url} alt={item.original_name || item.filename} loading="lazy" decoding="async" className="w-10 h-10 rounded object-cover" />
-                          ) : item.mime_type?.startsWith('video/') ? (
-                            <div className="relative w-20 h-12 rounded bg-black/20 flex items-center justify-center overflow-hidden">
-                              <video src={item.url} preload="metadata" className="w-full h-full object-contain" />
-                              <div className="absolute inset-0 flex items-center justify-center">
-                                <div className="w-7 h-7 rounded-full flex items-center justify-center"
-                                  style={{ background: 'rgba(0,0,0,0.6)' }}>
-                                  <Play className="w-3.5 h-3.5 text-white ml-0.5" />
+            <div className="admin-table-scroll" role="region" aria-label="附件列表" tabIndex={0}>
+              <table className="admin-data-table w-full">
+                <thead>
+                  <tr style={{ borderBottom: '1px solid var(--glass-border)' }}>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider w-10" style={{ color: 'var(--text-secondary)' }}>
+                      <Checkbox aria-label="选择全部文件" checked={filtered.length > 0 && filtered.every(item => selectedIds.has(item.id))}
+                        indeterminate={filtered.some(item => selectedIds.has(item.id)) && !filtered.every(item => selectedIds.has(item.id))} onChange={toggleSelectAll} />
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider w-12" style={{ color: 'var(--text-secondary)' }}></th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>文件名</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider w-32" style={{ color: 'var(--text-secondary)' }}>类型</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider w-24" style={{ color: 'var(--text-secondary)' }}>大小</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>标签</th>
+                    <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider w-32" style={{ color: 'var(--text-secondary)' }}>操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((item) => {
+                    const Icon = getMediaIcon(item.mime_type);
+                    return (
+                      <tr key={item.id} className="transition-colors" style={{ borderBottom: '1px solid var(--glass-border)' }}>
+                        <td className="px-4 py-3">
+                          <Checkbox aria-label={`选择文件 ${item.original_name || item.filename}`} checked={selectedIds.has(item.id)} onChange={() => toggleSelect(item.id)} />
+                        </td>
+                        <td className="px-4 py-3">
+                          <button aria-label={`预览 ${item.original_name || item.filename}`} onClick={() => setViewerItem(item)}>
+                            {item.mime_type?.startsWith('image/') ? (
+                              <ImageWithFallback src={item.thumbnail_url || item.url} fallbackSrc={item.url} alt={item.original_name || item.filename} loading="lazy" decoding="async" className="w-10 h-10 rounded object-cover" />
+                            ) : item.mime_type?.startsWith('video/') ? (
+                              <div className="relative w-20 h-12 rounded bg-black/20 flex items-center justify-center overflow-hidden">
+                                <video src={item.url} preload="metadata" className="w-full h-full object-contain" />
+                                <div className="absolute inset-0 flex items-center justify-center">
+                                  <div className="w-7 h-7 rounded-full flex items-center justify-center"
+                                    style={{ background: 'rgba(0,0,0,0.6)' }}>
+                                    <Play className="w-3.5 h-3.5 text-white ml-0.5" />
+                                  </div>
                                 </div>
                               </div>
-                            </div>
-                          ) : item.thumbnail_url ? (
-                            <ImageWithFallback src={item.thumbnail_url} alt={item.original_name || item.filename} loading="lazy" decoding="async" className="w-14 h-12 rounded object-cover" />
-                          ) : item.mime_type?.startsWith('audio/') ? (
-                            <div className="w-14 h-12 rounded flex items-center justify-center"
-                              style={{ background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)' }}>
-                              <Music className="w-5 h-5" style={{ color: 'var(--primary)' }} />
-                            </div>
-                          ) : (
-                            <div className="w-10 h-10 rounded flex items-center justify-center" style={{ background: 'var(--surface-bg)' }}>
-                              <Icon className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
-                            </div>
-                          )}
-                        </button>
-                      </td>
-                      <Tooltip content={item.original_name || item.filename}><td className="px-4 py-3 text-sm truncate max-w-[200px]" style={{ color: 'var(--text-primary)' }} data-tooltip={item.original_name || item.filename}>
-                        {item.mime_type?.startsWith('audio/') && (item.title || item.artist)
-                          ? [item.title, item.artist].filter(Boolean).join(' — ') || item.original_name || item.filename
-                          : item.original_name || item.filename}
-                      </td></Tooltip>
-                      <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>{item.mime_type || '-'}</td>
-                      <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>{item.size ? formatSize(item.size) : '-'}</td>
-                      <td className="px-4 py-3">
-                        <div className="flex gap-1 flex-wrap">
-                          {item.tags && item.tags.length > 0 ? item.tags.map(tag => (
-                            <span key={tag.id} className="px-1.5 py-0.5 rounded text-[10px]"
-                              style={{ background: 'var(--primary-sub)', color: 'var(--primary)' }}>
-                              {tag.name}
-                            </span>
-                          )) : (
-                            <span className="text-xs" style={{ color: 'var(--text-info)' }}>-</span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <Tooltip content="复制链接"><button onClick={(e) => {
-                            if (openLinksId === item.id) { setOpenLinksId(null); setOpenLinksEl(null); }
-                            else { setOpenLinksId(item.id); setOpenLinksEl(e.currentTarget); setEditingTagsId(null); }
-                          }}
-                            className="btn-glass p-2.5 rounded transition-colors" data-tooltip="复制链接" aria-label="复制链接">
-                            <Copy className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
-                          </button></Tooltip>
-                          <Tooltip content="编辑标签"><button onClick={(e) => {
-                            if (editingTagsId === item.id) { setEditingTagsId(null); setEditingTagsEl(null); }
-                            else { setEditingTagsId(item.id); setEditingTagsEl(e.currentTarget); setOpenLinksId(null); }
-                          }}
-                            className="btn-glass p-2.5 rounded transition-colors" data-tooltip="编辑标签" aria-label="编辑标签">
-                            <Tag className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
-                          </button></Tooltip>
-                          <Tooltip content="编辑元信息"><button onClick={() => openMetadataEditor(item)}
-                            className="btn-glass p-2.5 rounded transition-colors" data-tooltip="编辑元信息" aria-label="编辑元信息">
-                            <FileText className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
-                          </button></Tooltip>
-                          <Tooltip content="删除"><button onClick={() => handleDelete(item.id)}
-                            className="btn-glass p-2.5 rounded transition-colors" data-tooltip="删除" aria-label="删除">
-                            <Trash2 className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
-                          </button></Tooltip>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                            ) : item.thumbnail_url ? (
+                              <ImageWithFallback src={item.thumbnail_url} alt={item.original_name || item.filename} loading="lazy" decoding="async" className="w-14 h-12 rounded object-cover" />
+                            ) : item.mime_type?.startsWith('audio/') ? (
+                              <div className="w-14 h-12 rounded flex items-center justify-center"
+                                style={{ background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)' }}>
+                                <Music className="w-5 h-5" style={{ color: 'var(--primary)' }} />
+                              </div>
+                            ) : (
+                              <div className="w-10 h-10 rounded flex items-center justify-center" style={{ background: 'var(--surface-bg)' }}>
+                                <Icon className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
+                              </div>
+                            )}
+                          </button>
+                        </td>
+                        <Tooltip content={item.original_name || item.filename}><td className="px-4 py-3 text-sm truncate max-w-[200px]" style={{ color: 'var(--text-primary)' }} data-tooltip={item.original_name || item.filename}>
+                          {item.mime_type?.startsWith('audio/') && (item.title || item.artist)
+                            ? [item.title, item.artist].filter(Boolean).join(' — ') || item.original_name || item.filename
+                            : item.original_name || item.filename}
+                        </td></Tooltip>
+                        <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>{item.mime_type || '-'}</td>
+                        <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>{item.size ? formatSize(item.size) : '-'}</td>
+                        <td className="px-4 py-3">
+                          <div className="flex gap-1 flex-wrap">
+                            {item.tags && item.tags.length > 0 ? item.tags.map(tag => (
+                              <span key={tag.id} className="px-1.5 py-0.5 rounded text-[10px]"
+                                style={{ background: 'var(--primary-sub)', color: 'var(--primary)' }}>
+                                {tag.name}
+                              </span>
+                            )) : (
+                              <span className="text-xs" style={{ color: 'var(--text-info)' }}>-</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <Tooltip content="复制链接"><button onClick={(e) => {
+                              if (openLinksId === item.id) { setOpenLinksId(null); setOpenLinksEl(null); }
+                              else { setOpenLinksId(item.id); setOpenLinksEl(e.currentTarget); setEditingTagsId(null); }
+                            }}
+                              className="btn-glass p-2.5 rounded transition-colors" data-tooltip="复制链接" aria-label="复制链接">
+                              <Copy className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
+                            </button></Tooltip>
+                            <Tooltip content="编辑标签"><button onClick={(e) => {
+                              if (editingTagsId === item.id) { setEditingTagsId(null); setEditingTagsEl(null); }
+                              else { setEditingTagsId(item.id); setEditingTagsEl(e.currentTarget); setOpenLinksId(null); }
+                            }}
+                              className="btn-glass p-2.5 rounded transition-colors" data-tooltip="编辑标签" aria-label="编辑标签">
+                              <Tag className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
+                            </button></Tooltip>
+                            <Tooltip content="编辑元信息"><button onClick={() => openMetadataEditor(item)}
+                              className="btn-glass p-2.5 rounded transition-colors" data-tooltip="编辑元信息" aria-label="编辑元信息">
+                              <FileText className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
+                            </button></Tooltip>
+                            <Tooltip content="删除"><button onClick={() => handleDelete(item.id)}
+                              className="btn-glass p-2.5 rounded transition-colors" data-tooltip="删除" aria-label="删除">
+                              <Trash2 className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
+                            </button></Tooltip>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </div>
 
       {/* Pagination */}
-      <div className="flex flex-wrap items-center justify-between gap-3 text-sm mt-4">
+      <div className="admin-pagination flex flex-wrap items-center justify-between gap-3 text-sm mt-4">
           <span style={{ color: 'var(--text-secondary)' }}>共 {total} 个文件{(typeFilter || tagFilter) && ` (当前筛选)`}</span>
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-2">
@@ -1159,8 +1162,8 @@ export default function AdminMedia() {
 
               {/* Title */}
               <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>标题</label>
-                <Input type="text" aria-label="媒体标题" disabled={mutation.pending} value={metadataForm.title}
+                <label htmlFor="admin-media-field-1" className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>标题</label>
+                <Input id="admin-media-field-1" type="text" aria-label="媒体标题" disabled={mutation.pending} value={metadataForm.title}
                   onChange={e => setMetadataForm(p => ({ ...p, title: e.target.value }))}
                   placeholder={type === 'audio' ? '歌曲名' : type === 'video' ? '视频标题' : '标题'}
                   className="w-full px-3 py-2 rounded-lg text-sm outline-none glass-card"
@@ -1169,8 +1172,8 @@ export default function AdminMedia() {
 
               {/* Artist */}
               <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>作者</label>
-                <Input type="text" aria-label="艺术家" disabled={mutation.pending} value={metadataForm.artist}
+                <label htmlFor="admin-media-field-2" className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>作者</label>
+                <Input id="admin-media-field-2" type="text" aria-label="艺术家" disabled={mutation.pending} value={metadataForm.artist}
                   onChange={e => setMetadataForm(p => ({ ...p, artist: e.target.value }))}
                   placeholder={type === 'audio' ? '歌手/乐队名' : '视频作者'}
                   className="w-full px-3 py-2 rounded-lg text-sm outline-none glass-card"
@@ -1179,8 +1182,8 @@ export default function AdminMedia() {
 
               {/* Album */}
               <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>专辑</label>
-                <Input type="text" aria-label="专辑" disabled={mutation.pending} value={metadataForm.album}
+                <label htmlFor="admin-media-field-3" className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>专辑</label>
+                <Input id="admin-media-field-3" type="text" aria-label="专辑" disabled={mutation.pending} value={metadataForm.album}
                   onChange={e => setMetadataForm(p => ({ ...p, album: e.target.value }))}
                   placeholder="专辑名"
                   className="w-full px-3 py-2 rounded-lg text-sm outline-none glass-card"
@@ -1189,8 +1192,8 @@ export default function AdminMedia() {
 
               {/* Description */}
               <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>描述</label>
-                <Textarea aria-label="媒体描述" disabled={mutation.pending} value={metadataForm.description}
+                <label htmlFor="admin-media-field-4" className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>描述</label>
+                <Textarea id="admin-media-field-4" aria-label="媒体描述" disabled={mutation.pending} value={metadataForm.description}
                   onChange={e => setMetadataForm(p => ({ ...p, description: e.target.value }))}
                   placeholder="简要描述"
                   rows={3}

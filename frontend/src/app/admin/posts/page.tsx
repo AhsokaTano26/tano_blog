@@ -1,5 +1,7 @@
 'use client';
 
+import { AdminPageHeader } from '@/components/AdminPageHeader';
+
 import { Tooltip } from '@/components/ui/Tooltip';
 import { Checkbox } from '@/components/ui/Checkbox';
 import { Input } from '@/components/ui/Input';
@@ -168,12 +170,11 @@ export default function AdminPosts() {
   }
 
   return (
-    <div>
+    <div className="admin-page">
       <RequestFeedback error={openError} />
       <RequestFeedback error={mutation.error} />
       <RequestFeedback error={metadata.error} onRetry={metadata.reload} pending={metadata.loading} />
-      <header className="admin-page-heading">
-        <div><h1>文章</h1><p>管理草稿与发布内容，点击标题继续编辑。</p></div>
+      <AdminPageHeader title="文章" description="管理草稿与发布内容，点击标题继续编辑。">
         <div className="flex items-center gap-2">
           <button onClick={() => api.admin.posts.export()}
             className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm btn-glass"
@@ -187,7 +188,7 @@ export default function AdminPosts() {
             新建
           </button>
         </div>
-      </header>
+      </AdminPageHeader>
 
       <RequestFeedback error={loadError} onRetry={load} pending={loading} />
       {/* Filters bar */}
@@ -247,143 +248,145 @@ export default function AdminPosts() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="admin-post-table" data-detailed={detailed} aria-label="文章列表">
-              <thead>
-                <tr style={{ borderBottom: '1px solid var(--glass-border)' }}>
-                  <th className="px-4 py-3 text-left w-10">
-                    <Checkbox aria-label="选择全部文章" disabled={mutation.pending} checked={selectedPosts.size === posts.length && posts.length > 0}
-                      indeterminate={selectedPosts.size > 0 && selectedPosts.size < posts.length}
-                      onChange={toggleSelectAll}
-                      className="w-4 h-4 rounded cursor-pointer" />
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-info)' }}>标题</th>
-                  <th className="post-extra px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-info)' }}>作者</th>
-                  <th className="post-extra px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-info)' }}>编辑者</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider w-20" style={{ color: 'var(--text-info)' }}>状态</th>
-                  <th className="post-extra px-4 py-3 text-left text-xs font-medium uppercase tracking-wider w-24" style={{ color: 'var(--text-info)' }}>分类</th>
-                  <th className="post-extra px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-info)' }}>标签</th>
-                  <th className="post-extra px-4 py-3 text-left text-xs font-medium uppercase tracking-wider w-16" style={{ color: 'var(--text-info)' }}>浏览</th>
-                  <th className="post-extra px-4 py-3 text-left text-xs font-medium uppercase tracking-wider w-28" style={{ color: 'var(--text-info)' }}>发布日期</th>
-                  <th className="post-extra px-4 py-3 text-left text-xs font-medium uppercase tracking-wider w-28" style={{ color: 'var(--text-info)' }}>创建时间</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider w-28" style={{ color: 'var(--text-info)' }}>更新时间</th>
-                  <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider w-32" style={{ color: 'var(--text-info)' }}>操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {posts.map((post, index) => (
-                  <tr key={post.id || post.slug || index} className="transition-colors" style={{ borderBottom: '1px solid var(--glass-border)' }}>
-                    <td className="px-4 py-3">
-                      <Checkbox aria-label={`选择文章 ${post.title}`} disabled={mutation.pending} checked={selectedPosts.has(post.id)}
-                        onChange={() => toggleSelectPost(post.id)}
+            <div className="admin-table-scroll" role="region" aria-label="文章列表" tabIndex={0}>
+              <table className="admin-data-table admin-post-table" data-detailed={detailed} aria-label="文章列表">
+                <thead>
+                  <tr style={{ borderBottom: '1px solid var(--glass-border)' }}>
+                    <th className="px-4 py-3 text-left w-10">
+                      <Checkbox aria-label="选择全部文章" disabled={mutation.pending} checked={selectedPosts.size === posts.length && posts.length > 0}
+                        indeterminate={selectedPosts.size > 0 && selectedPosts.size < posts.length}
+                        onChange={toggleSelectAll}
                         className="w-4 h-4 rounded cursor-pointer" />
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-3">
-                        {post.cover_image ? (
-                          <ImageWithFallback src={post.cover_thumbnail_url || post.cover_image} fallbackSrc={post.cover_image} alt={post.title} loading="lazy" decoding="async" className="w-10 h-10 rounded-lg object-cover flex-shrink-0" />
-                        ) : (
-                          <div className="w-10 h-10 rounded-lg flex items-center justify-center glass-card flex-shrink-0">
-                            <FileText className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
-                          </div>
-                        )}
-                        <div className="flex items-center gap-2 min-w-0 group">
-                          <button disabled={openingPost} className="text-sm font-medium truncate text-left hover:underline transition-opacity" style={{ color: 'var(--text-primary)' }}
-                            onClick={() => openPost(post.id, 'edit')}>{post.title}</button>
-                          <Tooltip content="预览文章"><button onClick={(e) => { e.stopPropagation(); window.open(`/posts/${post.slug}`, '_blank'); }}
-                            className="p-0.5 rounded transition-colors opacity-60 hover:opacity-100 focus-visible:opacity-100 flex-shrink-0"
-                            style={{ color: 'var(--text-info)' }}
-                            data-tooltip="预览文章" aria-label="预览文章">
-                            <ExternalLink className="w-3.5 h-3.5" />
-                          </button></Tooltip>
-                          {post.is_top && (
-                            <span className="px-1.5 py-0.5 text-xs rounded flex-shrink-0"
-                              style={{ background: 'var(--primary-sub)', color: 'var(--primary)' }}>置顶</span>
-                          )}
-                        </div>
-                      </div>
-                    </td>
-                    <td className="post-extra px-4 py-3 whitespace-nowrap">
-                      <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                        {post.author_name || '-'}
-                      </span>
-                    </td>
-                    <td className="post-extra px-4 py-3 whitespace-nowrap">
-                      <span className="text-sm" style={{ color: 'var(--text-info)' }}>
-                        {post.editor?.display_name || post.editor?.username || '-'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap"
-                        style={{
-                          background: post.status === 'published' ? 'var(--primary-sub)' : 'var(--btn-card-bg)',
-                          color: post.status === 'published' ? 'var(--primary)' : 'var(--text-info)',
-                        }}>
-                        {post.status === 'published' ? '已发布' : '草稿'}
-                      </span>
-                    </td>
-                    <td className="post-extra px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>{post.category?.name || '-'}</td>
-                    <td className="post-extra px-4 py-3">
-                      <div className="flex flex-wrap gap-1">
-                        {post.tags?.length ? post.tags.map((tag: TaxonomyItem) => (
-                          <span key={tag.id} className="px-1.5 py-0.5 text-xs rounded"
-                            style={{ background: 'var(--btn-card-bg)', color: 'var(--text-secondary)' }}>
-                            {tag.name}
-                          </span>
-                        )) : <span style={{ color: 'var(--text-info)' }}>-</span>}
-                      </div>
-                    </td>
-                    <td className="post-extra px-4 py-3">
-                      <span className="flex items-center gap-1 text-sm" style={{ color: 'var(--text-secondary)' }}>
-                        <Eye className="w-3.5 h-3.5" />
-                        {post.view_count}
-                      </span>
-                    </td>
-                    <td className="post-extra px-4 py-3 text-sm whitespace-nowrap" style={{ color: 'var(--text-secondary)' }}>
-                      {post.published_at ? new Date(post.published_at).toLocaleDateString('zh-CN') : '-'}
-                    </td>
-                    <td className="post-extra px-4 py-3 text-sm whitespace-nowrap" style={{ color: 'var(--text-secondary)' }}>
-                      {post.created_at ? new Date(post.created_at).toLocaleDateString('zh-CN') : '-'}
-                    </td>
-                    <td className="px-4 py-3 text-sm whitespace-nowrap" style={{ color: 'var(--text-secondary)' }}>
-                      {post.updated_at ? new Date(post.updated_at).toLocaleDateString('zh-CN') : '-'}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <Tooltip content="预览"><button onClick={() => window.open(`/posts/${post.slug}`, '_blank')}
-                          className="p-1.5 rounded-lg transition-colors btn-glass" style={{ color: 'var(--text-info)' }} data-tooltip="预览" aria-label="预览">
-                          <ExternalLink className="w-4 h-4" />
-                        </button></Tooltip>
-                        <Tooltip content="编辑"><button disabled={mutation.pending} onClick={() => openPost(post.id, 'edit')}
-                          className="inline-flex items-center p-1.5 rounded-lg transition-colors btn-glass" style={{ color: 'var(--text-primary)' }} data-tooltip="编辑" aria-label="编辑">
-                          <Pencil className="w-4 h-4" /><span className="text-xs ml-1">编辑</span>
-                        </button></Tooltip>
-                        <Tooltip content={post.status === 'published' ? '下架' : '发布'}><button disabled={mutation.pending} onClick={() => handleStatus(post.id, post.status === 'published' ? 'draft' : 'published')}
-                          className="p-1.5 rounded-lg transition-colors btn-glass"
-                          style={{ color: post.status === 'published' ? 'var(--text-info)' : 'var(--primary)' }}
-                          data-tooltip={post.status === 'published' ? '下架' : '发布'} aria-label={post.status === 'published' ? '下架' : '发布'}>
-                          {post.status === 'published' ? <X className="w-4 h-4" /> : <Check className="w-4 h-4" />}
-                        </button></Tooltip>
-                        <Tooltip content="设置"><button disabled={mutation.pending || metadata.loading || !!metadata.error} onClick={() => openPost(post.id, 'settings')}
-                          className="p-1.5 rounded-lg transition-colors btn-glass"
-                          style={{ color: 'var(--text-info)' }} data-tooltip="设置" aria-label="设置">
-                          <Settings className="w-4 h-4" />
-                        </button></Tooltip>
-                        <Tooltip content="删除"><button disabled={mutation.pending} onClick={() => handleDelete(post.id)}
-                          className="p-1.5 rounded-lg transition-colors btn-glass"
-                          style={{ color: 'var(--color-error)' }} data-tooltip="删除" aria-label="删除">
-                          <Trash2 className="w-4 h-4" />
-                        </button></Tooltip>
-                      </div>
-                    </td>
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-info)' }}>标题</th>
+                    <th className="post-extra px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-info)' }}>作者</th>
+                    <th className="post-extra px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-info)' }}>编辑者</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider w-20" style={{ color: 'var(--text-info)' }}>状态</th>
+                    <th className="post-extra px-4 py-3 text-left text-xs font-medium uppercase tracking-wider w-24" style={{ color: 'var(--text-info)' }}>分类</th>
+                    <th className="post-extra px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-info)' }}>标签</th>
+                    <th className="post-extra px-4 py-3 text-left text-xs font-medium uppercase tracking-wider w-16" style={{ color: 'var(--text-info)' }}>浏览</th>
+                    <th className="post-extra px-4 py-3 text-left text-xs font-medium uppercase tracking-wider w-28" style={{ color: 'var(--text-info)' }}>发布日期</th>
+                    <th className="post-extra px-4 py-3 text-left text-xs font-medium uppercase tracking-wider w-28" style={{ color: 'var(--text-info)' }}>创建时间</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider w-28" style={{ color: 'var(--text-info)' }}>更新时间</th>
+                    <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider w-32" style={{ color: 'var(--text-info)' }}>操作</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {posts.map((post, index) => (
+                    <tr key={post.id || post.slug || index} className="transition-colors" style={{ borderBottom: '1px solid var(--glass-border)' }}>
+                      <td className="px-4 py-3">
+                        <Checkbox aria-label={`选择文章 ${post.title}`} disabled={mutation.pending} checked={selectedPosts.has(post.id)}
+                          onChange={() => toggleSelectPost(post.id)}
+                          className="w-4 h-4 rounded cursor-pointer" />
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-3">
+                          {post.cover_image ? (
+                            <ImageWithFallback src={post.cover_thumbnail_url || post.cover_image} fallbackSrc={post.cover_image} alt={post.title} loading="lazy" decoding="async" className="w-10 h-10 rounded-lg object-cover flex-shrink-0" />
+                          ) : (
+                            <div className="w-10 h-10 rounded-lg flex items-center justify-center glass-card flex-shrink-0">
+                              <FileText className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
+                            </div>
+                          )}
+                          <div className="flex items-center gap-2 min-w-0 group">
+                            <button disabled={openingPost} className="text-sm font-medium truncate text-left hover:underline transition-opacity" style={{ color: 'var(--text-primary)' }}
+                              onClick={() => openPost(post.id, 'edit')}>{post.title}</button>
+                            <Tooltip content="预览文章"><button onClick={(e) => { e.stopPropagation(); window.open(`/posts/${post.slug}`, '_blank'); }}
+                              className="p-0.5 rounded transition-colors opacity-60 hover:opacity-100 focus-visible:opacity-100 flex-shrink-0"
+                              style={{ color: 'var(--text-info)' }}
+                              data-tooltip="预览文章" aria-label="预览文章">
+                              <ExternalLink className="w-3.5 h-3.5" />
+                            </button></Tooltip>
+                            {post.is_top && (
+                              <span className="px-1.5 py-0.5 text-xs rounded flex-shrink-0"
+                                style={{ background: 'var(--primary-sub)', color: 'var(--primary)' }}>置顶</span>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="post-extra px-4 py-3 whitespace-nowrap">
+                        <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                          {post.author_name || '-'}
+                        </span>
+                      </td>
+                      <td className="post-extra px-4 py-3 whitespace-nowrap">
+                        <span className="text-sm" style={{ color: 'var(--text-info)' }}>
+                          {post.editor?.display_name || post.editor?.username || '-'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap"
+                          style={{
+                            background: post.status === 'published' ? 'var(--primary-sub)' : 'var(--btn-card-bg)',
+                            color: post.status === 'published' ? 'var(--primary)' : 'var(--text-info)',
+                          }}>
+                          {post.status === 'published' ? '已发布' : '草稿'}
+                        </span>
+                      </td>
+                      <td className="post-extra px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>{post.category?.name || '-'}</td>
+                      <td className="post-extra px-4 py-3">
+                        <div className="flex flex-wrap gap-1">
+                          {post.tags?.length ? post.tags.map((tag: TaxonomyItem) => (
+                            <span key={tag.id} className="px-1.5 py-0.5 text-xs rounded"
+                              style={{ background: 'var(--btn-card-bg)', color: 'var(--text-secondary)' }}>
+                              {tag.name}
+                            </span>
+                          )) : <span style={{ color: 'var(--text-info)' }}>-</span>}
+                        </div>
+                      </td>
+                      <td className="post-extra px-4 py-3">
+                        <span className="flex items-center gap-1 text-sm" style={{ color: 'var(--text-secondary)' }}>
+                          <Eye className="w-3.5 h-3.5" />
+                          {post.view_count}
+                        </span>
+                      </td>
+                      <td className="post-extra px-4 py-3 text-sm whitespace-nowrap" style={{ color: 'var(--text-secondary)' }}>
+                        {post.published_at ? new Date(post.published_at).toLocaleDateString('zh-CN') : '-'}
+                      </td>
+                      <td className="post-extra px-4 py-3 text-sm whitespace-nowrap" style={{ color: 'var(--text-secondary)' }}>
+                        {post.created_at ? new Date(post.created_at).toLocaleDateString('zh-CN') : '-'}
+                      </td>
+                      <td className="px-4 py-3 text-sm whitespace-nowrap" style={{ color: 'var(--text-secondary)' }}>
+                        {post.updated_at ? new Date(post.updated_at).toLocaleDateString('zh-CN') : '-'}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <Tooltip content="预览"><button onClick={() => window.open(`/posts/${post.slug}`, '_blank')}
+                            className="p-1.5 rounded-lg transition-colors btn-glass" style={{ color: 'var(--text-info)' }} data-tooltip="预览" aria-label="预览">
+                            <ExternalLink className="w-4 h-4" />
+                          </button></Tooltip>
+                          <Tooltip content="编辑"><button disabled={mutation.pending} onClick={() => openPost(post.id, 'edit')}
+                            className="inline-flex items-center p-1.5 rounded-lg transition-colors btn-glass" style={{ color: 'var(--text-primary)' }} data-tooltip="编辑" aria-label="编辑">
+                            <Pencil className="w-4 h-4" /><span className="text-xs ml-1">编辑</span>
+                          </button></Tooltip>
+                          <Tooltip content={post.status === 'published' ? '下架' : '发布'}><button disabled={mutation.pending} onClick={() => handleStatus(post.id, post.status === 'published' ? 'draft' : 'published')}
+                            className="p-1.5 rounded-lg transition-colors btn-glass"
+                            style={{ color: post.status === 'published' ? 'var(--text-info)' : 'var(--primary)' }}
+                            data-tooltip={post.status === 'published' ? '下架' : '发布'} aria-label={post.status === 'published' ? '下架' : '发布'}>
+                            {post.status === 'published' ? <X className="w-4 h-4" /> : <Check className="w-4 h-4" />}
+                          </button></Tooltip>
+                          <Tooltip content="设置"><button disabled={mutation.pending || metadata.loading || !!metadata.error} onClick={() => openPost(post.id, 'settings')}
+                            className="p-1.5 rounded-lg transition-colors btn-glass"
+                            style={{ color: 'var(--text-info)' }} data-tooltip="设置" aria-label="设置">
+                            <Settings className="w-4 h-4" />
+                          </button></Tooltip>
+                          <Tooltip content="删除"><button disabled={mutation.pending} onClick={() => handleDelete(post.id)}
+                            className="p-1.5 rounded-lg transition-colors btn-glass"
+                            style={{ color: 'var(--color-error)' }} data-tooltip="删除" aria-label="删除">
+                            <Trash2 className="w-4 h-4" />
+                          </button></Tooltip>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+      <div className="admin-pagination flex flex-wrap items-center justify-between gap-3 text-sm">
           <span style={{ color: 'var(--text-secondary)' }}>共 {total} 篇</span>
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-2">

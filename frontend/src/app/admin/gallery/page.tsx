@@ -1,5 +1,7 @@
 'use client';
 
+import { AdminPageHeader } from '@/components/AdminPageHeader';
+
 import { Dialog } from '@/components/ui/Dialog';
 import { Textarea } from '@/components/ui/Textarea';
 import { Input } from '@/components/ui/Input';
@@ -118,19 +120,15 @@ export default function AdminGalleryPage() {
   };
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>图片馆</h1>
-          <p className="text-sm mt-1" style={{ color: 'var(--text-info)' }}>共 {total} 张图片</p>
-        </div>
+    <div className="admin-page">
+      <AdminPageHeader title="图片馆" description={<>挑选与整理公开展示的图片，调整展示顺序。<span className="admin-heading-meta">共 {total} 张图片</span></>}>
         <button onClick={openCreate}
           className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium text-white transition-all hover:opacity-90"
           style={{ background: 'var(--primary)', boxShadow: '0 0 12px var(--primary-glow)' }}>
           <Plus className="w-4 h-4" />
           添加图片
         </button>
-      </div>
+      </AdminPageHeader>
 
       {moveError && <p role="alert" className="mb-4 text-sm" style={{ color: 'var(--color-error)' }}>{moveError}</p>}
       {images.length === 0 ? (
@@ -199,9 +197,9 @@ export default function AdminGalleryPage() {
 
           <div className="space-y-4">
             <div>
-              <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-info)' }}>图片 URL</label>
+              <label htmlFor="admin-gallery-field-1" className="block text-xs font-medium mb-1" style={{ color: 'var(--text-info)' }}>图片 URL</label>
               <div className="flex gap-2">
-                <Input type="text" value={formUrl} onChange={e => setFormUrl(e.target.value)}
+                <Input id="admin-gallery-field-1" type="text" value={formUrl} onChange={e => setFormUrl(e.target.value)}
                   className="flex-1 px-3 py-2 rounded-xl text-sm outline-none"
                   style={inputStyle}
                   placeholder="输入图片地址" />
@@ -213,15 +211,15 @@ export default function AdminGalleryPage() {
               </div>
             </div>
             <div>
-              <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-info)' }}>标题</label>
-              <Input type="text" value={formTitle} onChange={e => setFormTitle(e.target.value)}
+              <label htmlFor="admin-gallery-field-2" className="block text-xs font-medium mb-1" style={{ color: 'var(--text-info)' }}>标题</label>
+              <Input id="admin-gallery-field-2" type="text" value={formTitle} onChange={e => setFormTitle(e.target.value)}
                 className="w-full px-3 py-2 rounded-xl text-sm outline-none"
                 style={inputStyle}
                 placeholder="图片标题（可选）" />
             </div>
             <div>
-              <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-info)' }}>描述</label>
-              <Textarea value={formDescription} onChange={e => setFormDescription(e.target.value)} rows={3}
+              <label htmlFor="admin-gallery-field-3" className="block text-xs font-medium mb-1" style={{ color: 'var(--text-info)' }}>描述</label>
+              <Textarea id="admin-gallery-field-3" value={formDescription} onChange={e => setFormDescription(e.target.value)} rows={3}
                 className="w-full px-3 py-2 rounded-xl text-sm outline-none resize-none"
                 style={inputStyle}
                 placeholder="图片描述（可选）" />

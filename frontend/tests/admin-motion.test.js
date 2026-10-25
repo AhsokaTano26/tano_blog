@@ -268,3 +268,17 @@ test('failed background counters are marked with their reasons and can recover',
   await act(async () => button('重试').click());
   assert.doesNotMatch(errors(), /summary offline|unread count offline/);
 });
+
+test('keyboard navigation can skip the sidebar and focus the existing workbench', async t => {
+  prepareAdmin(t);
+  t.mock.method(api, 'getMe', async () => user);
+  await mount(t, () => React.createElement(AdminLayout, null,
+    React.createElement('input', { 'aria-label': 'Skip navigation draft', defaultValue: 'Preserved' })));
+  const input = document.querySelector('[aria-label="Skip navigation draft"]');
+  const skip = document.querySelector('a[href="#admin-main-content"]');
+  assert.equal(!!skip, true);
+  await act(async () => skip.click());
+  assert.equal(document.activeElement === document.querySelector('#admin-main-content'), true);
+  assert.equal(document.querySelector('[aria-label="Skip navigation draft"]') === input, true);
+  assert.equal(input.value, 'Preserved');
+});

@@ -1,5 +1,7 @@
 'use client';
 
+import { AdminPageHeader } from '@/components/AdminPageHeader';
+
 import { Disclosure } from '@/components/ui/Disclosure';
 import { Progress } from '@/components/ui/Progress';
 import { useCallback } from 'react';
@@ -26,14 +28,13 @@ export default function AdminDashboard() {
     { label: '近30天访问量', value: stats?.total_requests, icon: ArrowUpRight, href: '/admin/analytics', note: '查看完整访问统计' },
   ];
 
-  return <div className="admin-dashboard">
-    <header className="admin-page-heading">
-      <div><p className="admin-eyebrow">你的创作空间</p><h1>概览</h1><p>继续写作，看看博客最近发生了什么。</p></div>
+  return <div className="admin-page admin-dashboard">
+    <AdminPageHeader title="概览" description="继续写作，看看博客最近发生了什么。" section="你的创作空间">
       <div className="admin-heading-actions">
         <Link href="/admin/media" className="admin-secondary-action"><Upload size={16} />管理附件</Link>
         <Link href="/admin/posts?compose=1" className="admin-primary-action"><PenLine size={16} />写文章</Link>
       </div>
-    </header>
+    </AdminPageHeader>
     <RequestFeedback error={summary.error} onRetry={summary.reload} pending={summary.loading} />
     <RequestFeedback error={overview.error} onRetry={overview.reload} pending={overview.loading} />
     <section className="admin-stat-strip" aria-label="内容与访问概况" aria-busy={summary.loading || overview.loading}>

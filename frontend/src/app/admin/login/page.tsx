@@ -91,7 +91,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-4"
+    <div className="admin-auth min-h-screen flex flex-col items-center justify-center px-4"
       style={{ background: 'var(--color-bg)' }}>
       {/* Background image with blur */}
       <div className="fixed inset-0 bg-cover bg-center opacity-20"
@@ -104,12 +104,13 @@ export default function LoginPage() {
             className="w-14 h-14 rounded-2xl object-cover mx-auto mb-3"
             style={{ boxShadow: '0 0 24px var(--primary-glow)' }} />
           <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>Tano</h1>
+          <p className="admin-auth-description">欢迎回来，继续你的创作。</p>
         </div>
 
         {/* Login card */}
-        <div className="glass-card rounded-2xl p-6">
+        <div className="admin-auth-card glass-card rounded-2xl p-6">
           {error && (
-            <div className="mb-4 px-4 py-3 rounded-xl text-sm glass-card"
+            <div role="alert" className="mb-4 px-4 py-3 rounded-xl text-sm glass-card"
               style={{ color: 'var(--color-error)' }}>
               {error}
             </div>
@@ -119,26 +120,26 @@ export default function LoginPage() {
             <>
               <form onSubmit={handleLogin}>
                 <div className="mb-4">
-                  <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>
+                  <label htmlFor="admin-login-field-1" className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>
                     用户名或邮箱地址
                   </label>
-                  <Input type="text" value={username} onChange={e => setUsername(e.target.value)}
+                  <Input id="admin-login-field-1" type="text" value={username} onChange={e => setUsername(e.target.value)}
                     autoComplete="username" autoFocus required
                     className="w-full px-3 py-2.5 rounded-xl text-sm outline-none glass-card"
                     style={{ ...inputStyle, color: 'var(--text-primary)' }} />
                 </div>
 
                 <div className="mb-4">
-                  <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>
+                  <label htmlFor="admin-login-field-2" className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>
                     密码
                   </label>
                   <div className="relative">
-                    <Input type={showPassword ? 'text' : 'password'} value={password}
+                    <Input id="admin-login-field-2" type={showPassword ? 'text' : 'password'} value={password}
                       onChange={e => setPassword(e.target.value)}
                       autoComplete="current-password" required
                       className="w-full px-3 py-2.5 pr-10 rounded-xl text-sm outline-none glass-card"
                       style={{ ...inputStyle, color: 'var(--text-primary)' }} />
-                    <button type="button" onClick={() => setShowPassword(!showPassword)}
+                    <button type="button" aria-label={showPassword ? '隐藏密码' : '显示密码'} aria-pressed={showPassword} onClick={() => setShowPassword(!showPassword)}
                       className="absolute right-3 top-1/2 -translate-y-1/2 transition-colors"
                       style={{ color: 'var(--text-info)' }}>
                       {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}

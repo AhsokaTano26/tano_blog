@@ -1,5 +1,7 @@
 'use client';
 
+import { AdminPageHeader } from '@/components/AdminPageHeader';
+
 import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
 import { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react';
@@ -205,13 +207,8 @@ export default function AdminMusicPage() {
   if (!settings.data) return <RequestFeedback error={settings.error} onRetry={settings.reload} pending={settings.loading} />;
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-5">
-        <h1 className="text-xl font-bold flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
-          <Music className="w-5 h-5" style={{ color: 'var(--primary)' }} />
-          音乐馆
-        </h1>
-      </div>
+    <div className="admin-page">
+      <AdminPageHeader title="音乐馆" description="配置音乐页面，编排歌单与曲目信息。" />
 
       {message && (
         <div role={message.includes('失败') ? 'alert' : 'status'} className="mb-4 px-4 py-2.5 rounded-lg text-sm glass-card"
@@ -221,8 +218,8 @@ export default function AdminMusicPage() {
       )}
 
       {/* Tab bar */}
-      <div className="flex gap-1 mb-6 p-0.5 rounded-xl w-fit" style={{ background: 'var(--surface-bg)' }}>
-        <button onClick={() => setActiveTab('settings')}
+      <div className="admin-tabs admin-tabs-segmented mb-6 p-1 rounded-xl w-fit" role="group" aria-label="音乐馆分区" style={{ background: 'var(--surface-bg)' }}>
+        <button aria-pressed={activeTab === 'settings'} onClick={() => setActiveTab('settings')}
           className="px-5 py-2 rounded-lg text-sm font-medium transition-all"
           style={{
             background: activeTab === 'settings' ? 'var(--card-bg)' : 'transparent',
@@ -231,7 +228,7 @@ export default function AdminMusicPage() {
           }}>
           页面设置
         </button>
-        <button onClick={() => setActiveTab('playlists')}
+        <button aria-pressed={activeTab === 'playlists'} onClick={() => setActiveTab('playlists')}
           className="px-5 py-2 rounded-lg text-sm font-medium transition-all"
           style={{
             background: activeTab === 'playlists' ? 'var(--card-bg)' : 'transparent',
@@ -246,8 +243,8 @@ export default function AdminMusicPage() {
         <div className="glass-card rounded-xl p-6 space-y-6 max-w-3xl">
           {/* Page title */}
           <div>
-            <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>页面标题</label>
-            <Input type="text" value={config.title}
+            <label htmlFor="admin-music-page-field-1" className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>页面标题</label>
+            <Input id="admin-music-page-field-1" type="text" value={config.title}
               onChange={e => updateField('title', e.target.value)}
               placeholder="音乐馆"
               className={inputClass} style={inputStyle} />
@@ -255,8 +252,8 @@ export default function AdminMusicPage() {
 
           {/* Page subtitle */}
           <div>
-            <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>页面副标题</label>
-            <Input type="text" value={config.subtitle}
+            <label htmlFor="admin-music-page-field-2" className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>页面副标题</label>
+            <Input id="admin-music-page-field-2" type="text" value={config.subtitle}
               onChange={e => updateField('subtitle', e.target.value)}
               placeholder="享受音乐的时光"
               className={inputClass} style={inputStyle} />
@@ -265,7 +262,7 @@ export default function AdminMusicPage() {
 
           {/* Page background */}
           <div>
-            <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>页面背景图</label>
+            <label htmlFor="admin-music-page-field-3" className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>页面背景图</label>
             <div className="flex items-center gap-2">
               {config.background && (
                 <div className="w-16 h-10 rounded-lg overflow-hidden flex-shrink-0"
@@ -275,7 +272,7 @@ export default function AdminMusicPage() {
                     onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                 </div>
               )}
-              <Input type="text" value={config.background}
+              <Input id="admin-music-page-field-3" type="text" value={config.background}
                 onChange={e => updateField('background', e.target.value)}
                 placeholder="背景图片 URL（选填）"
                 className={`${inputClass} flex-1`} style={inputStyle} />
@@ -290,9 +287,9 @@ export default function AdminMusicPage() {
 
           {/* Page password */}
           <div>
-            <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>访问密码</label>
+            <label htmlFor="admin-music-page-field-4" className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>访问密码</label>
             <div className="flex items-center gap-2">
-              <Input type="text" value={musicPassword}
+              <Input id="admin-music-page-field-4" type="text" value={musicPassword}
                 onChange={e => setMusicPassword(e.target.value)}
                 placeholder={passwordSet ? '当前已设置密码，输入新密码可修改' : '设置密码后进入音乐馆需输入（选填）'}
                 className={`${inputClass} flex-1`} style={inputStyle} />
@@ -550,8 +547,8 @@ export default function AdminMusicPage() {
             {/* Body */}
             <div className="overflow-y-auto p-6 space-y-4 flex-1">
               <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>歌曲标题</label>
-                <Input type="text" value={track.title || ''}
+                <label htmlFor="admin-music-page-field-5" className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>歌曲标题</label>
+                <Input id="admin-music-page-field-5" type="text" value={track.title || ''}
                   onChange={e => update('title', e.target.value)}
                   placeholder="输入歌曲标题"
                   className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
@@ -559,8 +556,8 @@ export default function AdminMusicPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>艺术家</label>
-                <Input type="text" value={track.artist || ''}
+                <label htmlFor="admin-music-page-field-6" className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>艺术家</label>
+                <Input id="admin-music-page-field-6" type="text" value={track.artist || ''}
                   onChange={e => update('artist', e.target.value)}
                   placeholder="选填"
                   className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
@@ -568,13 +565,13 @@ export default function AdminMusicPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>封面图</label>
+                <label htmlFor="admin-music-page-field-7" className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>封面图</label>
                 <div className="flex items-center gap-2">
                   {track.cover && (
                     <img src={track.cover} alt="cover" className="w-10 h-10 rounded-lg object-cover flex-shrink-0"
                       onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                   )}
-                  <Input type="text" value={track.cover || ''}
+                  <Input id="admin-music-page-field-7" type="text" value={track.cover || ''}
                     onChange={e => update('cover', e.target.value)}
                     placeholder="封面图 URL"
                     className="flex-1 px-3 py-2.5 rounded-lg text-sm outline-none"
@@ -588,9 +585,9 @@ export default function AdminMusicPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>音频文件</label>
+                <label htmlFor="admin-music-page-field-8" className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>音频文件</label>
                 <div className="flex items-center gap-2">
-                  <Input type="text" value={track.url}
+                  <Input id="admin-music-page-field-8" type="text" value={track.url}
                     onChange={e => update('url', e.target.value)}
                     placeholder="音频 URL"
                     className="flex-1 px-3 py-2.5 rounded-lg text-sm outline-none"
@@ -604,7 +601,7 @@ export default function AdminMusicPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>单独背景图（选填）</label>
+                <label htmlFor="admin-music-page-field-9" className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>单独背景图（选填）</label>
                 <div className="flex items-center gap-2">
                   {track.background && (
                     <div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0"
@@ -613,7 +610,7 @@ export default function AdminMusicPage() {
                         onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                     </div>
                   )}
-                  <Input type="text" value={track.background || ''}
+                  <Input id="admin-music-page-field-9" type="text" value={track.background || ''}
                     onChange={e => update('background', e.target.value)}
                     placeholder="播放此曲时显示此背景（选填）"
                     className="flex-1 px-3 py-2.5 rounded-lg text-sm outline-none"

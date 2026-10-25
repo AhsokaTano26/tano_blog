@@ -1,4 +1,6 @@
 'use client';
+
+import { AdminPageHeader } from '@/components/AdminPageHeader';
 import { localDateTimeTimestamp } from '@/lib/date-value';
 
 import { Tooltip } from '@/components/ui/Tooltip';
@@ -132,11 +134,10 @@ export default function AdminBlocked() {
   const totalPages = Math.ceil(total / pageSize);
 
   return (
-    <div>
+    <div className="admin-page">
       <RequestFeedback error={loadError} onRetry={load} pending={loading} />
       {!showForm && <RequestFeedback error={mutation.error} />}
-      <div className="flex items-center justify-between mb-5">
-        <h1 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>封禁管理</h1>
+      <AdminPageHeader title="封禁管理" description="管理访问限制与自动封禁规则。" section="系统管理">
         {tab === 'ip' && (
           <button disabled={mutation.pending} onClick={openCreate}
             className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium text-white transition-colors cursor-pointer"
@@ -144,10 +145,10 @@ export default function AdminBlocked() {
             <Plus className="w-4 h-4" />新增封禁
           </button>
         )}
-      </div>
+      </AdminPageHeader>
 
       {/* Tab Bar */}
-      <div className="flex mb-6" style={{ borderBottom: '1px solid var(--glass-border)' }}>
+      <div className="admin-tabs mb-6" role="group" aria-label="封禁分区" style={{ borderBottom: '1px solid var(--glass-border)' }}>
         {[
           { key: 'ip', label: 'IP 封禁', icon: Globe },
           { key: 'auto', label: '自动封禁', icon: Settings },
@@ -155,7 +156,7 @@ export default function AdminBlocked() {
           const Icon = t.icon;
           const active = tab === t.key;
           return (
-            <button key={t.key} onClick={() => setTab(t.key as 'ip' | 'auto')}
+            <button key={t.key} aria-pressed={active} onClick={() => setTab(t.key as 'ip' | 'auto')}
               className="flex items-center gap-2 px-5 py-3 text-sm font-medium transition-colors relative cursor-pointer"
               style={{ color: active ? 'var(--primary)' : 'var(--text-secondary)' }}>
               <Icon className="w-4 h-4" />
@@ -176,75 +177,77 @@ export default function AdminBlocked() {
             </div>
           ) : (
             <div className="glass-card rounded-xl overflow-hidden">
-              <table className="w-full">
-                <thead>
-                  <tr style={{ borderBottom: '1px solid var(--glass-border)' }}>
-                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-info)' }}>IP 地址</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider hidden sm:table-cell" style={{ color: 'var(--text-info)' }}>封禁范围</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider hidden md:table-cell" style={{ color: 'var(--text-info)' }}>原因</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider hidden lg:table-cell" style={{ color: 'var(--text-info)' }}>过期时间</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider hidden lg:table-cell" style={{ color: 'var(--text-info)' }}>类型</th>
-                    <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-info)' }}>操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map((item) => {
-                    const expired = item.expires_at && new Date(item.expires_at) < new Date();
-                    return (
-                      <tr key={item.id} style={{ borderBottom: '1px solid var(--glass-border)', opacity: expired ? 0.5 : 1 }}>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            <Globe className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--color-error)' }} />
-                            <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-                              {item.ip_address || '-'}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 text-sm hidden sm:table-cell" style={{ color: 'var(--text-secondary)' }}>
-                          <div className="flex flex-wrap gap-1">
-                            {item.scope && scopeDisplay(item.scope).split('、').map((s: string, i: number) => (
-                              <span key={i} className="text-xs px-1.5 py-0.5 rounded"
-                                style={{ background: 'var(--primary-sub)', color: 'var(--primary)' }}>
-                                {s}
+              <div className="admin-table-scroll" role="region" aria-label="封禁管理列表" tabIndex={0}>
+                <table className="admin-data-table w-full">
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid var(--glass-border)' }}>
+                      <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-info)' }}>IP 地址</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider hidden sm:table-cell" style={{ color: 'var(--text-info)' }}>封禁范围</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider hidden md:table-cell" style={{ color: 'var(--text-info)' }}>原因</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider hidden lg:table-cell" style={{ color: 'var(--text-info)' }}>过期时间</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider hidden lg:table-cell" style={{ color: 'var(--text-info)' }}>类型</th>
+                      <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-info)' }}>操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.map((item) => {
+                      const expired = item.expires_at && new Date(item.expires_at) < new Date();
+                      return (
+                        <tr key={item.id} style={{ borderBottom: '1px solid var(--glass-border)', opacity: expired ? 0.5 : 1 }}>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              <Globe className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--color-error)' }} />
+                              <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+                                {item.ip_address || '-'}
                               </span>
-                            ))}
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 text-sm hidden md:table-cell" style={{ color: 'var(--text-secondary)' }}>
-                          {item.reason || '-'}
-                        </td>
-                        <td className="px-4 py-3 text-xs hidden lg:table-cell" style={{ color: expired ? 'var(--color-error)' : 'var(--text-info)' }}>
-                          {item.expires_at ? new Date(item.expires_at).toLocaleString('zh-CN') : '永不过期'}
-                        </td>
-                        <td className="px-4 py-3 text-xs hidden lg:table-cell">
-                          {item.auto_ban && (
-                            <span className="px-1.5 py-0.5 rounded"
-                              style={{ background: 'var(--color-warning-sub, #fbbf24)', color: 'var(--color-warning, #d97706)' }}>
-                              自动
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          {!expired && (
-                            <Tooltip content="解封"><button disabled={mutation.pending} onClick={() => handleDelete(item.id)}
-                              className="btn-glass p-1.5 rounded-lg transition-colors cursor-pointer" data-tooltip="解封" aria-label="解封">
-                              <Trash2 className="w-4 h-4" style={{ color: 'var(--color-error)' }} />
-                            </button></Tooltip>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-sm hidden sm:table-cell" style={{ color: 'var(--text-secondary)' }}>
+                            <div className="flex flex-wrap gap-1">
+                              {item.scope && scopeDisplay(item.scope).split('、').map((s: string, i: number) => (
+                                <span key={i} className="text-xs px-1.5 py-0.5 rounded"
+                                  style={{ background: 'var(--primary-sub)', color: 'var(--primary)' }}>
+                                  {s}
+                                </span>
+                              ))}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-sm hidden md:table-cell" style={{ color: 'var(--text-secondary)' }}>
+                            {item.reason || '-'}
+                          </td>
+                          <td className="px-4 py-3 text-xs hidden lg:table-cell" style={{ color: expired ? 'var(--color-error)' : 'var(--text-info)' }}>
+                            {item.expires_at ? new Date(item.expires_at).toLocaleString('zh-CN') : '永不过期'}
+                          </td>
+                          <td className="px-4 py-3 text-xs hidden lg:table-cell">
+                            {item.auto_ban && (
+                              <span className="px-1.5 py-0.5 rounded"
+                                style={{ background: 'var(--color-warning-sub, #fbbf24)', color: 'var(--color-warning, #d97706)' }}>
+                                自动
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            {!expired && (
+                              <Tooltip content="解封"><button disabled={mutation.pending} onClick={() => handleDelete(item.id)}
+                                className="btn-glass p-1.5 rounded-lg transition-colors cursor-pointer" data-tooltip="解封" aria-label="解封">
+                                <Trash2 className="w-4 h-4" style={{ color: 'var(--color-error)' }} />
+                              </button></Tooltip>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
           {total > 0 && (
-            <div className="flex items-center justify-between text-sm mt-4">
+            <div className="admin-pagination flex items-center justify-between text-sm mt-4">
               <span style={{ color: 'var(--text-secondary)' }}>共 {total} 条</span>
               <div className="flex items-center gap-3">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs" style={{ color: 'var(--text-info)' }}>每页</span>
+                  <span className="text-xs whitespace-nowrap shrink-0" style={{ color: 'var(--text-info)' }}>每页</span>
                   <Select aria-label="每页条数" value={String(pageSize)} onChange={v => { setPageSize(Number(v)); setPage(1); }}
                     options={[10, 20, 30, 50, 100].map(v => ({ value: String(v), label: String(v) }))} />
                 </div>
@@ -293,22 +296,22 @@ export default function AdminBlocked() {
               </label>
             </div>
             <div>
-              <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>失败阈值（次）</label>
-              <Input type="number" disabled={mutation.pending || configRequest.loading || !!configRequest.error} aria-label="失败阈值（次）" value={autoConfig.ip_ban_auto_threshold || '10'}
+              <label htmlFor="admin-blocked-field-1" className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>失败阈值（次）</label>
+              <Input id="admin-blocked-field-1" type="number" disabled={mutation.pending || configRequest.loading || !!configRequest.error} aria-label="失败阈值（次）" value={autoConfig.ip_ban_auto_threshold || '10'}
                 onChange={e => setAutoConfig(c => ({ ...c, ip_ban_auto_threshold: e.target.value }))}
                 className="w-full px-3 py-2 rounded-lg text-sm outline-none"
                 style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
             </div>
             <div>
-              <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>计数窗口（秒）</label>
-              <Input type="number" disabled={mutation.pending || configRequest.loading || !!configRequest.error} aria-label="计数窗口（秒）" value={autoConfig.ip_ban_auto_window || '300'}
+              <label htmlFor="admin-blocked-field-2" className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>计数窗口（秒）</label>
+              <Input id="admin-blocked-field-2" type="number" disabled={mutation.pending || configRequest.loading || !!configRequest.error} aria-label="计数窗口（秒）" value={autoConfig.ip_ban_auto_window || '300'}
                 onChange={e => setAutoConfig(c => ({ ...c, ip_ban_auto_window: e.target.value }))}
                 className="w-full px-3 py-2 rounded-lg text-sm outline-none"
                 style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
             </div>
             <div>
-              <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>封禁时长（秒）</label>
-              <Input type="number" disabled={mutation.pending || configRequest.loading || !!configRequest.error} aria-label="封禁时长（秒）" value={autoConfig.ip_ban_auto_duration || '1800'}
+              <label htmlFor="admin-blocked-field-3" className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>封禁时长（秒）</label>
+              <Input id="admin-blocked-field-3" type="number" disabled={mutation.pending || configRequest.loading || !!configRequest.error} aria-label="封禁时长（秒）" value={autoConfig.ip_ban_auto_duration || '1800'}
                 onChange={e => setAutoConfig(c => ({ ...c, ip_ban_auto_duration: e.target.value }))}
                 className="w-full px-3 py-2 rounded-lg text-sm outline-none"
                 style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
@@ -352,8 +355,8 @@ export default function AdminBlocked() {
           )}
           <fieldset disabled={mutation.pending} className="space-y-4">
             <div>
-              <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>IP 地址</label>
-              <Input type="text" aria-label="IP 地址" value={form.ip_address} onChange={e => setForm(f => ({ ...f, ip_address: e.target.value }))}
+              <label htmlFor="admin-blocked-field-4" className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>IP 地址</label>
+              <Input id="admin-blocked-field-4" type="text" aria-label="IP 地址" value={form.ip_address} onChange={e => setForm(f => ({ ...f, ip_address: e.target.value }))}
                 placeholder="输入IP地址"
                 className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
                 style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
@@ -373,8 +376,8 @@ export default function AdminBlocked() {
               </div>
             </div>
             <div>
-              <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>原因</label>
-              <Input type="text" aria-label="封禁原因" value={form.reason} onChange={e => setForm(f => ({ ...f, reason: e.target.value }))}
+              <label htmlFor="admin-blocked-field-5" className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>原因</label>
+              <Input id="admin-blocked-field-5" type="text" aria-label="封禁原因" value={form.reason} onChange={e => setForm(f => ({ ...f, reason: e.target.value }))}
                 placeholder="封禁原因（选填）"
                 className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
                 style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />

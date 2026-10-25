@@ -1,4 +1,6 @@
 'use client';
+
+import { AdminPageHeader } from '@/components/AdminPageHeader';
 import { validDateValue } from '@/lib/date-value';
 
 import { Tooltip } from '@/components/ui/Tooltip';
@@ -193,10 +195,9 @@ export default function AdminAccessLogs() {
   const inputStyle = { border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' } as const;
 
   return (
-    <div>
+    <div className="admin-page">
       {/* Header */}
-      <div className="flex items-center justify-between mb-5">
-        <h1 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>审计日志</h1>
+      <AdminPageHeader title="审计日志" description="追踪请求与管理操作，按时间和条件定位记录。" section="系统管理">
         <div className="flex items-center gap-2">
           <button onClick={handleExport}
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium btn-glass transition-colors"
@@ -211,7 +212,7 @@ export default function AdminAccessLogs() {
             清空
           </button>
         </div>
-      </div>
+      </AdminPageHeader>
 
       {/* Summary and trend share the applied date range; other filters only affect the list. */}
       <p className="text-xs mb-3 leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
@@ -230,25 +231,25 @@ export default function AdminAccessLogs() {
         <div className="p-4" style={{ borderBottom: '1px solid var(--glass-border)' }}>
           <div className="flex flex-wrap gap-3 items-end">
             <div className="flex-1 min-w-[180px]">
-              <label className="block text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>路径</label>
+              <label htmlFor="admin-access-logs-field-1" className="block text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>路径</label>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: 'var(--text-info)' }} />
-                <Input type="text" placeholder="搜索路径..." value={pathFilter}
+                <Input id="admin-access-logs-field-1" type="text" placeholder="搜索路径..." value={pathFilter}
                   onChange={e => setPathFilter(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && handleFilter()}
                   className={`${inputClass} pl-9`} style={inputStyle} />
               </div>
             </div>
             <div className="flex-1 min-w-[140px]">
-              <label className="block text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>IP地址</label>
-              <Input type="text" placeholder="搜索IP..." value={ipFilter}
+              <label htmlFor="admin-access-logs-field-2" className="block text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>IP地址</label>
+              <Input id="admin-access-logs-field-2" type="text" placeholder="搜索IP..." value={ipFilter}
                 onChange={e => setIpFilter(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleFilter()}
                 className={inputClass} style={inputStyle} />
             </div>
             <div className="w-28">
-              <label className="block text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>方法</label>
-              <Select aria-label="请求方法" value={methodFilter} onChange={setMethodFilter}
+              <label htmlFor="admin-access-logs-field-3" className="block text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>方法</label>
+              <Select id="admin-access-logs-field-3" aria-label="请求方法" value={methodFilter} onChange={setMethodFilter}
                 options={[
                   { value: '', label: '全部' },
                   { value: 'GET', label: 'GET' },
@@ -259,8 +260,8 @@ export default function AdminAccessLogs() {
                 ]} />
             </div>
             <div className="w-28">
-              <label className="block text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>状态码</label>
-              <Select aria-label="状态筛选" value={statusFilter} onChange={setStatusFilter}
+              <label htmlFor="admin-access-logs-field-4" className="block text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>状态码</label>
+              <Select id="admin-access-logs-field-4" aria-label="状态筛选" value={statusFilter} onChange={setStatusFilter}
                 options={[
                   { value: '', label: '全部' },
                   { value: '200', label: '2xx 成功' },
@@ -309,67 +310,69 @@ export default function AdminAccessLogs() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr style={{ borderBottom: '1px solid var(--glass-border)' }}>
-                  {['时间', 'IP', '方法', '路径', '状态', '耗时', '浏览器'].map(h => (
-                    <th key={h} className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap" style={{ color: 'var(--text-secondary)' }}>{h}</th>
-                  ))}
-                  <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider w-20" style={{ color: 'var(--text-secondary)' }}>操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((log) => (
-                  <tr key={log.id} className="transition-colors cursor-pointer hover:opacity-80"
-                    style={{ borderBottom: '1px solid var(--glass-border)' }}
-                    onClick={() => setDetailLog(log)}>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm" style={{ color: 'var(--text-secondary)' }}>
-                      {new Date(log.created_at).toLocaleString('zh-CN')}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>{log.ip_address}</td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <span className="px-1.5 py-0.5 rounded text-xs font-mono font-medium"
-                        style={{
-                          background: log.method === 'GET' ? 'hsla(210, 60%, 50%, 0.1)' :
-                            log.method === 'POST' ? 'hsla(142, 60%, 50%, 0.1)' :
-                            log.method === 'PUT' || log.method === 'PATCH' ? 'hsla(30, 60%, 50%, 0.1)' :
-                            log.method === 'DELETE' ? 'hsla(0, 60%, 50%, 0.1)' : 'var(--surface-bg)',
-                          color: log.method === 'GET' ? 'hsl(210, 60%, 55%)' :
-                            log.method === 'POST' ? 'hsl(142, 60%, 50%)' :
-                            log.method === 'PUT' || log.method === 'PATCH' ? 'hsl(30, 60%, 55%)' :
-                            log.method === 'DELETE' ? 'hsl(0, 60%, 55%)' : 'var(--text-secondary)',
-                        }}>{log.method}</span>
-                    </td>
-                    <Tooltip content={log.path + (log.query_params ? '?' + log.query_params : '')}><td className="px-4 py-3 max-w-[250px] truncate font-mono text-xs" style={{ color: 'var(--text-secondary)' }} data-tooltip={log.path + (log.query_params ? '?' + log.query_params : '')}>
-                      {log.path}{log.query_params ? <span style={{ color: 'var(--text-info)' }}>?...</span> : ''}
-                    </td></Tooltip>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <span className="font-mono text-xs font-medium"
-                        style={{
-                          color: log.status_code < 300 ? 'hsl(142, 60%, 50%)' :
-                            log.status_code < 400 ? 'hsl(210, 60%, 55%)' :
-                            log.status_code < 500 ? 'hsl(30, 60%, 55%)' : 'hsl(0, 60%, 55%)',
-                        }}>{log.status_code}</span>
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm" style={{ color: 'var(--text-secondary)' }}>{log.response_time}ms</td>
-                    <Tooltip content={log.browser}><td className="px-4 py-3 whitespace-nowrap text-sm max-w-[120px] truncate" style={{ color: 'var(--text-secondary)' }} data-tooltip={log.browser}>{log.browser || '-'}</td></Tooltip>
-                    <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
-                      <Tooltip content="删除"><button onClick={() => handleDelete(log.id)}
-                        className="btn-glass p-1.5 rounded transition-colors" data-tooltip="删除" aria-label="删除">
-                        <Trash2 className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
-                      </button></Tooltip>
-                    </td>
+            <div className="admin-table-scroll" role="region" aria-label="审计日志列表" tabIndex={0}>
+              <table className="admin-data-table w-full">
+                <thead>
+                  <tr style={{ borderBottom: '1px solid var(--glass-border)' }}>
+                    {['时间', 'IP', '方法', '路径', '状态', '耗时', '浏览器'].map(h => (
+                      <th key={h} className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap" style={{ color: 'var(--text-secondary)' }}>{h}</th>
+                    ))}
+                    <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider w-20" style={{ color: 'var(--text-secondary)' }}>操作</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {items.map((log) => (
+                    <tr key={log.id} className="transition-colors cursor-pointer hover:opacity-80"
+                      style={{ borderBottom: '1px solid var(--glass-border)' }}
+                      onClick={() => setDetailLog(log)}>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm" style={{ color: 'var(--text-secondary)' }}>
+                        {new Date(log.created_at).toLocaleString('zh-CN')}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>{log.ip_address}</td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <span className="px-1.5 py-0.5 rounded text-xs font-mono font-medium"
+                          style={{
+                            background: log.method === 'GET' ? 'hsla(210, 60%, 50%, 0.1)' :
+                              log.method === 'POST' ? 'hsla(142, 60%, 50%, 0.1)' :
+                              log.method === 'PUT' || log.method === 'PATCH' ? 'hsla(30, 60%, 50%, 0.1)' :
+                              log.method === 'DELETE' ? 'hsla(0, 60%, 50%, 0.1)' : 'var(--surface-bg)',
+                            color: log.method === 'GET' ? 'hsl(210, 60%, 55%)' :
+                              log.method === 'POST' ? 'hsl(142, 60%, 50%)' :
+                              log.method === 'PUT' || log.method === 'PATCH' ? 'hsl(30, 60%, 55%)' :
+                              log.method === 'DELETE' ? 'hsl(0, 60%, 55%)' : 'var(--text-secondary)',
+                          }}>{log.method}</span>
+                      </td>
+                      <Tooltip content={log.path + (log.query_params ? '?' + log.query_params : '')}><td className="px-4 py-3 max-w-[250px] truncate font-mono text-xs" style={{ color: 'var(--text-secondary)' }} data-tooltip={log.path + (log.query_params ? '?' + log.query_params : '')}>
+                        {log.path}{log.query_params ? <span style={{ color: 'var(--text-info)' }}>?...</span> : ''}
+                      </td></Tooltip>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <span className="font-mono text-xs font-medium"
+                          style={{
+                            color: log.status_code < 300 ? 'hsl(142, 60%, 50%)' :
+                              log.status_code < 400 ? 'hsl(210, 60%, 55%)' :
+                              log.status_code < 500 ? 'hsl(30, 60%, 55%)' : 'hsl(0, 60%, 55%)',
+                          }}>{log.status_code}</span>
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm" style={{ color: 'var(--text-secondary)' }}>{log.response_time}ms</td>
+                      <Tooltip content={log.browser}><td className="px-4 py-3 whitespace-nowrap text-sm max-w-[120px] truncate" style={{ color: 'var(--text-secondary)' }} data-tooltip={log.browser}>{log.browser || '-'}</td></Tooltip>
+                      <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
+                        <Tooltip content="删除"><button onClick={() => handleDelete(log.id)}
+                          className="btn-glass p-1.5 rounded transition-colors" data-tooltip="删除" aria-label="删除">
+                          <Trash2 className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
+                        </button></Tooltip>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </div>
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-between text-sm">
+        <div className="admin-pagination flex items-center justify-between text-sm">
           <span style={{ color: 'var(--text-secondary)' }}>共 {total} 条，第 {page}/{totalPages} 页</span>
           <div className="flex gap-1">
             <button onClick={() => setPage(Math.max(1, page - 1))} disabled={page === 1}

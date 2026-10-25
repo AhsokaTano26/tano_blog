@@ -1,5 +1,7 @@
 'use client';
 
+import { AdminPageHeader } from '@/components/AdminPageHeader';
+
 import { Tooltip } from '@/components/ui/Tooltip';
 import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
@@ -82,17 +84,16 @@ export default function AdminNavLinks() {
   }
 
   return (
-    <div>
+    <div className="admin-page">
       <RequestFeedback error={loadError} onRetry={load} pending={loading || mutation.pending} />
       {!showModal && <RequestFeedback error={mutation.error} />}
-      <div className="flex items-center justify-between mb-5">
-        <h1 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>导航管理</h1>
+      <AdminPageHeader title="导航管理" description="组织前台导航入口，调整链接与显示顺序。" section="站点管理">
         <button disabled={mutation.pending} onClick={openCreate}
           className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors cursor-pointer"
           style={{ background: 'var(--primary)' }}>
           <Plus className="w-4 h-4" />添加导航
         </button>
-      </div>
+      </AdminPageHeader>
 
       <div className="glass-card rounded-xl overflow-hidden">
         {loading ? (
@@ -102,57 +103,59 @@ export default function AdminNavLinks() {
             <p>暂无导航项，点击上方按钮添加</p>
           </div>
         ) : (
-          <table className="w-full">
-            <thead>
-              <tr style={{ borderBottom: '1px solid var(--glass-border)' }}>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider w-8" style={{ color: 'var(--text-secondary)' }}></th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>标题</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>链接</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider w-20" style={{ color: 'var(--text-secondary)' }}>排序</th>
-                <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider w-24" style={{ color: 'var(--text-secondary)' }}>操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item, index) => (
-                <tr key={item.id}
-                  draggable={!mutation.pending && !loading}
-                  onDragStart={() => { if (!mutation.pending) dragItem.current = index; }}
-                  onDragEnter={() => { dragOverItem.current = index; }}
-                  onDragEnd={handleDragEnd}
-                  onDragOver={(e) => e.preventDefault()}
-                  className="transition-colors cursor-default"
-                  style={{ borderBottom: '1px solid var(--glass-border)' }}>
-                  <td className="px-4 py-3">
-                    <GripVertical className="w-4 h-4 cursor-grab" style={{ color: 'var(--text-info)' }} />
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{item.title}</span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <a href={item.url} target="_blank" rel="noopener noreferrer"
-                      className="text-sm flex items-center gap-1 hover:underline"
-                      style={{ color: 'var(--primary)' }}>
-                      {item.url}
-                      <ExternalLink className="w-3 h-3" />
-                    </a>
-                  </td>
-                  <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-info)' }}>{item.sort_order}</td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      <Tooltip content="编辑"><button disabled={mutation.pending} onClick={() => openEdit(item)}
-                        className="btn-glass p-1.5 rounded transition-colors cursor-pointer" data-tooltip="编辑" aria-label="编辑">
-                        <Pencil className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
-                      </button></Tooltip>
-                      <Tooltip content="删除"><button disabled={mutation.pending} onClick={() => handleDelete(item.id)}
-                        className="btn-glass p-1.5 rounded transition-colors cursor-pointer" data-tooltip="删除" aria-label="删除">
-                        <Trash2 className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
-                      </button></Tooltip>
-                    </div>
-                  </td>
+          <div className="admin-table-scroll" role="region" aria-label="导航管理列表" tabIndex={0}>
+            <table className="admin-data-table w-full">
+              <thead>
+                <tr style={{ borderBottom: '1px solid var(--glass-border)' }}>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider w-8" style={{ color: 'var(--text-secondary)' }}></th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>标题</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>链接</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider w-20" style={{ color: 'var(--text-secondary)' }}>排序</th>
+                  <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider w-24" style={{ color: 'var(--text-secondary)' }}>操作</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {items.map((item, index) => (
+                  <tr key={item.id}
+                    draggable={!mutation.pending && !loading}
+                    onDragStart={() => { if (!mutation.pending) dragItem.current = index; }}
+                    onDragEnter={() => { dragOverItem.current = index; }}
+                    onDragEnd={handleDragEnd}
+                    onDragOver={(e) => e.preventDefault()}
+                    className="transition-colors cursor-default"
+                    style={{ borderBottom: '1px solid var(--glass-border)' }}>
+                    <td className="px-4 py-3">
+                      <GripVertical className="w-4 h-4 cursor-grab" style={{ color: 'var(--text-info)' }} />
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{item.title}</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <a href={item.url} target="_blank" rel="noopener noreferrer"
+                        className="text-sm flex items-center gap-1 hover:underline"
+                        style={{ color: 'var(--primary)' }}>
+                        {item.url}
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    </td>
+                    <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-info)' }}>{item.sort_order}</td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <Tooltip content="编辑"><button disabled={mutation.pending} onClick={() => openEdit(item)}
+                          className="btn-glass p-1.5 rounded transition-colors cursor-pointer" data-tooltip="编辑" aria-label="编辑">
+                          <Pencil className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
+                        </button></Tooltip>
+                        <Tooltip content="删除"><button disabled={mutation.pending} onClick={() => handleDelete(item.id)}
+                          className="btn-glass p-1.5 rounded transition-colors cursor-pointer" data-tooltip="删除" aria-label="删除">
+                          <Trash2 className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
+                        </button></Tooltip>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 
@@ -166,22 +169,22 @@ export default function AdminNavLinks() {
           <RequestFeedback error={mutation.error} />
           <fieldset disabled={mutation.pending} className="space-y-3">
             <div>
-              <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>标题 *</label>
-              <Input type="text" aria-label="标题" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
+              <label htmlFor="admin-nav-links-field-1" className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>标题 *</label>
+              <Input id="admin-nav-links-field-1" type="text" aria-label="标题" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
                 placeholder="首页" maxLength={100}
                 className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
                 style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
             </div>
             <div>
-              <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>链接 *</label>
-              <Input type="text" aria-label="链接" value={form.url} onChange={e => setForm(f => ({ ...f, url: e.target.value }))}
+              <label htmlFor="admin-nav-links-field-2" className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>链接 *</label>
+              <Input id="admin-nav-links-field-2" type="text" aria-label="链接" value={form.url} onChange={e => setForm(f => ({ ...f, url: e.target.value }))}
                 placeholder="/ 或 https://..." maxLength={500}
                 className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
                 style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
             </div>
             <div>
-              <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>排序</label>
-              <Input type="number" aria-label="排序" value={form.sort_order} onChange={e => setForm(f => ({ ...f, sort_order: e.target.value }))}
+              <label htmlFor="admin-nav-links-field-3" className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>排序</label>
+              <Input id="admin-nav-links-field-3" type="number" aria-label="排序" value={form.sort_order} onChange={e => setForm(f => ({ ...f, sort_order: e.target.value }))}
                 className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
                 style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
             </div>
