@@ -9,6 +9,9 @@ import { Turnstile } from '@/components/Turnstile';
 import { Calendar, Eye, Copy, Check, BookOpen, Shield, User, Edit3, Bookmark, ArrowLeft } from 'lucide-react';
 import { ContentHeadInjection } from '@/components/HtmlInjection';
 import { ReadingProgress } from '@/components/ReadingProgress';
+import { ArticleToc } from '@/components/ArticleToc';
+import { ArticleSignature } from '@/components/ArticleSignature';
+import { getPostAuthorName } from '@/lib/post-author';
 import { ImageLightbox } from '@/components/ImageLightbox';
 import { Loading } from '@/components/Loading';
 import { ReactionBar } from '@/components/ReactionBar';
@@ -21,6 +24,8 @@ import { LoadMore } from '@/components/LoadMore';
 import { usePagedItems } from '@/lib/use-paged-items';
 import { mergeById } from '@/lib/pagination';
 import type { PostResponse } from '@/lib/server-post';
+import editorial from '@/components/Editorial.module.css';
+import styles from './PostClient.module.css';
 
 type Reactions = Record<string, { counts: Record<string, number>; user: string[] }>;
 
@@ -31,12 +36,6 @@ function collectReactions(items: any[]): Reactions {
     Object.assign(reactions, collectReactions(comment.children || []));
   }
   return reactions;
-}
-
-interface TocItem {
-  id: string;
-  text: string;
-  level: number;
 }
 
 interface ShareButton {
@@ -103,14 +102,14 @@ function SharePanel({ url, title }: { url: string; title: string }) {
   };
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex flex-wrap items-center gap-2">
       <span className="text-sm" style={{ color: 'var(--text-info)' }}>分享到：</span>
       {shareButtons.map((btn) => (
         <button
           key={btn.name}
           onClick={() => handleShare(btn)}
           aria-label={`分享到${btn.name}`}
-          className="w-8 h-8 flex items-center justify-center rounded-xl btn-glass transition-all hover:scale-110"
+          className={`${editorial.action} w-11`}
           style={{ color: 'var(--text-secondary)' }}
           title={btn.name}
         >
@@ -173,17 +172,17 @@ function CommentItem({ comment, depth, onReply, reactions, onReaction, slug, sor
     }
   }
   return (
-    <div data-comment-id={comment.id} className={depth > 0 ? 'ml-6 pl-4' : ''} style={depth > 0 ? { borderLeft: '2px solid var(--glass-border)' } : undefined}>
-      <div className="glass-card rounded-2xl p-4">
-        <div className="flex items-center gap-2 mb-2">
+    <div data-comment-id={comment.id} className={depth > 0 ? 'ml-6 pl-4' : ''} style={depth > 0 ? { borderLeft: '1px solid var(--border-color)' } : undefined}>
+      <div className={styles.comment}>
+        <div className={styles.commentMeta}>
           <span className="font-medium text-sm" style={{ color: 'var(--text-primary)' }}>{comment.nickname}</span>
           <span className="text-xs" style={{ color: 'var(--text-info)' }}>{new Date(comment.created_at).toLocaleString('zh-CN')}</span>
           <button onClick={() => onReply(comment)}
-            className="ml-auto text-xs px-2 py-0.5 rounded btn-glass"
+            className={`${editorial.action} ml-auto`}
             style={{ color: 'var(--primary)' }}>回复</button>
         </div>
         <p className="whitespace-pre-wrap text-sm" style={{ color: 'var(--text-secondary)' }}>{comment.content}</p>
-        <div className="mt-3"><ReactionBar compact label={`${comment.nickname} 的评论表情`}
+        <div className={`${styles.reactions} mt-3`}><ReactionBar compact label={`${comment.nickname} 的评论表情`}
           counts={reactions[comment.id]?.counts || {}} selected={reactions[comment.id]?.user || []}
           onToggle={emoji => onReaction(comment.id, emoji)} /></div>
       </div>
@@ -195,7 +194,7 @@ function CommentItem({ comment, depth, onReply, reactions, onReaction, slug, sor
       ))}
       {error && <p role="alert" className="mt-2 text-sm" style={{ color: 'var(--color-error)' }}>{error}</p>}
       {(page * 10 < total || error) && <button onClick={loadReplies} disabled={loading}
-        className="mt-2 px-3 py-1 rounded-lg text-sm btn-glass disabled:opacity-50" style={{ color: 'var(--primary)' }}>
+        className={`${editorial.action} mt-2 disabled:opacity-50`} style={{ color: 'var(--primary)' }}>
         {loading ? '加载中...' : error ? '重试' : '加载更多回复'}
       </button>}
     </div>
@@ -214,7 +213,6 @@ export default function PostClient({ slug, initialData, initialError = '', initi
   const [loadError, setLoadError] = useState(initialError);
   const [shareUrl, setShareUrl] = useState(`/posts/${encodeURIComponent(slug)}`);
   useEffect(() => { setShareUrl(window.location.href); }, [slug]);
-  const [activeId, setActiveId] = useState<string>('');
   const [commentForm, setCommentForm] = useState({ nickname: '', email: '', website: '', content: '', parent_id: '', hp_field: '' });
   const [commentError, setCommentError] = useState('');
   const [commentSuccess, setCommentSuccess] = useState('');
@@ -222,7 +220,6 @@ export default function PostClient({ slug, initialData, initialError = '', initi
   const [lightboxImages, setLightboxImages] = useState<string[]>([]);
   const [lightboxIndex, setLightboxIndex] = useState(0);
   const [relatedPosts, setRelatedPosts] = useState<any[]>([]);
-  const [tocItems, setTocItems] = useState<TocItem[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [reactions, setReactions] = useState<Record<string, {counts: Record<string, number>, user: string[]}>>({});
   const [showPreview, setShowPreview] = useState(false);
@@ -368,21 +365,8 @@ export default function PostClient({ slug, initialData, initialError = '', initi
     return result.active;
   }
 
-  // Extract TOC from rendered DOM (rehype-slug adds IDs to headings)
-  useEffect(() => {
-    if (!contentRef.current) return;
-    const headings = contentRef.current.querySelectorAll('h1, h2, h3');
-    const items: TocItem[] = Array.from(headings)
-      .filter((h) => !h.closest('[data-footnotes]'))
-      .map((h) => ({
-        id: h.id,
-        text: h.textContent || '',
-        level: parseInt(h.tagName.charAt(1)),
-      }));
-    setTocItems(items);
-  }, [post?.content]);
-
   const articleContent: string = post?.content || '';
+  const authorName = getPostAuthorName(post);
   const { wordCount, readTime } = useMemo(() => {
     if (!articleContent) return { wordCount: 0, readTime: 0 };
     const text = articleContent.replace(/[#*`>\[\]()!\-]/g, '');
@@ -391,27 +375,6 @@ export default function PostClient({ slug, initialData, initialError = '', initi
     const total = cjk + words;
     return { wordCount: total, readTime: Math.max(1, Math.ceil(total / 300)) };
   }, [articleContent]);
-
-  // IntersectionObserver for TOC active state
-  useEffect(() => {
-    if (!tocItems.length || !contentRef.current) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) {
-            setActiveId(entry.target.id);
-          }
-        }
-      },
-      { rootMargin: '-80px 0px -60% 0px' }
-    );
-
-    const headings = contentRef.current.querySelectorAll('h1, h2, h3');
-    headings.forEach((h) => observer.observe(h));
-
-    return () => observer.disconnect();
-  }, [tocItems]);
 
   // Lightbox: collect images and attach click handlers
   useEffect(() => {
@@ -457,7 +420,7 @@ export default function PostClient({ slug, initialData, initialError = '', initi
   if (loadError) {
     return <div className="max-w-3xl mx-auto px-4 py-20 text-center">
       <p role="alert" style={{ color: 'var(--color-error)' }}>{loadError}</p>
-      <button onClick={retryArticle} className="mt-4 px-4 py-2 rounded-xl btn-glass" style={{ color: 'var(--primary)' }}>重试</button>
+      <button onClick={retryArticle} className={`${editorial.action} mt-4`} style={{ color: 'var(--primary)' }}>重试</button>
     </div>;
   }
 
@@ -473,8 +436,8 @@ export default function PostClient({ slug, initialData, initialError = '', initi
   // Password protection gate
   if ((post as any).password_protected) {
     return (
-      <div className="max-w-md mx-auto px-4 py-20">
-        <div className="glass-card rounded-2xl p-8 text-center">
+      <div className={`${editorial.page} max-w-md mx-auto px-4 py-28`}>
+        <div className={`${editorial.section} text-center`}>
           <Shield className="w-12 h-12 mx-auto mb-4" style={{ color: 'var(--primary)' }} />
           <h1 className="text-xl font-bold mb-2" style={{ color: 'var(--text-primary)' }}>{post.title}</h1>
           {(post as any).password_hint && (
@@ -486,16 +449,15 @@ export default function PostClient({ slug, initialData, initialError = '', initi
               value={passwordInput}
               onChange={e => setPasswordInput(e.target.value)}
               placeholder="请输入文章密码"
-              className="w-full px-4 py-2.5 rounded-xl text-sm outline-none"
-              style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }}
+              className={`${editorial.field} w-full`}
+              aria-label="文章密码"
               autoFocus
             />
             {passwordError && (
               <p className="text-sm" style={{ color: 'var(--color-error)' }}>{passwordError}</p>
             )}
             <button type="submit" disabled={passwordVerifying}
-              className="w-full px-4 py-2.5 rounded-xl text-sm font-medium text-white transition-all disabled:opacity-50"
-              style={{ background: 'var(--primary)' }}>
+              className={styles.submit}>
               {passwordVerifying ? '验证中...' : '验证密码'}
             </button>
           </form>
@@ -510,7 +472,7 @@ export default function PostClient({ slug, initialData, initialError = '', initi
       '@context': 'https://schema.org', '@type': 'Article', headline: post.title,
       description: post.excerpt || '', image: post.cover_image || undefined,
       datePublished: post.published_at, dateModified: post.updated_at,
-      author: { '@type': 'Person', name: post.author_name || 'Tano' },
+      author: { '@type': 'Person', name: authorName },
     }).replace(/</g, '\\u003c') }} />}
     <ReadingProgress />
     {lightboxImages.length > 0 && (
@@ -520,7 +482,7 @@ export default function PostClient({ slug, initialData, initialError = '', initi
         onClose={() => setLightboxImages([])}
       />
     )}
-    <div className="max-w-7xl mx-auto px-4 py-8 flex gap-8 justify-center">
+    <div className={`${editorial.page} ${styles.page} max-w-7xl mx-auto px-5 md:px-6 pt-8 pb-8 lg:pt-10 flex gap-8 justify-center`}>
       <ContentHeadInjection />
       {/* Main content */}
       <div className="w-full max-w-3xl min-w-0">
@@ -528,7 +490,7 @@ export default function PostClient({ slug, initialData, initialError = '', initi
           <button
             type="button"
             onClick={() => window.history.length > 1 ? router.back() : router.push('/')}
-            className="inline-flex items-center gap-1.5 mb-5 px-3 py-1.5 rounded-lg text-sm btn-glass transition-all hover:opacity-80"
+            className={`${editorial.action} mb-5`}
             style={{ color: 'var(--text-secondary)' }}
             aria-label="返回上一页"
           >
@@ -539,13 +501,12 @@ export default function PostClient({ slug, initialData, initialError = '', initi
           {/* Cover image */}
           {post.cover_image && (
             <ImageWithFallback src={post.cover_image} alt={post.title} loading="lazy"
-              className="w-full h-56 md:h-72 object-cover rounded-xl mb-6" />
+              className={styles.cover} />
           )}
 
           {/* Admin status bar */}
           {isAdmin && (
-            <div className="flex flex-wrap items-center gap-3 px-4 py-2.5 rounded-xl mb-4 text-sm glass-card"
-              style={{ borderLeft: '3px solid var(--primary)' }}>
+            <div className={styles.status}>
               <span className="flex items-center gap-1.5 font-medium"
                 style={{ color: post.status === 'published' ? 'var(--color-success)' : 'var(--color-error)' }}>
                 <Shield className="w-4 h-4" />
@@ -598,17 +559,16 @@ export default function PostClient({ slug, initialData, initialError = '', initi
           </div>
 
           {/* Category & Tags */}
-          <div className="flex flex-wrap items-center gap-2 mb-4">
+          <div className={styles.tags}>
             {post.category && (
               <Link href={`/categories/${post.category.slug}`}
-                className="px-3 py-1 rounded-lg text-xs font-medium transition-all hover:opacity-80"
-                style={{ background: 'var(--primary-sub)', color: 'var(--primary)' }}>
+                className={styles.tag} style={{ color: 'var(--primary)' }}>
                 {post.category.name}
               </Link>
             )}
             {post.tags?.map((tag: any) => (
               <Link key={tag.id} href={`/tags/${tag.slug}`}
-                className="px-3 py-1 rounded-lg text-xs btn-glass transition-all"
+                className={styles.tag}
                 style={{ color: 'var(--text-secondary)' }}>
                 #{tag.name}
               </Link>
@@ -623,8 +583,7 @@ export default function PostClient({ slug, initialData, initialError = '', initi
               <Bookmark className="w-3.5 h-3.5 flex-shrink-0" />
               <span>{post.series[0].name}</span>
               {seriesProgress && (
-                <span className="text-xs px-1.5 py-0.5 rounded-md"
-                  style={{ color: 'var(--text-info)', background: 'var(--btn-card-bg)' }}>
+                <span className="text-xs" style={{ color: 'var(--text-info)' }}>
                   第 {seriesProgress.position} 篇 / 共 {seriesProgress.total} 篇
                 </span>
               )}
@@ -632,36 +591,42 @@ export default function PostClient({ slug, initialData, initialError = '', initi
           )}
 
           {/* Markdown Content */}
-          <div ref={contentRef} className="prose dark:prose-invert prose-sm sm:prose-base max-w-none mb-10">
+          <div ref={contentRef} className="prose dark:prose-invert prose-sm sm:prose-base max-w-none mb-10 [&_:is(h1,h2,h3,h4,h5,h6)]:scroll-mt-28 [&_:is(h1,h2,h3,h4,h5,h6)]:[overflow-wrap:anywhere]">
             <ArticleMarkdown content={post.content} />
           </div>
+          <ArticleSignature authorName={authorName} />
 
           {/* Share buttons */}
           <ScrollReveal margin="-40px">
-          <div className="border-t pt-6 mb-6" style={{ borderColor: 'var(--glass-border)' }}>
+          <div className="mb-6">
+            <div className="mb-5 flex items-center gap-3" aria-hidden="true" data-article-divider>
+              <span className="h-px flex-1" style={{ background: 'var(--border-color)' }} />
+              <span className="size-[5px] shrink-0 rotate-45 opacity-45" style={{ background: 'var(--text-info)' }} />
+              <span className="h-px flex-1" style={{ background: 'var(--border-color)' }} />
+            </div>
             <SharePanel url={shareUrl} title={post.title} />
           </div>
           </ScrollReveal>
 
           {/* Post reactions */}
           <ScrollReveal margin="-40px">
-          <div className="border-t pt-6 mb-6" style={{ borderColor: 'var(--glass-border)' }}>
+          <div className={`${editorial.section} ${styles.reactions} mb-2`}>
             <ReactionBar counts={postReactionState.counts} selected={postReactionState.user} onToggle={handleTogglePostReaction} />
           </div>
           </ScrollReveal>
 
-          {/* CC License — Fuwari style */}
+          {/* Attribution */}
           <ScrollReveal margin="-40px">
-          <div className="relative mb-6 overflow-hidden rounded-xl px-8 py-6 transition"
-            style={{ background: 'var(--card-bg)' }}>
+          <aside aria-label="文章版权信息" className="relative mb-6 overflow-hidden rounded-xl px-8 py-6 transition"
+            style={{ background: 'var(--card-bg)', overflowWrap: 'anywhere' }}>
             <div className="font-bold transition" style={{ color: 'var(--text-primary)' }}>{post.title}</div>
             <Link href={`/posts/${post.slug}`} className="transition" style={{ color: 'var(--primary)' }}>
               {shareUrl}
             </Link>
-            <div className="mt-2 flex gap-6">
+            <div className="mt-2 flex flex-wrap gap-6">
               <div>
                 <div className="text-sm transition" style={{ color: 'var(--text-info)' }}>作者</div>
-                <div className="line-clamp-2 transition" style={{ color: 'var(--text-primary)' }}>{post.author_name || '-'}</div>
+                <div className="line-clamp-2 transition" style={{ color: 'var(--text-primary)' }}>{authorName}</div>
               </div>
               <div>
                 <div className="text-sm transition" style={{ color: 'var(--text-info)' }}>发表于</div>
@@ -678,25 +643,25 @@ export default function PostClient({ slug, initialData, initialError = '', initi
               </div>
             </div>
             {/* CC watermark */}
-            <div className="pointer-events-none absolute right-6 top-1/2 -translate-y-1/2 select-none opacity-[0.06]">
+            <div aria-hidden="true" className="pointer-events-none absolute right-6 top-1/2 -translate-y-1/2 select-none opacity-[0.06]">
               <svg xmlns="http://www.w3.org/2000/svg" width="15rem" height="15rem" viewBox="0 0 20 20">
                 <path d="M0 0h20v20H0z" fill="none" />
                 <path fill="currentColor" d="M10 18a8 8 0 1 1 8-8a8 8 0 0 1-8 8m0-18A9.94 9.94 0 0 0 0 10a9.94 9.94 0 0 0 10 10a9.94 9.94 0 0 0 10-10A9.94 9.94 0 0 0 10 0" />
                 <path fill="currentColor" d="M13.49 11.67c-1 0-1.43-.57-1.43-1.71s.43-1.71 1.43-1.71c.57 0 .86.29 1.14.86l1.29-.71A2.8 2.8 0 0 0 13.2 7a2.9 2.9 0 0 0-2.14.86A2.7 2.7 0 0 0 10.2 10a3 3 0 0 0 .86 2.29a2.9 2.9 0 0 0 2.14.86a3.24 3.24 0 0 0 2.71-1.57L14.63 11a1.46 1.46 0 0 1-1.14.71zm-6 0c-1 0-1.43-.57-1.43-1.71s.43-1.71 1.43-1.71c.57 0 .86.29 1.14.86l1.29-.71A2.8 2.8 0 0 0 7.2 7a2.9 2.9 0 0 0-2.14.86A2.7 2.7 0 0 0 4.2 10a3 3 0 0 0 .86 2.29a2.9 2.9 0 0 0 2.14.86a3.24 3.24 0 0 0 2.71-1.57L8.63 11a1.46 1.46 0 0 1-1.14.71z" />
               </svg>
             </div>
-          </div>
+          </aside>
           </ScrollReveal>
         </article>
 
         {/* Adjacent Posts Navigation */}
         <ScrollReveal margin="-40px">
         {(adjacentPosts?.prev || adjacentPosts?.next) && (
-          <div className="flex items-center justify-between gap-4 mb-6">
+          <nav className={styles.adjacent} aria-label="前后文章">
             <div className="flex-1">
               {adjacentPosts?.prev ? (
                 <Link href={`/posts/${adjacentPosts.prev.slug}`}
-                  className="block glass-card rounded-2xl p-4 transition-all hover:translate-y-[-2px]">
+                  className="transition-colors">
                   <div className="text-xs mb-1" style={{ color: 'var(--text-info)' }}>← 上一篇</div>
                   <div className="text-sm font-medium line-clamp-1" style={{ color: 'var(--text-primary)' }}>
                     {adjacentPosts.prev.title}
@@ -707,7 +672,7 @@ export default function PostClient({ slug, initialData, initialError = '', initi
             <div className="flex-1 text-right">
               {adjacentPosts?.next ? (
                 <Link href={`/posts/${adjacentPosts.next.slug}`}
-                  className="block glass-card rounded-2xl p-4 transition-all hover:translate-y-[-2px]">
+                  className="transition-colors">
                   <div className="text-xs mb-1" style={{ color: 'var(--text-info)' }}>下一篇 →</div>
                   <div className="text-sm font-medium line-clamp-1" style={{ color: 'var(--text-primary)' }}>
                     {adjacentPosts.next.title}
@@ -715,33 +680,32 @@ export default function PostClient({ slug, initialData, initialError = '', initi
                 </Link>
               ) : <div />}
             </div>
-          </div>
+          </nav>
         )}
         </ScrollReveal>
 
         {/* Related Posts (tag-based) */}
         <ScrollReveal margin="-40px">
         {relatedPosts.length > 0 && (
-          <div className="mt-10">
-            <h2 className="text-xl font-bold mb-4" style={{ color: 'var(--text-primary)' }}>猜你喜欢</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className={styles.related}>
+            <h2 className={styles.relatedHeading}>猜你喜欢</h2>
+            <div className={styles.relatedList}>
               {relatedPosts.slice(0, 6).map((rp: any) => (
                 <Link
                   key={rp.id}
                   href={`/posts/${rp.slug}`}
-                  className="glass-card rounded-2xl overflow-hidden transition-all hover:translate-y-[-2px]"
+                  className={styles.relatedPost}
                 >
                   {rp.cover_image && (
                     <ImageWithFallback src={rp.cover_thumbnail_url || rp.cover_image} fallbackSrc={rp.cover_image} alt={rp.title} loading="lazy" decoding="async" className="w-full h-32 object-cover" />
                   )}
-                  <div className="p-3">
-                    <h3 className="text-sm font-bold line-clamp-2" style={{ color: 'var(--text-primary)' }}>
+                  <div className={styles.relatedText}>
+                    <h3 className="line-clamp-2">
                       {rp.title}
                     </h3>
                     <div className="flex flex-wrap gap-1 mt-2">
                       {rp.tags?.slice(0, 3).map((tag: any) => (
-                        <span key={tag.id} className="px-1.5 py-0.5 text-xs rounded"
-                          style={{ background: 'var(--btn-card-bg)', color: 'var(--text-secondary)' }}>
+                        <span key={tag.id} className="text-xs" style={{ color: 'var(--text-secondary)' }}>
                           #{tag.name}
                         </span>
                       ))}
@@ -756,28 +720,24 @@ export default function PostClient({ slug, initialData, initialError = '', initi
 
         {/* Comments */}
         <ScrollReveal margin="-40px">
-        <section className="border-t pt-8" style={{ borderColor: 'var(--glass-border)' }}>
+        <section className={styles.comments}>
           <h2 className="text-xl font-bold mb-4" style={{ color: 'var(--text-primary)' }}>
             评论
             {commentPages.total > 0 && <span className="font-normal" style={{ color: 'var(--text-info)' }}> ({commentPages.total})</span>}
           </h2>
 
           {/* Sort buttons */}
-          <div className="flex gap-2 mb-4">
+          <div className={styles.sort}>
             {[{ key: 'oldest', label: '最早' }, { key: 'newest', label: '最新' }, { key: 'reactions', label: '最多点赞' }].map(opt => (
               <button key={opt.key} onClick={() => setCommentSort(opt.key)}
-                className="px-2.5 py-1 rounded-lg text-xs transition-all"
-                style={{
-                  background: commentSort === opt.key ? 'var(--primary)' : 'var(--btn-card-bg)',
-                  color: commentSort === opt.key ? '#fff' : 'var(--text-secondary)',
-                }}>
+                aria-pressed={commentSort === opt.key}>
                 {opt.label}
               </button>
             ))}
           </div>
 
           {/* Comment list */}
-          <div className="space-y-3 mb-8">
+          <div className="mb-8">
             {comments.map((comment: any) => (
               <CommentItem key={`${commentSort}-${comment.id}`} slug={slug} sort={commentSort} onLoadReactions={addCommentReactions} comment={comment} depth={0} onReply={(c: any) => {
                 setReplyTo(c);
@@ -794,12 +754,12 @@ export default function PostClient({ slug, initialData, initialError = '', initi
           {/* Comment form */}
           <h3 className="text-lg font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>发表评论</h3>
           {commentError && (
-            <div className="glass-card rounded-2xl px-4 py-3 mb-4 text-sm" style={{ color: 'var(--color-error)' }}>
+            <div className={styles.notice} style={{ color: 'var(--color-error)' }}>
               {commentError}
             </div>
           )}
           {commentSuccess && (
-            <div className="glass-card rounded-2xl px-4 py-3 mb-4 text-sm" style={{ color: 'var(--color-success)' }}>
+            <div className={styles.notice} style={{ color: 'var(--color-success)' }}>
               {commentSuccess}
             </div>
           )}
@@ -816,7 +776,7 @@ export default function PostClient({ slug, initialData, initialError = '', initi
               tabIndex={-1} autoComplete="off"
               className="absolute opacity-0 pointer-events-none" style={{ height: 0, width: 0, padding: 0, margin: 0 }} />
             {replyTo && (
-              <div className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm glass-card"
+              <div className={`${styles.notice} flex items-center gap-2`}
                 style={{ color: 'var(--text-secondary)' }}>
                 回复 <span className="font-medium" style={{ color: 'var(--primary)' }}>{replyTo.nickname}</span>
                 <button type="button" onClick={() => { setReplyTo(null); setCommentForm(prev => ({ ...prev, parent_id: '' })); }}
@@ -826,20 +786,20 @@ export default function PostClient({ slug, initialData, initialError = '', initi
             <div className="flex gap-3">
               <input type="text" value={commentForm.nickname} onChange={e => setCommentForm({ ...commentForm, nickname: e.target.value })}
                 placeholder="昵称 *" required
-                className="min-w-0 flex-1 px-3 py-2.5 rounded-xl text-sm outline-none glass-card"
+                className={`${editorial.field} flex-1`} aria-label="昵称"
                 style={{ color: 'var(--text-primary)' }} />
               <input type="email" value={commentForm.email} onChange={e => setCommentForm({ ...commentForm, email: e.target.value })}
                 placeholder="邮箱（不公开）"
-                className="min-w-0 flex-1 px-3 py-2.5 rounded-xl text-sm outline-none glass-card"
+                className={`${editorial.field} flex-1`} aria-label="邮箱（不公开）"
                 style={{ color: 'var(--text-primary)' }} />
             </div>
             <input type="url" value={commentForm.website} onChange={e => setCommentForm({ ...commentForm, website: e.target.value })}
               placeholder="网站 (可选)"
-              className="w-full px-3 py-2.5 rounded-xl text-sm outline-none glass-card"
+              className={`${editorial.field} w-full`} aria-label="网站（可选）"
               style={{ color: 'var(--text-primary)' }} />
             <textarea value={commentForm.content} onChange={e => setCommentForm({ ...commentForm, content: e.target.value })}
               placeholder="评论内容 *" required rows={4}
-              className="w-full px-3 py-2.5 rounded-xl text-sm outline-none glass-card resize-none"
+              className={`${editorial.field} w-full resize-none`} aria-label="评论内容"
               style={{ color: 'var(--text-primary)' }} />
             {/* Comment preview toggle */}
             {commentForm.content && (
@@ -847,14 +807,13 @@ export default function PostClient({ slug, initialData, initialError = '', initi
                 <button
                   type="button"
                   onClick={() => setShowPreview(!showPreview)}
-                  className="text-xs px-3 py-1 rounded-lg btn-glass transition-all mb-2"
+                  className={`${editorial.action} mb-2`}
                   style={{ color: showPreview ? 'var(--primary)' : 'var(--text-secondary)' }}
                 >
                   {showPreview ? '关闭预览' : '预览评论'}
                 </button>
                 {showPreview && (
-                  <div className="prose dark:prose-invert prose-sm max-w-none rounded-xl p-4 overflow-y-auto"
-                    style={{ maxHeight: '200px', background: 'var(--card-bg)', border: '1px solid var(--glass-border)' }}>
+                  <div className={`${styles.preview} prose dark:prose-invert prose-sm max-w-none`}>
                     <CommentMarkdown content={commentForm.content} />
                   </div>
                 )}
@@ -865,8 +824,7 @@ export default function PostClient({ slug, initialData, initialError = '', initi
             )}
             <button type="submit"
               disabled={commentsEnabled !== true || post.allow_comment === false}
-              className="px-6 py-2.5 rounded-xl text-sm font-medium text-white transition-all hover:opacity-90"
-              style={{ background: 'var(--primary)', boxShadow: '0 0 16px var(--primary-glow)' }}>
+              className={styles.submit}>
               提交评论
             </button>
             </fieldset>
@@ -878,7 +836,7 @@ export default function PostClient({ slug, initialData, initialError = '', initi
           <button
             type="button"
             onClick={() => window.history.length > 1 ? router.back() : router.push('/')}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm btn-glass transition-all hover:opacity-80"
+            className={editorial.action}
             style={{ color: 'var(--text-secondary)' }}
             aria-label="返回上一页"
           >
@@ -888,32 +846,7 @@ export default function PostClient({ slug, initialData, initialError = '', initi
         </div>
       </div>
 
-      {/* TOC Sidebar */}
-      {tocItems.length > 0 && (
-        <aside className="hidden lg:block w-56 flex-shrink-0">
-          <div className="sticky top-24">
-            <h3 className="text-xs font-semibold mb-3 uppercase tracking-wider" style={{ color: 'var(--text-info)' }}>目录</h3>
-            <nav className="space-y-0.5 text-sm max-h-[70vh] overflow-y-auto glass-card rounded-2xl p-3">
-              {tocItems.map((item) => (
-                <a
-                  key={item.id}
-                  href={`#${item.id}`}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    document.getElementById(item.id)?.scrollIntoView({ behavior: 'smooth' });
-                  }}
-                  className={`toc-link block py-1.5 pr-2 transition-colors ${
-                    item.level === 1 ? 'pl-2 text-sm font-medium' : item.level === 3 ? 'pl-6 text-xs' : 'pl-4 text-sm'
-                  }`}
-                  style={{ color: activeId === item.id ? 'var(--primary)' : 'var(--text-secondary)' }}
-                >
-                  {item.text}
-                </a>
-              ))}
-            </nav>
-          </div>
-        </aside>
-      )}
+      <ArticleToc contentRef={contentRef} contentKey={articleContent} />
     </div>
     </>
   );

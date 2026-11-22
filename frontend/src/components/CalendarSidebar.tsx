@@ -5,6 +5,8 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { api } from '@/lib/api';
 import Link from 'next/link';
 
+import editorial from './Editorial.module.css';
+
 export function CalendarSidebar() {
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
@@ -59,7 +61,7 @@ export function CalendarSidebar() {
     : posts.slice(0, 5);
 
   return (
-    <div className="card-base p-4 rounded-2xl">
+    <div className={editorial.section}>
       <div className="flex items-center justify-between mb-3">
         <Link href="/calendar" className="text-sm font-bold hover:opacity-80 transition-opacity" style={{ color: 'var(--text-primary)' }}>文章日历</Link>
         <div className="flex gap-0.5">
@@ -131,7 +133,7 @@ export function CalendarSidebar() {
       </div>
 
       {!loading && posts.length > 0 && (
-        <div className="mt-2 pt-2 space-y-1" style={{ borderTop: '1px solid var(--glass-border)' }}>
+        <div className="mt-2 pt-2 space-y-1" style={{ borderTop: '1px solid var(--border-color)' }}>
           {selectedDate && (
             <div className="text-[10px] font-medium px-1.5 py-1" style={{ color: 'var(--primary)' }}>
               {selectedDate}（{displayedPosts.length} 篇）

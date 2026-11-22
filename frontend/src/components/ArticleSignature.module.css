@@ -1,0 +1,68 @@
+@font-face {
+  font-family: 'Caveat Signature';
+  src: url('/fonts/caveat-latin-400.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+.signature {
+  display: flex;
+  justify-content: flex-end;
+  margin: 8px 0 32px;
+  padding: 8px 0;
+  color: var(--text-primary);
+}
+
+.name {
+  position: relative;
+  display: block;
+  min-width: min(200px, 100%);
+  max-width: min(360px, 100%);
+  padding: 0 20px;
+  overflow-wrap: anywhere;
+  text-align: center;
+  font-family: 'Caveat Signature', 'Kaiti SC', STKaiti, KaiTi, cursive;
+  font-size: 64px;
+  font-weight: 400;
+  line-height: 1.25;
+}
+
+.name[data-compact='true'] { font-size: 40px; }
+
+.ink { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.ink text {
+  font: inherit;
+  fill: currentColor;
+  stroke: currentColor;
+  stroke-width: .7px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: var(--stroke-length);
+  animation: write-signature 5s cubic-bezier(.35, 0, .15, 1) var(--write-delay) infinite both paused;
+}
+.signature[data-ready='true'] .label { opacity: 0; }
+.signature[data-playing='true'] .ink text { animation-play-state: running; }
+
+@keyframes write-signature {
+  0%, 8% { stroke-dashoffset: var(--stroke-length); fill-opacity: 0; }
+  30%, 84% { stroke-dashoffset: 0; fill-opacity: 1; }
+  100% { stroke-dashoffset: calc(-1 * var(--stroke-length)); fill-opacity: 0; }
+}
+
+@media (max-width: 639px) {
+  .name { font-size: 56px; }
+  .name[data-compact='true'] { font-size: 32px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .signature[data-ready='true'] .label { opacity: 1; }
+  .ink { display: none; }
+  .ink text { animation: none; }
+}
+
+@media print {
+  .signature[data-ready='true'] .label { opacity: 1; }
+  .ink { display: none; }
+}

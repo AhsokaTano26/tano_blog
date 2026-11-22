@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
+import editorial from './Editorial.module.css';
 
 interface TagItem {
   id: string;
@@ -45,7 +46,7 @@ export function TagCloud({ initialTags }: { initialTags?: TagItem[] } = {}) {
   const maxCount = Math.max(...counts);
 
   return (
-    <div className="glass-card rounded-2xl p-4">
+    <div className={editorial.section}>
       <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--text-primary)' }}>
         标签云
       </h3>

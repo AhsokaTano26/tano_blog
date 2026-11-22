@@ -1,0 +1,93 @@
+.page { max-width: 1008px; margin: 0 auto; padding: 40px 24px 80px; }
+.header { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; }
+.eyebrow { color: var(--text-secondary); font-family: var(--font-geist-mono), monospace; font-size: 10px; line-height: 1.6; letter-spacing: .16em; }
+.header h1 { margin-top: 12px; font-family: 'Noto Serif SC', 'Songti SC', 'STSong', serif; font-size: 38px; font-weight: 500; line-height: 1.3; letter-spacing: .03em; }
+.intro { margin-top: 12px; color: var(--text-secondary); font-size: 14px; line-height: 1.8; }
+.headerAside { flex-shrink: 0; text-align: right; }
+.count { font-size: 12px; color: var(--text-secondary); }
+.count span { margin-right: 4px; color: var(--text-primary); font-family: Georgia, serif; font-size: 40px; line-height: 1; font-variant-numeric: tabular-nums; }
+.headerAside button { display: inline-flex; align-items: center; gap: 7px; min-height: 44px; margin-top: 6px; color: var(--text-secondary); font-size: 11px; }
+.headerAside button:hover { color: var(--primary); }
+.loading { min-height: 420px; display: grid; place-items: center; }
+.empty { margin-top: 32px; padding: 80px 0; border-block: 1px solid var(--border-color); color: var(--text-secondary); text-align: center; }
+.empty button { display: inline-block; min-height: 44px; margin-top: 12px; color: var(--primary); font-size: 13px; }
+.application { display: grid; grid-template-columns: minmax(0, 1fr) 340px; align-items: start; gap: 64px; margin-top: 64px; padding-top: 32px; border-top: 1px solid var(--border-color); scroll-margin-top: 100px; }
+.application h2 { margin-top: 12px; font-family: 'Noto Serif SC', 'Songti SC', 'STSong', serif; font-size: 27px; font-weight: 500; line-height: 1.5; }
+.applicationIntro { margin-top: 20px; color: var(--text-secondary); font-size: 13px; line-height: 1.9; }
+.guidelines { margin-top: 12px; padding-left: 16px; list-style: disc; color: var(--text-secondary); font-size: 12px; line-height: 1.9; }
+.guidelines li { padding-left: 3px; margin-top: 8px; }
+.applyButton { display: inline-flex; align-items: center; justify-content: space-between; gap: 40px; min-height: 48px; margin-top: 24px; padding: 0 2px; border-bottom: 1px solid var(--text-secondary); font-size: 14px; transition: color 160ms ease, border-color 160ms ease; }
+.applyButton:hover { color: var(--primary); border-color: var(--primary); }
+.siteInfo { min-width: 0; }
+.siteHeading { display: flex; align-items: center; gap: 12px; padding-block: 20px; }
+.siteHeading h3 { font-family: 'Noto Serif SC', 'Songti SC', 'STSong', serif; font-size: 18px; }
+.siteHeading p { margin-top: 4px; color: var(--text-secondary); font-size: 12px; line-height: 1.8; }
+.siteInfo dl > div { display: grid; grid-template-columns: 78px minmax(0, 1fr); gap: 16px; padding-block: 12px; border-top: 1px solid var(--border-color); font-size: 12px; line-height: 1.8; }
+.siteInfo dt { color: var(--text-secondary); }
+.siteInfo dd { overflow-wrap: anywhere; }
+.siteInfo a:hover { color: var(--primary); }
+.copyButton { display: flex; align-items: center; gap: 8px; min-height: 44px; margin-top: 8px; color: var(--text-secondary); font-size: 12px; }
+.copyButton:hover { color: var(--primary); }
+.copyFeedback { color: var(--text-secondary); font-size: 12px; line-height: 1.8; }
+.dialogOverlay { position: fixed; inset: 0; z-index: 200; background: rgb(0 0 0 / 48%); backdrop-filter: blur(4px); }
+.dialog { position: fixed; top: 50%; left: 50%; z-index: 201; display: flex; flex-direction: column; width: calc(100% - 32px); max-width: 520px; max-height: calc(100dvh - 48px); transform: translate(-50%, -50%); border: 1px solid var(--border-color); background: var(--color-bg); color: var(--text-primary); box-shadow: 0 24px 80px rgb(0 0 0 / 20%); outline: none; }
+.dialogHeader { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-shrink: 0; padding: 24px 28px 20px; border-bottom: 1px solid var(--border-color); }
+.dialogTitle { margin-top: 8px; font-family: 'Noto Serif SC', 'Songti SC', 'STSong', serif; font-size: 26px; font-weight: 500; }
+.closeButton { display: grid; flex-shrink: 0; place-items: center; width: 44px; height: 44px; margin: -10px -14px 0 0; color: var(--text-secondary); }
+.closeButton:hover { color: var(--text-primary); background: var(--surface-bg); }
+.formHint { margin-top: 8px; color: var(--text-secondary); font-size: 11px; line-height: 1.8; }
+.form { display: flex; flex-direction: column; min-height: 0; }
+.formBody { min-height: 0; padding: 24px 28px; overflow-y: auto; overscroll-behavior: contain; }
+.field + .field { margin-top: 18px; }
+.field label { display: block; color: var(--text-secondary); font-size: 12px; }
+.field label > span { color: var(--primary); }
+.field label > .optional { margin-left: 8px; color: var(--text-secondary); font-size: 10px; }
+.field input { display: block; width: 100%; min-height: 44px; margin-top: 2px; padding: 10px 0; border: 0; border-bottom: 1px solid var(--border-color); border-radius: 0; background: transparent; color: var(--text-primary); font-size: 13px; outline: none; transition: border-color 160ms ease; }
+.field input::placeholder { color: var(--text-secondary); opacity: .8; }
+.field input:focus { border-bottom-color: var(--primary); box-shadow: 0 1px 0 var(--primary); }
+.formError { margin-top: 16px; color: var(--color-error); font-size: 13px; }
+.captcha { margin-top: 20px; max-width: 100%; overflow: auto; }
+.dialogActions { display: flex; justify-content: flex-end; gap: 12px; flex-shrink: 0; padding: 16px 28px; border-top: 1px solid var(--border-color); }
+.submit { display: inline-flex; align-items: center; justify-content: center; gap: 16px; min-height: 44px; min-width: 120px; padding: 0 20px; background: var(--primary); color: white; font-size: 13px; transition: filter 160ms ease; }
+.submit:hover { filter: brightness(1.08); }
+.submit:disabled { cursor: wait; opacity: .5; }
+.cancelButton { min-height: 44px; padding: 0 20px; color: var(--text-secondary); font-size: 13px; }
+.cancelButton:hover { background: var(--surface-bg); color: var(--text-primary); }
+.success { padding: 40px 28px; overflow-y: auto; }
+.success > svg { color: var(--primary); }
+.success h3 { margin-top: 16px; font-size: 18px; }
+.success p { margin-top: 8px; color: var(--text-secondary); font-size: 13px; line-height: 1.8; }
+.page a:focus-visible, .page button:focus-visible { outline: 2px solid var(--primary); outline-offset: 4px; }
+.dialog button:focus-visible { outline: 2px solid var(--primary); outline-offset: 4px; }
+.dialogOverlay[data-state='open'] { animation: overlay-in 180ms ease-out; }
+.dialog[data-state='open'] { animation: dialog-in 200ms cubic-bezier(.22, 1, .36, 1); }
+.dialogOverlay[data-state='closed'] { animation: overlay-in 130ms ease-in reverse; }
+.dialog[data-state='closed'] { animation: dialog-in 130ms ease-in reverse; }
+@keyframes overlay-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes dialog-in { from { opacity: 0; transform: translate(-50%, calc(-50% + 8px)) scale(.98); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
+
+@media (max-width: 1023px) {
+  .application { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 36px; }
+}
+@media (max-width: 767px) {
+  .page { padding: 28px 20px 56px; }
+  .header { display: block; }
+  .header h1 { font-size: 32px; }
+  .intro { font-size: 13px; }
+  .headerAside { display: flex; align-items: center; justify-content: space-between; margin-top: 24px; text-align: left; }
+  .headerAside button { margin: 0; }
+  .count span { font-size: 30px; }
+  .application { grid-template-columns: 1fr; gap: 32px; margin-top: 48px; padding-top: 28px; }
+  .application h2 { font-size: 25px; }
+  .siteInfo { border-top: 1px solid var(--border-color); padding-top: 8px; }
+  .dialog { width: calc(100% - 24px); max-height: calc(100dvh - 24px); }
+  .dialogHeader { padding: 20px 20px 16px; }
+  .dialogTitle { font-size: 24px; }
+  .formBody { padding: 20px; }
+  .dialogActions { padding: 14px 20px; }
+  .field input { font-size: 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .field input, .submit, .applyButton { transition: none; }
+  .dialogOverlay, .dialog { animation: none !important; }
+}

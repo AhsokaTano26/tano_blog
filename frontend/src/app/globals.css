@@ -36,10 +36,11 @@
 
   /* Page background */
   --color-bg-dark: #0c0e14;
-  --color-bg-light: #f1f5f9;
+  --color-bg-light: #f5efdf;
+  --color-surface-light: #fbf6e8;
   --color-bg: var(--color-bg-dark);
-  --theme-transition-duration: 240ms;
-  --theme-transition-easing: cubic-bezier(0.2, 0, 0, 1);
+  --theme-transition-duration: 800ms;
+  --theme-transition-easing: ease-in-out;
 
   /* Status */
   --color-error: hsl(0, 60%, 60%);
@@ -51,21 +52,21 @@
 
 /* Light mode */
 .light {
-  --glass-bg: rgba(255, 255, 255, 0.6);
-  --glass-bg-mobile: rgba(255, 255, 255, 0.85);
-  --glass-border: rgba(0, 0, 0, 0.08);
+  --glass-bg: color-mix(in srgb, var(--color-surface-light) 60%, transparent);
+  --glass-bg-mobile: color-mix(in srgb, var(--color-surface-light) 85%, transparent);
+  --glass-border: rgba(87, 75, 52, 0.12);
   --glass-blur: 20px;
 
-  --card-bg: rgba(255, 255, 255, 0.6);
-  --surface-bg: rgba(0, 0, 0, 0.03);
-  --btn-card-bg: rgba(0, 0, 0, 0.05);
-  --popover-bg: rgba(255, 255, 255, 0.96);
+  --card-bg: color-mix(in srgb, var(--color-surface-light) 60%, transparent);
+  --surface-bg: rgba(87, 75, 52, 0.03);
+  --btn-card-bg: rgba(87, 75, 52, 0.05);
+  --popover-bg: color-mix(in srgb, var(--color-surface-light) 96%, transparent);
 
-  --text-primary: #0f172a;
-  --text-secondary: #64748b;
-  --text-info: #94a3b8;
+  --text-primary: #302e28;
+  --text-secondary: #70695d;
+  --text-info: #726b5f;
 
-  --border-color: rgba(0, 0, 0, 0.08);
+  --border-color: rgba(87, 75, 52, 0.12);
   --color-bg: var(--color-bg-light);
 
   --color-error: hsl(0, 60%, 50%);
@@ -87,7 +88,15 @@ html {
   scroll-behavior: smooth;
 }
 
-/* Keep each theme's fade at the foot of the artwork. */
+html.music-fullscreen,
+html.music-fullscreen body {
+  height: 100dvh;
+  min-height: 100dvh;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+/* Only dark mode shades the foot of the banner artwork. */
 .banner-fade {
   position: absolute;
   bottom: 0;
@@ -96,7 +105,7 @@ html {
   height: clamp(128px, 16vh, 176px);
   pointer-events: none;
 }
-.banner-fade::before, .banner-fade::after {
+.banner-fade::before {
   content: '';
   position: absolute;
   bottom: 0;
@@ -108,19 +117,7 @@ html {
   background: linear-gradient(to top, var(--color-bg-dark), transparent);
   opacity: 1;
 }
-.banner-fade::after {
-  height: 100%;
-  background: linear-gradient(to bottom,
-    color-mix(in srgb, var(--color-bg-light) 0%, transparent) 0%,
-    color-mix(in srgb, var(--color-bg-light) 8%, transparent) 20%,
-    color-mix(in srgb, var(--color-bg-light) 28%, transparent) 40%,
-    color-mix(in srgb, var(--color-bg-light) 58%, transparent) 60%,
-    color-mix(in srgb, var(--color-bg-light) 86%, transparent) 80%,
-    var(--color-bg-light) 100%);
-  opacity: 0;
-}
 .light .banner-fade::before { opacity: 0; }
-.light .banner-fade::after { opacity: 1; }
 
 /* ===== Frontend Navigation ===== */
 .site-header {
@@ -290,7 +287,7 @@ html {
   box-shadow: 0 8px 32px -8px rgba(0, 0, 0, 0.3);
 }
 .light .card-base:hover {
-  background: rgba(255, 255, 255, 0.8);
+  background: color-mix(in srgb, var(--color-surface-light) 80%, transparent);
   box-shadow: 0 8px 32px -8px rgba(0, 0, 0, 0.1);
 }
 
@@ -558,7 +555,7 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
 }
 
 /* ===== Theme Transition ===== */
-/* Apply the final palette at once; only the composed page snapshot fades. */
+/* Apply the palette at once, then reveal its snapshot vertically. */
 html.theme-transitioning,
 html.theme-transitioning *,
 html.theme-transitioning::before,
@@ -575,16 +572,26 @@ html.theme-transitioning::view-transition-old(root) {
   animation: none;
 }
 html.theme-transitioning::view-transition-old(root) {
+  z-index: 1;
   opacity: 1;
   mix-blend-mode: normal;
 }
 html.theme-transitioning::view-transition-new(root) {
-  animation: theme-fade-in var(--theme-transition-duration) var(--theme-transition-easing) both;
+  z-index: 2;
+  opacity: 1;
+  animation: theme-reveal-up var(--theme-transition-duration) var(--theme-transition-easing) both;
   mix-blend-mode: normal;
 }
-@keyframes theme-fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
+html.dark.theme-transitioning::view-transition-new(root) {
+  animation-name: theme-reveal-down;
+}
+@keyframes theme-reveal-down {
+  from { clip-path: inset(0 0 100% 0); }
+  to { clip-path: inset(0); }
+}
+@keyframes theme-reveal-up {
+  from { clip-path: inset(100% 0 0 0); }
+  to { clip-path: inset(0); }
 }
 
 /* ===== Reduced Motion ===== */

@@ -2,6 +2,9 @@
 const fs = require('node:fs');
 const ts = require('typescript');
 
+// DOM regressions exercise behavior; CSS Modules are compiled by Next.js.
+require.extensions['.css'] = () => {};
+
 // Reuse the project's TypeScript compiler so these regression tests need no
 // additional runtime or test framework.
 for (const extension of ['.ts', '.tsx']) {

@@ -1,6 +1,6 @@
 /* Management surfaces reuse the site's theme and accent. */
 :root { --admin-control-panel: #191b23; }
-.light { --admin-control-panel: #fff; }
+.light { --admin-control-panel: var(--color-surface-light); }
 
 /* Shared workbench rhythm. Scoped to management so public pages stay independent. */
 .admin-shell, .admin-auth {
@@ -108,7 +108,7 @@
   .admin-data-table td:last-child button { min-height: 40px; min-width: 36px; }
   .admin-auth-card { padding: 24px; }
 }
-.light :is(.admin-ui-dialog, .admin-ui-popover, .admin-ui-tooltip) { --text-info: #66758a; }
+.light :is(.admin-ui-dialog, .admin-ui-popover, .admin-ui-tooltip) { --text-info: #726b5f; }
 .admin-shell, .post-editor {
   --admin-panel: color-mix(in srgb, var(--color-bg) 95%, var(--text-primary));
   --admin-warning: #e8b768;
@@ -161,7 +161,7 @@
 html[data-admin-input="keyboard"] :is(.admin-overlay, .admin-dialog-panel, .admin-drawer-backdrop, .admin-drawer-panel),
 html[data-admin-input="keyboard"] :is(.admin-shell, .post-editor, .admin-dialog-panel) :is(button, a, .pe-slide-down) { animation: none !important; transition: none !important; }
 html[data-admin-input="keyboard"] :is(.admin-dialog-panel, .admin-shell .btn-press:active, .post-editor .btn-press:active, .admin-dialog-panel .btn-press:active) { transform: none !important; }
-.light .admin-shell, .light .post-editor { --text-info: #66758a; --admin-panel: #fff; --admin-warning: #946114; }
+.light .admin-shell, .light .post-editor { --text-info: #726b5f; --admin-panel: var(--color-surface-light); --admin-warning: #946114; }
 .admin-shell :where(button, a, input, select, textarea, summary):focus-visible,
 .post-editor :where(button, a, input, select, textarea, summary):focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
 .admin-shell button:disabled { cursor: not-allowed; }

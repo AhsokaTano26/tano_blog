@@ -181,6 +181,9 @@ test('regression: Turnstile initializes after the links form mounts', async t =>
   t.mock.method(api, 'getPublicConfig', async () => ({ config: { turnstile_enabled: 'true', turnstile_sitekey: 'test-key', turnstile_modules: 'link' } }));
   await mount(t, req('./src/app/links/page.tsx').default);
   await act(async () => resolveLinks({ items: [] }));
+  assert.equal(document.querySelector('form') === null, true);
+  assert.equal(renders, 0);
+  await clickText('申请友链');
   assert.ok(document.querySelector('form'));
   assert.equal(renders, 1);
 });

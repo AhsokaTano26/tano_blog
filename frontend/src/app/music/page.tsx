@@ -52,7 +52,7 @@ export default function MusicPage() {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(0.5);
-  const [showPlaylist, setShowPlaylist] = useState(true);
+  const [showPlaylist, setShowPlaylist] = useState(false);
   const [showParticles, setShowParticles] = useState(true);
   const [showPlaylistSelector, setShowPlaylistSelector] = useState(false);
   const [currentPlaylistIndex, setCurrentPlaylistIndex] = useState(0);
@@ -609,11 +609,24 @@ export default function MusicPage() {
     : { background: `hsla(${bgHue}, 60%, 5%, 0.7)` };
 
   return (
-    <div ref={musicRootRef} data-music-motion={motionEnabled && playing ? "true" : "false"} className="min-h-screen flex flex-col overflow-hidden"
+    <div ref={musicRootRef} data-music-page data-music-motion={motionEnabled && playing ? "true" : "false"} className="relative h-dvh w-full flex flex-col overflow-hidden"
       style={{ ...bgStyle, color: 'var(--text-primary)' }}>
       <style>{`
         [data-music-motion="false"] .cd-spinning,
         [data-music-motion="false"] .animate-pulse { animation-play-state: paused !important; }
+        .music-disc { width: min(28dvh, 18rem); height: min(28dvh, 18rem); }
+        @media (max-height: 720px) {
+          .music-header { padding-block: 8px; }
+          .music-transport { gap: 8px; }
+          .music-disc { width: min(20dvh, 14rem); height: min(20dvh, 14rem); }
+          .music-transport > [aria-hidden="true"] { height: 16px; }
+        }
+        @media (max-height: 600px) {
+          .music-clock, .music-transport > [aria-hidden="true"] { display: none; }
+        }
+        @media (max-height: 480px) {
+          .music-art, .music-particle-toggle { display: none; }
+        }
         @media (prefers-reduced-motion: reduce) {
           [data-music-motion] *, [data-music-motion] *::before, [data-music-motion] *::after {
             animation: none !important; transition-duration: 0s !important;
@@ -624,7 +637,7 @@ export default function MusicPage() {
       {mediaError && <p role="alert" className="relative z-[201] p-4 text-center">{mediaError}</p>}
       {/* Particle canvas background */}
       <canvas ref={canvasRef}
-        className="fixed inset-0 w-full h-full pointer-events-none transition-opacity duration-500"
+        className="absolute inset-0 w-full h-full pointer-events-none transition-opacity duration-500"
         style={{ zIndex: 199, opacity: showParticles && motionEnabled ? 1 : 0 }} />
 
       {/* ─── Password Gate ─── */}
@@ -803,7 +816,7 @@ export default function MusicPage() {
 
       {/* ─── Loading State ─── */}
       {loading && !config && (
-        <div className="min-h-screen flex items-center justify-center">
+        <div className="flex-1 min-h-0 flex items-center justify-center">
           <div className="flex flex-col items-center gap-4">
             <div className="w-14 h-14 rounded-full animate-spin-slow"
               style={{ border: '2px solid hsla(var(--primary-hsl), 0.2)', borderTopColor: 'var(--primary)', boxShadow: '0 0 30px hsla(var(--primary-hsl), 0.2)' }} />
@@ -814,8 +827,8 @@ export default function MusicPage() {
 
       {/* ─── Empty State ─── */}
       {!loading && (!config || !hasAnyTracks) && (
-        <div className="min-h-screen flex items-center justify-center">
-          <button onClick={handleBack} className="absolute top-5 left-5 p-2 rounded-xl transition-all hover:bg-white/10 text-white/50 hover:text-white z-20">
+        <div className="flex-1 min-h-0 flex items-center justify-center">
+          <button onClick={handleBack} aria-label="返回首页" className="absolute top-5 left-5 p-2 rounded-xl transition-all hover:bg-white/10 text-white/50 hover:text-white z-20">
             <ChevronLeft className="w-5 h-5" />
           </button>
           <div className="text-center">
@@ -828,10 +841,10 @@ export default function MusicPage() {
 
       {/* ─── Player UI ─── */}
       {showPlayer && (
-      <div className={`flex-1 flex flex-col transition-all duration-700 ${exiting ? 'opacity-0 scale-95 translate-y-4 !duration-500' : 'opacity-100 translate-y-0'}`}>
+      <div className={`flex-1 min-h-0 flex flex-col transition-all duration-700 ${exiting ? 'opacity-0 scale-95 translate-y-4 !duration-500' : 'opacity-100 translate-y-0'}`}>
 
       {/* Header */}
-      <header className="flex items-center justify-between px-2 sm:px-6 py-4 z-10">
+      <header className="music-header flex items-center justify-between px-2 sm:px-6 py-4 z-10">
         <div className="flex items-center gap-2 sm:gap-4">
           <button onClick={handleBack}
             className="p-2 rounded-xl transition-all hover:bg-white/10 text-white/50 hover:text-white"
@@ -849,6 +862,7 @@ export default function MusicPage() {
         </div>
         <div className="flex items-center gap-1">
           <button onClick={() => setShowPlaylist(!showPlaylist)}
+            aria-label="播放列表" aria-expanded={showPlaylist} aria-controls="music-playlist"
             className="p-2.5 rounded-xl transition-all hover:bg-white/10 md:hidden"
             style={{ color: showPlaylist ? 'var(--primary)' : 'rgba(255,255,255,0.6)' }}>
             <ListMusic className="w-5 h-5" />
@@ -860,11 +874,11 @@ export default function MusicPage() {
       <MusicClock />
 
       {/* Main content */}
-      <div className="flex-1 flex flex-col md:flex-row items-center justify-center gap-8 px-6 pb-6 z-10">
+      <div className="flex-1 min-h-0 flex flex-col md:flex-row items-center justify-center gap-8 px-6 pb-6 z-10">
         {/* Left: Album art + controls */}
-        <div className="flex flex-col items-center gap-5 w-full max-w-sm md:max-w-md">
+        <div className={`music-transport ${isMobile && showPlaylist ? 'hidden' : 'flex'} flex-col items-center gap-4 w-full max-w-sm md:max-w-md`}>
           {/* CD Disc */}
-          <div className="relative group">
+          <div className="music-art relative group">
             <div className="absolute -inset-8 rounded-full opacity-30 blur-3xl animate-pulse"
               style={{
                 background: `radial-gradient(circle, hsl(${bgHue}, 70%, 60%) 0%, transparent 70%)`,
@@ -875,7 +889,7 @@ export default function MusicPage() {
               style={{ background: `radial-gradient(circle, hsl(${hueOffset(60)}, 70%, 60%) 0%, transparent 60%)` }}
             />
 
-            <div className={`relative w-56 h-56 sm:w-72 sm:h-72 rounded-full shadow-2xl ${playing ? 'cd-spinning' : 'cd-spinning cd-paused'} ${trackTransition ? 'track-changing' : ''}`}
+            <div className={`music-disc relative rounded-full shadow-2xl ${playing ? 'cd-spinning' : 'cd-spinning cd-paused'} ${trackTransition ? 'track-changing' : ''}`}
               style={{
                 boxShadow: `0 0 60px hsl(${bgHue}, 70%, 50%, 0.3), 0 20px 60px rgba(0,0,0,0.5),
                             inset 0 -20px 40px rgba(0,0,0,0.3)`,
@@ -965,11 +979,11 @@ export default function MusicPage() {
 
           {/* Controls */}
           <div className="flex items-center gap-5">
-            <button onClick={prev}
+            <button onClick={prev} aria-label="上一首"
               className="p-2.5 rounded-full transition-all hover:bg-white/10 hover:scale-110 text-white/70 hover:text-white">
               <SkipBack className="w-5 h-5" />
             </button>
-            <button onClick={togglePlay}
+            <button onClick={togglePlay} aria-label={playing ? '暂停' : '播放'}
               className="w-14 h-14 rounded-full flex items-center justify-center transition-all hover:scale-110 active:scale-95 shadow-xl"
               style={{
                 background: `linear-gradient(135deg, hsl(${bgHue}, 80%, 60%), hsl(${hueOffset(60)}, 80%, 60%))`,
@@ -978,7 +992,7 @@ export default function MusicPage() {
               }}>
               {playing ? <Pause className="w-6 h-6" /> : <Play className="w-6 h-6 ml-0.5" />}
             </button>
-            <button onClick={next}
+            <button onClick={next} aria-label="下一首"
               className="p-2.5 rounded-full transition-all hover:bg-white/10 hover:scale-110 text-white/70 hover:text-white">
               <SkipForward className="w-5 h-5" />
             </button>
@@ -990,7 +1004,7 @@ export default function MusicPage() {
               className="text-white/50 hover:text-white/80 transition-colors">
               {volume > 0 ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
             </button>
-            <input type="range" min="0" max="1" step="0.05" value={volume}
+            <input type="range" aria-label="音量" min="0" max="1" step="0.05" value={volume}
               onChange={e => setVolume(parseFloat(e.target.value))}
               className="flex-1 h-1 rounded-full appearance-none cursor-pointer"
               style={{
@@ -1001,7 +1015,7 @@ export default function MusicPage() {
 
           {/* Particle toggle */}
           <button onClick={() => setShowParticles(!showParticles)}
-            className="text-xs px-3 py-1.5 rounded-lg transition-all hover:bg-white/10"
+            className="music-particle-toggle text-xs px-3 py-1.5 rounded-lg transition-all hover:bg-white/10"
             style={{ color: showParticles ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.25)' }}>
             {showParticles ? '粒子已开启' : '粒子已关闭'}
           </button>
@@ -1011,7 +1025,7 @@ export default function MusicPage() {
           </div>
 
         {/* Right: Playlist */}
-        {(!isMobile || showPlaylist) && <div className={`${showPlaylist ? 'flex' : 'hidden'} md:flex flex-col w-full max-w-sm md:max-w-xs lg:max-w-sm transition-all`}>
+        {(!isMobile || showPlaylist) && <div id="music-playlist" className={`${showPlaylist ? 'flex' : 'hidden'} md:flex min-h-0 max-h-full flex-col w-full max-w-sm md:max-w-xs lg:max-w-sm transition-all`}>
           {/* Playlist dropdown */}
           <div className="flex items-center gap-2 mb-3 px-1">
             <ListMusic className="w-4 h-4 text-white/50 flex-shrink-0" />
@@ -1064,7 +1078,7 @@ export default function MusicPage() {
             )}
             <span className="text-xs text-white/30">{currentTracks.length} 首</span>
           </div>
-          <div className="flex-1 overflow-y-auto space-y-1 max-h-[50vh] md:max-h-[60vh] pr-1 music-scrollbar">
+          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain space-y-1 max-h-[50dvh] md:max-h-[60dvh] pr-1 music-scrollbar">
             {currentTracks.slice(playlistPage * 50, (playlistPage + 1) * 50).map((track, offset) => {
               const i = playlistPage * 50 + offset;
               return (
@@ -1162,7 +1176,7 @@ function MusicClock() {
     };
   }, []);
   return (
-    <div className="flex justify-center z-10 px-6">
+    <div className="music-clock flex justify-center z-10 px-6">
       <div className="inline-flex items-baseline gap-0.5 select-none"
         style={{
           fontFamily: '"SF Mono", "JetBrains Mono", "Fira Code", monospace',

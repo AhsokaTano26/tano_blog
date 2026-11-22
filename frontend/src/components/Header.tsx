@@ -11,13 +11,13 @@ const defaultNavLinks = [
   { href: '/', label: '首页' },
   { href: '/gallery', label: '图片' },
   { href: '/music', label: '音乐' },
-  { href: '/archive', label: '归档' },
+  { href: '/archive', label: '时光' },
   { href: '/links', label: '友链' },
   { href: '/about', label: '关于' },
 ];
 
 export function Header() {
-  const { theme, hue, setTheme, setHue } = useTheme();
+  const { theme, hue, toggleTheme, setHue } = useTheme();
   const pathname = usePathname();
   const [panel, setPanel] = useState<'menu' | 'hue' | null>(null);
   const [navLinks, setNavLinks] = useState(defaultNavLinks);
@@ -104,7 +104,7 @@ export function Header() {
               <HueControl id="desktop-header-hue" hue={hue} onChange={setHue} />
             </div>}
           </div>
-          <button type="button" onClick={() => setTheme(themeIsDark ? 'light' : 'dark')}
+          <button type="button" onClick={toggleTheme}
             className="site-header-icon" aria-label="切换主题" title={themeIsDark ? '切换到日间模式' : '切换到夜间模式'}>
             {themeIsDark ? <Sun size={18} /> : <Moon size={18} />}
           </button>

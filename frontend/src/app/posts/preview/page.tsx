@@ -4,6 +4,8 @@ import React, { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import ArticleMarkdown from '@/components/ArticleMarkdown';
+import { ArticleSignature } from '@/components/ArticleSignature';
+import { getPostAuthorName } from '@/lib/post-author';
 import { api } from '@/lib/api';
 import { Loading } from '@/components/Loading';
 
@@ -46,9 +48,10 @@ function PreviewContent() {
       </div>
       <h1 className="text-3xl font-bold mb-4" style={{ color: 'var(--text-primary)' }}>{post.title}</h1>
       <div className="text-sm mb-6" style={{ color: 'var(--text-info)' }}>
-        {post.author?.display_name || post.author?.username}
+        {getPostAuthorName(post)}
       </div>
       <div className="prose max-w-none"><ArticleMarkdown content={post.content} /></div>
+      <ArticleSignature authorName={getPostAuthorName(post)} />
     </div>
   );
 }

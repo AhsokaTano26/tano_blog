@@ -4,13 +4,14 @@ import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import { Eye, Mail, ChevronRight, Calendar, BookOpen, Tag, MessageSquare, Globe, Send, MessageCircle, User, Bookmark } from 'lucide-react';
-import { FooterInjection } from '@/components/HtmlInjection';
 import { Loading } from '@/components/Loading';
 import { TagCloud } from '@/components/TagCloud';
 import { CalendarSidebar } from '@/components/CalendarSidebar';
 import { ScrollReveal } from '@/components/ScrollReveal';
 import { ImageWithFallback } from '@/components/ImageWithFallback';
 import { HOME_PAGE_SIZE, homePostParams, parseHomeQuery, type HomeInitialData, type HomeQuery } from '@/lib/home-data';
+import editorial from './Editorial.module.css';
+import styles from './HomeClient.module.css';
 
 export default function HomeClient({ initialData, initialQuery }: { initialData: HomeInitialData; initialQuery: HomeQuery }) {
   const [posts, setPosts] = useState(initialData.posts?.items || []);
@@ -135,7 +136,7 @@ export default function HomeClient({ initialData, initialQuery }: { initialData:
   }
 
   return (
-    <div className="relative min-h-screen">
+    <div className={`${editorial.page} relative min-h-screen`} style={{ paddingTop: '65vh' }}>
       {/* Banner */}
       <div className="absolute top-0 left-0 right-0 z-10 overflow-hidden" style={{ height: '65vh' }}>
         <div
@@ -155,24 +156,22 @@ export default function HomeClient({ initialData, initialQuery }: { initialData:
       </div>
 
       {/* Content grid */}
-      <div className="relative z-20" style={{ top: 'calc(60vh - 3.5rem)' }}>
-        <div className="max-w-[var(--page-width)] mx-auto px-0 md:px-4">
-          <div className="grid gap-4" style={{ gridTemplateColumns: '17.5rem auto' }}>
+      <div className={styles.content}>
+        <div className={styles.inner}>
+          <div className={styles.grid}>
             {/* Sidebar */}
-            <aside className="col-span-2 row-start-2 row-end-3 mb-4 lg:col-span-1 lg:row-start-1 lg:row-end-2 lg:max-w-[17.5rem]">
-              <div className="flex flex-col gap-4">
+            <aside className={styles.sidebar}>
+              <div>
                 {/* Profile */}
-                <div>
-                <div className="card-base p-3 rounded-2xl">
-                  <Link href="/" className="group relative mx-auto mb-3 mt-1 block max-w-[12rem] overflow-hidden rounded-xl lg:mx-0 lg:mt-0 lg:max-w-none">
+                <div className={styles.profile}>
+                  <Link href="/" className={styles.profileImage}>
                     <img src={profile.profile_avatar || '/aimi.webp'} alt={profile.profile_name || 'Tano'}
                       width={445} height={449} loading="lazy" decoding="async"
-                      className="mx-auto h-full lg:mt-0 lg:w-full rounded-xl object-cover"
+                      className="object-cover"
                       onError={(e: React.SyntheticEvent<HTMLImageElement>) => { e.currentTarget.src = '/aimi.webp'; }} />
                   </Link>
                   <div className="px-2">
                     <div className="mb-1 text-center text-xl font-bold" style={{ color: 'var(--text-primary)' }}>{profile.profile_name || 'Tano'}</div>
-                    <div className="mx-auto mb-2 h-1 w-5 rounded-full" style={{ background: 'var(--primary)' }} />
                     <div className="mb-2.5 text-center" style={{ color: 'var(--text-secondary)' }}>{profile.profile_bio || 'A BanG Dreamer!'}</div>
                     {(() => {
                       let contacts: { type: string; value: string }[] = [];
@@ -192,7 +191,8 @@ export default function HomeClient({ initialData, initialQuery }: { initialData:
                             else if (c.type === 'link') { href = c.value; icon = <Globe className="w-5 h-5" />; }
                             return (
                               <a key={i} href={href} target="_blank" rel="noopener noreferrer"
-                                className="btn-glass h-10 w-10 rounded-lg flex items-center justify-center"
+                                className={`${editorial.action} w-11`}
+                                aria-label={c.type === 'email' ? '邮箱' : c.type}
                                 style={{ color: 'var(--text-secondary)' }}>
                                 {icon}
                               </a>
@@ -203,21 +203,16 @@ export default function HomeClient({ initialData, initialQuery }: { initialData:
                     })()}
                   </div>
                 </div>
-                </div>
 
                 {/* Categories */}
                 <ScrollReveal margin="-40px">
                 {categories.length > 0 && (
-                  <div className="card-base p-4 rounded-2xl">
+                  <div className={editorial.section}>
                     <div className="text-sm font-bold mb-3" style={{ color: 'var(--text-primary)' }}>分类</div>
                     <div className="flex flex-wrap gap-2">
                       {categories.slice(0, 8).map(cat => (
                         <button key={cat.id} onClick={() => handleCategoryFilter(cat.slug)}
-                          className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
-                          style={{
-                            background: activeCategory === cat.slug ? 'var(--primary)' : 'var(--primary-sub)',
-                            color: activeCategory === cat.slug ? '#fff' : 'var(--primary)',
-                          }}>
+                          className={styles.filter} aria-pressed={activeCategory === cat.slug}>
                           {cat.name}
                         </button>
                       ))}
@@ -237,16 +232,12 @@ export default function HomeClient({ initialData, initialQuery }: { initialData:
                 {/* Tags */}
                 <ScrollReveal margin="-60px">
                 {tags.length > 0 && (
-                  <div className="card-base p-4 rounded-2xl">
+                  <div className={editorial.section}>
                     <div className="text-sm font-bold mb-3" style={{ color: 'var(--text-primary)' }}>标签</div>
                     <div className="flex flex-wrap gap-2">
                       {tags.slice(0, 12).map(tag => (
                         <button key={tag.id} onClick={() => handleTagFilter(tag.slug)}
-                          className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
-                          style={{
-                            background: activeTag === tag.slug ? 'var(--primary)' : 'var(--primary-sub)',
-                            color: activeTag === tag.slug ? '#fff' : 'var(--primary)',
-                          }}>
+                          className={styles.filter} aria-pressed={activeTag === tag.slug}>
                           {tag.name}
                         </button>
                       ))}
@@ -266,12 +257,12 @@ export default function HomeClient({ initialData, initialQuery }: { initialData:
                 {/* Series */}
                 <ScrollReveal margin="-80px">
                 {series.length > 0 && (
-                  <div className="card-base p-4 rounded-2xl">
+                  <div className={editorial.section}>
                     <div className="text-sm font-bold mb-3" style={{ color: 'var(--text-primary)' }}>系列</div>
                     <div className="flex flex-col gap-1">
                       {series.slice(0, 5).map(s => (
                         <Link key={s.id} href={`/series/${s.slug}`}
-                          className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all hover:opacity-80"
+                          className="flex items-center gap-2 py-2 text-sm transition-colors hover:text-[var(--primary)]"
                           style={{ color: 'var(--text-secondary)' }}>
                           <Bookmark className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'var(--primary)' }} />
                           <span className="flex-1 line-clamp-1">{s.name}</span>
@@ -301,29 +292,31 @@ export default function HomeClient({ initialData, initialQuery }: { initialData:
             </aside>
 
             {/* Main content */}
-            <main className="col-span-2 lg:col-span-1">
-              <div className="flex flex-col gap-4">
+            <main className={styles.feed}>
+              <div className={styles.feedHeading}>
+                <h1>文章</h1>
+                <p>共 {total} 篇</p>
+              </div>
+              <div>
                 {/* Active filter indicator */}
                 {(activeCategory || activeTag) && (
-                  <div className="card-base rounded-2xl px-5 py-3 flex items-center justify-between">
+                  <div className={styles.activeFilter}>
                     <div className="flex items-center gap-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
                       <span>筛选：</span>
                       {activeCategory && (
-                        <span className="px-2.5 py-1 rounded-lg text-xs font-medium"
-                          style={{ background: 'var(--primary-sub)', color: 'var(--primary)' }}>
+                        <span className="text-xs font-medium" style={{ color: 'var(--primary)' }}>
                           {categories.find(c => c.slug === activeCategory)?.name || activeCategory}
                         </span>
                       )}
                       {activeTag && (
-                        <span className="px-2.5 py-1 rounded-lg text-xs font-medium"
-                          style={{ background: 'var(--primary-sub)', color: 'var(--primary)' }}>
+                        <span className="text-xs font-medium" style={{ color: 'var(--primary)' }}>
                           {tags.find(t => t.slug === activeTag)?.name || activeTag}
                         </span>
                       )}
                       <span className="text-xs" style={{ color: 'var(--text-info)' }}>（{total} 篇文章）</span>
                     </div>
                     <button onClick={() => changeQuery({ page: 1, category: '', tag: '' })}
-                      className="text-xs px-3 py-1.5 rounded-lg btn-glass"
+                      className={editorial.action}
                       style={{ color: 'var(--text-secondary)' }}>
                       清除筛选
                     </button>
@@ -332,14 +325,14 @@ export default function HomeClient({ initialData, initialQuery }: { initialData:
                 {loading ? (
                   <Loading />
                 ) : error ? (
-                  <div className="text-center py-20 card-base rounded-2xl">
+                  <div className={styles.empty}>
                     <p className="mb-4" style={{ color: 'var(--text-secondary)' }}>{error}</p>
-                    <button onClick={() => setRetry(value => value + 1)} className="btn-glass px-5 py-2 rounded-xl text-sm" style={{ color: 'var(--primary)' }}>
+                    <button onClick={() => setRetry(value => value + 1)} className={editorial.action} style={{ color: 'var(--primary)' }}>
                       重试
                     </button>
                   </div>
                 ) : posts.length === 0 ? (
-                  <div className="text-center py-20 card-base rounded-2xl" style={{ color: 'var(--text-secondary)' }}>暂无文章</div>
+                  <div className={styles.empty}>暂无文章</div>
                 ) : (
                   <>
                     {posts.map((post, index) => {
@@ -349,19 +342,17 @@ export default function HomeClient({ initialData, initialQuery }: { initialData:
                         className={`stagger-${(index % 8) + 1}`}>
                       <Link
                         href={`/posts/${post.slug}`}
-                        className="card-base post-card rounded-2xl overflow-hidden block">
-                        <div className="flex flex-col-reverse md:flex-row">
+                        className={`${styles.post} ${post.cover_image ? styles.withCover : ''}`}>
                           {/* Content */}
-                          <div className="relative pb-6 pl-6 pr-6 pt-6 md:pl-9 md:pr-[calc(28%+1.5rem)] md:pt-7">
-                            <div className="group mb-3 block w-full">
-                              <h2 className="text-2xl font-bold transition-colors group-hover:text-[var(--primary)]"
-                                style={{ color: 'var(--text-primary)' }}>
+                          <div className={styles.postContent}>
+                            <div>
+                              <h2 className={styles.postTitle}>
                                 {post.title}
                               </h2>
                             </div>
 
                             {/* Metadata */}
-                            <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2" style={{ color: 'var(--text-secondary)' }}>
+                            <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-2 [&_.text-sm]:text-xs" style={{ color: 'var(--text-secondary)' }}>
                               {post.published_at && (
                                 <div className="flex items-center gap-1.5 text-sm">
                                   <Calendar className="w-4 h-4" style={{ color: 'var(--text-info)' }} />
@@ -415,14 +406,14 @@ export default function HomeClient({ initialData, initialQuery }: { initialData:
 
                             {/* Description */}
                             {post.excerpt && (
-                              <p className="mb-3.5 pr-4 text-sm leading-relaxed line-clamp-2"
+                              <p className="mb-3.5 text-sm leading-relaxed line-clamp-2"
                                 style={{ color: 'var(--text-secondary)' }}>
                                 {post.excerpt}
                               </p>
                             )}
 
                             {/* View & comment counts */}
-                            <div className="flex gap-4 text-sm" style={{ color: 'var(--text-info)' }}>
+                            <div className="flex gap-4 text-xs" style={{ color: 'var(--text-info)' }}>
                               <div className="flex items-center gap-1">
                                 <Eye className="w-4 h-4" />
                                 {post.view_count || 0}
@@ -437,52 +428,42 @@ export default function HomeClient({ initialData, initialQuery }: { initialData:
 
                           {/* Cover image */}
                           {post.cover_image ? (
-                            <div className="group relative mx-4 -mb-2 mt-4 max-h-[20vh] overflow-hidden rounded-xl md:absolute md:bottom-3 md:right-3 md:top-3 md:mx-0 md:mb-0 md:mt-0 md:max-h-none md:w-[28%]">
-                              <div className="pointer-events-none absolute inset-0 z-10 transition group-hover:bg-black/30" />
-                              <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
-                                <ChevronRight className="w-12 h-12 text-white opacity-0 transition-all group-hover:scale-100 group-hover:opacity-100" />
-                              </div>
+                            <div className={styles.cover}>
+                              <span className={styles.coverArrow} aria-hidden="true"><ChevronRight className="w-12 h-12" /></span>
                               <ImageWithFallback src={post.cover_thumbnail_url || post.cover_image} fallbackSrc={post.cover_image} alt={post.title} loading={index === 0 ? 'eager' : 'lazy'}
                                 className="h-full w-full object-cover" />
                             </div>
                           ) : (
-                            <div className="btn-glass absolute bottom-3 right-3 top-3 hidden w-[3.25rem] items-center justify-center rounded-xl md:flex">
-                              <ChevronRight className="mx-auto w-10 h-10 transition" style={{ color: 'var(--primary)' }} />
+                            <div className={styles.postArrow}>
+                              <ChevronRight className="w-5 h-5" />
                             </div>
                           )}
-                        </div>
                       </Link>
                       </CardWrapper>
                     ); })}
 
                     {/* Pagination */}
                     {totalPages > 1 && (
-                      <div className="mx-auto flex flex-row justify-center gap-3 py-4">
+                      <nav className={styles.pagination} aria-label="文章分页">
                         <button onClick={() => changePage(page - 1)} disabled={page === 1}
-                          className="btn-glass h-11 w-11 overflow-hidden rounded-lg flex items-center justify-center disabled:opacity-40"
-                          style={{ color: 'var(--text-primary)' }}>
+                          aria-label="上一页">
                           <ChevronRight className="w-5 h-5 rotate-180" />
                         </button>
                         {getPageNumbers().map((p, i) =>
                           p === '...' ? (
-                            <span key={`dots-${i}`} className="h-11 w-11 flex items-center justify-center text-sm" style={{ color: 'var(--text-info)' }}>...</span>
+                            <span key={`dots-${i}`}>...</span>
                           ) : (
                             <button key={p} onClick={() => changePage(p)}
-                              className="h-11 w-11 overflow-hidden rounded-lg text-sm font-bold transition-all"
-                              style={{
-                                background: p === page ? 'var(--primary)' : 'var(--card-bg)',
-                                color: p === page ? '#fff' : 'var(--text-primary)',
-                              }}>
+                              aria-label={`第 ${p} 页`} aria-current={p === page ? 'page' : undefined}>
                               {p}
                             </button>
                           )
                         )}
                         <button onClick={() => changePage(Math.min(totalPages, page + 1))} disabled={page === totalPages}
-                          className="btn-glass h-11 w-11 overflow-hidden rounded-lg flex items-center justify-center disabled:opacity-40"
-                          style={{ color: 'var(--text-primary)' }}>
+                          aria-label="下一页">
                           <ChevronRight className="w-5 h-5" />
                         </button>
-                      </div>
+                      </nav>
                     )}
                   </>
                 )}
@@ -490,14 +471,6 @@ export default function HomeClient({ initialData, initialQuery }: { initialData:
             </main>
           </div>
 
-          {/* Footer */}
-          <div className="my-8 border-t" style={{ borderColor: 'var(--glass-border)' }} />
-          <div className="mb-12 text-center text-sm" style={{ color: 'var(--text-secondary)' }}>
-            &copy; {new Date().getFullYear()} 朝花夕拾录. All Rights Reserved. /
-            <a className="font-medium ml-1 transition-colors hover:underline" style={{ color: 'var(--primary)' }} href="/rss.xml">RSS</a> /
-            <a className="font-medium ml-1 transition-colors hover:underline" style={{ color: 'var(--primary)' }} href="/sitemap.xml">Sitemap</a>
-          </div>
-          <FooterInjection initialConfig={profile} />
         </div>
       </div>
     </div>

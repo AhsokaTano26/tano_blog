@@ -1,0 +1,29 @@
+.page { max-width: 768px; margin-inline: auto; padding: 40px 24px 64px; }
+.hero { display: grid; grid-template-columns: 112px minmax(0, 1fr); align-items: center; gap: 28px; padding: 8px 0 32px; }
+.avatar { width: 112px; height: 112px; overflow: hidden; border-radius: 50%; }
+.avatar img, .avatar > span { width: 100%; height: 100%; object-fit: cover; }
+.eyebrow { margin-bottom: 10px; color: var(--text-info); font-size: 12px; letter-spacing: .1em; }
+.hero h1 { color: var(--text-primary); font-family: 'Noto Serif SC', 'Songti SC', 'STSong', serif; font-size: 38px; font-weight: 500; line-height: 1.4; }
+.bio { margin-top: 10px; color: var(--text-secondary); font-size: 14px; line-height: 1.9; }
+.stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-block: 1px solid var(--border-color); }
+.stats > div { display: flex; align-items: baseline; gap: 14px; padding-block: 20px; }
+.stats > div + div { padding-left: 28px; border-left: 1px solid var(--border-color); }
+.stats dd { order: -1; color: var(--text-primary); font-family: Georgia, serif; font-size: 32px; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.stats dt { color: var(--text-secondary); font-size: 12px; }
+.contacts { display: flex; flex-wrap: wrap; gap: 8px 28px; padding-block: 12px; border-bottom: 1px solid var(--border-color); }
+.body { padding-block: 32px; }
+.body :global(h1), .body :global(h2) { padding-bottom: 12px; border-bottom: 1px solid var(--border-color); color: var(--text-primary); font-family: 'Noto Serif SC', 'Songti SC', 'STSong', serif; font-weight: 500; }
+.body :global(p) { line-height: 1.95; }
+.body :global(img) { max-width: 100%; max-height: 400px; border-radius: 4px; }
+.body :global(blockquote) { padding-left: 20px; border-left: 1px solid var(--primary); color: var(--text-secondary); font-style: normal; }
+.body :global(pre) { overflow-x: auto; padding: 20px 0; border-block: 1px solid var(--border-color); border-radius: 0; background: transparent; color: var(--text-primary); }
+.body :global(hr) { border-color: var(--border-color); }
+.empty { padding-block: 48px; color: var(--text-info); font-size: 13px; line-height: 1.9; }
+@media (max-width: 639px) {
+  .page { padding: 28px 20px 48px; }
+  .hero { grid-template-columns: 80px minmax(0, 1fr); gap: 20px; padding-bottom: 28px; }
+  .avatar { width: 80px; height: 80px; }
+  .hero h1 { font-size: 30px; }
+  .stats > div + div { padding-left: 20px; }
+  .stats dd { font-size: 28px; }
+}

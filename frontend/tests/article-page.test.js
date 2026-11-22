@@ -11,6 +11,27 @@ const { api } = require('../src/lib/api.ts');
 const article = { id: 'post', slug: 'post', title: 'Server article', content: '# Visible body\n\nInitial text.', status: 'published', series: [{ slug: 'series', name: 'Series' }] };
 const comment = (id, children = [], total = children.length) => ({ id, nickname: `Author ${id}`, content: `Comment ${id}`, created_at: '2026-10-01T12:00:00Z', children, children_total: total, reactions: { '👍': 1 }, user_emojis: [] });
 
+test('article signature, copyright and metadata share the article author with profile and site fallbacks', async t => {
+  prepare(t);
+  for (const [fields, expected] of [
+    [{ author_name: ' Innei ', author: { display_name: 'Tano' } }, 'Innei'],
+    [{ author_name: ' ', author: { display_name: '林间来信' } }, '林间来信'],
+    [{ author: { username: 'guest-writer' } }, 'guest-writer'],
+    [{}, 'Tano'],
+  ]) {
+    const element = await mount(t, { slug: 'post', initialData: { post: { ...article, ...fields } } });
+    const signature = element.querySelector('[data-article-signature]');
+    assert.equal(signature !== null, true);
+    assert.equal(signature.querySelector('[data-signature-label]').textContent.trim(), expected);
+    assert.equal(signature.closest('.prose') === null, true, 'signature is outside the article outline and reading progress');
+    const shareButton = element.querySelector('button[aria-label="分享到微博"]');
+    assert.equal(Boolean(signature.compareDocumentPosition(shareButton) & 4), true, 'signature precedes the share section');
+    const copyright = [...element.querySelectorAll('article a')].find(link => link.textContent.trim() === 'CC BY-NC-SA 4.0')?.parentElement?.parentElement;
+    assert.equal(copyright?.textContent.includes(expected), true);
+    assert.equal(JSON.parse(element.querySelector('script[type="application/ld+json"]').textContent).author.name, expected);
+  }
+});
+
 function prepare(t) {
   t.mock.method(api, 'getMe', async () => { throw new Error('anonymous'); });
   t.mock.method(api, 'getPublicConfig', async () => ({ config: {} }));

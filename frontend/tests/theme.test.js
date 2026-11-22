@@ -8,9 +8,9 @@ const { createRoot } = require('react-dom/client');
 const { ThemeProvider, useTheme } = require('../src/lib/theme.tsx');
 
 function Controls() {
-  const { theme: current, setTheme } = useTheme();
+  const { theme: current, setTheme, toggleTheme } = useTheme();
   return React.createElement('div', null, React.createElement('output', null, current), ...['light', 'dark', 'system'].map(theme =>
-    React.createElement('button', { key: theme, onClick: () => setTheme(theme) }, theme)));
+    React.createElement('button', { key: theme, onClick: () => setTheme(theme) }, theme)), React.createElement('button', { onClick: toggleTheme }, 'toggle'));
 }
 
 async function mount(t, { reduced = false, systemDark = false } = {}) {
@@ -90,6 +90,41 @@ test('an older theme transition cannot clear a newer transition', async t => {
   assert.equal(document.documentElement.classList.contains('dark'), true);
   assert.equal(document.documentElement.classList.contains('theme-transitioning'), true);
   await transitions[1].finish();
+  assert.equal(document.documentElement.classList.contains('theme-transitioning'), false);
+});
+
+test('rapid toggles follow the latest click before the first snapshot has updated React', async t => {
+  const transitions = viewTransitions(t);
+  const view = await mount(t);
+  await view.select('toggle');
+  assert.equal(transitions.length, 1);
+  assert.equal(view.current(), 'dark');
+  await view.select('toggle');
+  assert.equal(transitions[0].skipped, true);
+  await transitions[0].update();
+  await transitions[0].finish();
+  assert.equal(view.current(), 'dark');
+  assert.equal(document.documentElement.classList.contains('dark'), true);
+  assert.equal(document.documentElement.classList.contains('theme-transitioning'), false);
+  assert.equal(localStorage.getItem('theme'), 'dark');
+  await view.select('toggle');
+  await transitions[1].update();
+  assert.equal(view.current(), 'light');
+  await transitions[1].finish();
+});
+
+test('hidden tabs switch immediately without starting a page reveal', async t => {
+  const transitions = viewTransitions(t);
+  const descriptor = Object.getOwnPropertyDescriptor(document, 'visibilityState');
+  Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
+  t.after(() => {
+    if (descriptor) Object.defineProperty(document, 'visibilityState', descriptor);
+    else delete document.visibilityState;
+  });
+  const view = await mount(t);
+  await view.select('light');
+  assert.equal(transitions.length, 0);
+  assert.equal(view.current(), 'light');
   assert.equal(document.documentElement.classList.contains('theme-transitioning'), false);
 });
 

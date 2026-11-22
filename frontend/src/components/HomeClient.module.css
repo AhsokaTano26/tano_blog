@@ -1,0 +1,54 @@
+.content { position: relative; z-index: 20; background: var(--color-bg); }
+.inner { max-width: var(--page-width); margin-inline: auto; padding: 40px 24px 64px; }
+.grid { display: grid; grid-template-columns: 240px minmax(0, 1fr); align-items: start; gap: 40px; }
+.sidebar { min-width: 0; padding-right: 28px; border-right: 1px solid var(--border-color); }
+.profile { padding-bottom: 28px; }
+.profileImage { display: block; max-width: 192px; margin: 0 auto 20px; overflow: hidden; border-radius: 4px; }
+.profileImage img { display: block; width: 100%; height: auto; object-fit: cover; }
+.filter { min-height: 36px; padding: 4px 2px; border-bottom: 1px solid transparent; color: var(--text-secondary); font-size: 12px; transition: color 160ms ease, border-color 160ms ease; }
+.filter:hover, .filter[aria-pressed='true'] { color: var(--primary); border-bottom-color: var(--primary); }
+.feed { min-width: 0; }
+.feedHeading { display: flex; align-items: baseline; justify-content: space-between; gap: 20px; padding-bottom: 20px; border-bottom: 1px solid var(--border-color); }
+.feedHeading h1 { color: var(--text-primary); font-family: 'Noto Serif SC', 'Songti SC', 'STSong', serif; font-size: 26px; font-weight: 500; }
+.feedHeading p { color: var(--text-info); font-size: 12px; }
+.activeFilter { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding-block: 12px; border-bottom: 1px solid var(--border-color); }
+.post { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) 24px; align-items: center; gap: 24px; padding-block: 28px; border-bottom: 1px solid var(--border-color); transition: transform 200ms ease; }
+.post::before { content: ''; position: absolute; left: -20px; top: 32px; height: 20px; width: 4px; border-radius: 6px; background: var(--primary); transition: height 300ms ease, top 300ms ease, border-radius 300ms ease; }
+.post:hover { transform: translateY(-2px); }
+.post:hover::before, .post:focus-visible::before { top: 0; height: 100%; border-radius: 0; }
+.withCover { grid-template-columns: minmax(0, 1fr) 180px; }
+.postContent { min-width: 0; }
+.postTitle { margin-bottom: 12px; color: var(--text-primary); font-size: 23px; font-weight: 600; line-height: 1.5; transition: color 160ms ease; }
+.post:hover .postTitle { color: var(--primary); }
+.cover { position: relative; display: block; width: 180px; aspect-ratio: 4 / 3; overflow: hidden; border-radius: 4px; }
+.cover::after { content: ''; position: absolute; inset: 0; background: rgb(0 0 0 / 30%); opacity: 0; pointer-events: none; transition: opacity 200ms ease; }
+.coverArrow { position: absolute; z-index: 1; inset: 0; display: grid; place-items: center; color: white; opacity: 0; transform: scale(.9); pointer-events: none; transition: opacity 200ms ease, transform 200ms ease; }
+.post:hover .cover::after, .post:hover .coverArrow, .post:focus-visible .cover::after, .post:focus-visible .coverArrow { opacity: 1; transform: none; }
+.cover img, .cover > span { width: 100%; height: 100%; object-fit: cover; }
+.postArrow { color: var(--text-info); transition: color 160ms ease, transform 160ms ease; }
+.post:hover .postArrow { transform: translateX(3px); color: var(--primary); }
+.pagination { display: flex; justify-content: center; flex-wrap: wrap; gap: 4px; padding-top: 28px; }
+.pagination button, .pagination > span { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-bottom: 1px solid transparent; color: var(--text-secondary); font-size: 13px; }
+.pagination button:hover, .pagination button[aria-current='page'] { color: var(--primary); border-bottom-color: var(--primary); }
+.pagination button:disabled { opacity: .4; cursor: default; }
+.empty { padding-block: 64px; border-bottom: 1px solid var(--border-color); text-align: center; color: var(--text-secondary); }
+@media (max-width: 1023px) {
+  .grid { grid-template-columns: minmax(0, 1fr); gap: 48px; }
+  .feed { grid-row: 1; }
+  .sidebar { padding-right: 0; border-right: 0; }
+  .sidebar > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 32px; align-items: start; }
+  .profile { grid-column: 1 / -1; border-top: 1px solid var(--border-color); padding-top: 28px; }
+  .profileImage { max-width: 144px; }
+}
+@media (max-width: 639px) {
+  .inner { padding: 28px 20px 48px; }
+  .sidebar > div { display: block; }
+  .post { gap: 16px; padding-block: 24px; }
+  .post::before { left: -12px; top: 28px; }
+  .post:hover::before, .post:focus-visible::before { top: 0; }
+  .withCover { display: flex; flex-direction: column-reverse; align-items: stretch; }
+  .cover { width: 100%; aspect-ratio: 16 / 9; max-height: 200px; }
+  .postTitle { font-size: 21px; }
+  .feedHeading h1 { font-size: 24px; }
+}
+@media (prefers-reduced-motion: reduce) { .filter, .postTitle, .postArrow, .post, .post::before, .cover::after, .coverArrow { transition: none; } .post:hover { transform: none; } }

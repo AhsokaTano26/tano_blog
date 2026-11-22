@@ -8,7 +8,7 @@ export interface ArchiveGroup {
   year: number;
   month: number;
   count: number;
-  posts: { id: string; slug: string; title: string; published_at: string }[];
+  posts: { id: string; slug: string; title: string; published_at: string; excerpt?: string }[];
 }
 
 export function mergeArchiveGroups(previous: ArchiveGroup[], incoming: ArchiveGroup[]): ArchiveGroup[] {

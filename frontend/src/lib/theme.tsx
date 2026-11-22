@@ -15,6 +15,7 @@ interface ThemeContextType {
   theme: Theme;
   hue: number;
   setTheme: (t: Theme) => void;
+  toggleTheme: () => void;
   setHue: (h: number) => void;
 }
 
@@ -22,6 +23,7 @@ const ThemeContext = createContext<ThemeContextType>({
   theme: 'dark',
   hue: 225,
   setTheme: () => {},
+  toggleTheme: () => {},
   setHue: () => {},
 });
 
@@ -123,10 +125,14 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       applyImmediately();
     }
   }, [applyTheme]);
+  const toggleTheme = useCallback(() => {
+    // The requested theme can be newer than React while a snapshot is pending.
+    setTheme(resolveTheme(requestedThemeRef.current) === 'dark' ? 'light' : 'dark');
+  }, [setTheme]);
   const setHue = useCallback((h: number) => setHueState(h), []);
 
   return (
-    <ThemeContext.Provider value={{ theme, hue, setTheme, setHue }}>
+    <ThemeContext.Provider value={{ theme, hue, setTheme, toggleTheme, setHue }}>
       {children}
     </ThemeContext.Provider>
   );

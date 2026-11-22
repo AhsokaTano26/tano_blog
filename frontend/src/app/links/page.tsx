@@ -1,28 +1,48 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import * as Dialog from '@radix-ui/react-dialog';
 import { api } from '@/lib/api';
 import type { FriendLinkItem } from '@/lib/admin-types';
 import { useLatestRequest, requestError } from '@/lib/request-feedback';
 import { RequestFeedback } from '@/components/RequestFeedback';
 import { Turnstile } from '@/components/Turnstile';
-import { ImageWithFallback } from '@/components/ImageWithFallback';
-import { ExternalLink, Link as LinkIcon, Send, CheckCircle } from 'lucide-react';
+import { FriendAvatar, FriendDirectory, shuffleFriends } from '@/components/FriendDirectory';
+import { Check, Copy, Send, CheckCircle, X } from 'lucide-react';
 import { Loading } from '@/components/Loading';
-import { ScrollReveal } from '@/components/ScrollReveal';
+import styles from './page.module.css';
 
 export default function LinksPage() {
   const { data, loading, error, reload } = useLatestRequest(
-    useCallback(() => api.getLinks(), []), '友链加载失败，请重试',
+    useCallback(async () => {
+      const result = await api.getLinks();
+      return { ...result, items: shuffleFriends(result.items || []) };
+    }, []), '友链加载失败，请重试',
   );
   const links: FriendLinkItem[] = data?.items || [];
   const submittingRef = useRef(false);
+  const [site, setSite] = useState({ name: '朝花夕拾录', description: '写代码，也记录日常。', url: '', avatar: '/aimi.webp' });
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
 
   // Form state
+  const [applicationOpen, setApplicationOpen] = useState(false);
+  const applicationTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const nameInputRef = useRef<HTMLInputElement | null>(null);
+  const doneButtonRef = useRef<HTMLButtonElement | null>(null);
   const [form, setForm] = useState({ name: '', url: '', description: '', avatar: '', email: '' });
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [formError, setFormError] = useState('');
+
+  useEffect(() => {
+    if (applicationOpen && submitted) doneButtonRef.current?.focus();
+  }, [applicationOpen, submitted]);
+
+  function openApplication(event: React.MouseEvent<HTMLButtonElement>) {
+    applicationTriggerRef.current = event.currentTarget;
+    setSubmitted(false);
+    setApplicationOpen(true);
+  }
 
   // Turnstile
   const [turnstileEnabled, setTurnstileEnabled] = useState(false);
@@ -31,12 +51,24 @@ export default function LinksPage() {
   const [captchaAttempt, setCaptchaAttempt] = useState(0);
 
   useEffect(() => {
+    let disposed = false;
     api.getPublicConfig().then(res => {
+      if (disposed) return;
+      setSite({
+        name: res.config?.site_title || '朝花夕拾录',
+        description: res.config?.site_description || res.config?.profile_bio || '写代码，也记录日常。',
+        url: res.config?.site_url || window.location.origin,
+        avatar: res.config?.profile_avatar || '/aimi.webp',
+      });
       if (res.config?.turnstile_enabled === 'true' && res.config?.turnstile_sitekey && (res.config?.turnstile_modules || 'comment,link').split(',').map(s => s.trim()).includes('link')) {
         setTurnstileEnabled(true);
         setTurnstileSitekey(res.config.turnstile_sitekey);
       }
-    }).catch(() => { /* Optional display configuration; the server enforces captcha policy. */ });
+    }).catch(() => {
+      if (!disposed) setSite(current => ({ ...current, url: window.location.origin }));
+      // Optional display configuration; the server enforces captcha policy.
+    });
+    return () => { disposed = true; };
   }, []);
 
   function handleSubmit(e: React.FormEvent) {
@@ -61,135 +93,137 @@ export default function LinksPage() {
   }
 
 
-  return (
-    <div className="max-w-4xl mx-auto px-4 py-8">
-      <ScrollReveal>
-      <div className="glass-card rounded-2xl p-6 mb-8">
-        <div className="flex items-center gap-3 mb-2">
-          <LinkIcon className="w-5 h-5" style={{ color: 'var(--primary)' }} />
-          <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>友情链接</h1>
-        </div>
-        <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-          欢迎交换友链！如需申请，请先添加本站链接，然后填写下方表单。
-        </p>
-      </div>
-      </ScrollReveal>
+  async function copySite() {
+    try {
+      const avatar = new URL(site.avatar, site.url || window.location.origin).href;
+      await navigator.clipboard.writeText(`名称：${site.name}\n网址：${site.url}\n简介：${site.description}\n头像：${avatar}`);
+      setCopyState('copied');
+    } catch { setCopyState('failed'); }
+  }
 
-      {/* Link list */}
-      {loading ? <Loading /> : error ? (
+  return (
+    <div className={styles.page}>
+      <header className={styles.header}>
+        <div>
+          <p className={styles.eyebrow}>FRIENDS · 友链</p>
+          <h1>朋友们</h1>
+          <p className={styles.intro}>在各自的小天地里，记录生活，也彼此照亮。</p>
+        </div>
+        <div className={styles.headerAside}>
+          {!loading && !error && <p className={styles.count}><span>{links.length}</span> 位朋友</p>}
+          <button type="button" onClick={openApplication} aria-haspopup="dialog">来交换友链 <Send size={13} aria-hidden="true" /></button>
+        </div>
+      </header>
+
+      {loading ? <div className={styles.loading} aria-label="正在加载朋友们"><Loading /></div> : error ? (
         <RequestFeedback error={error} onRetry={reload} />
       ) : links.length === 0 ? (
-        <div className="text-center py-12">
-          <LinkIcon className="w-10 h-10 mx-auto mb-2" style={{ color: 'var(--text-info)' }} />
-          <p style={{ color: 'var(--text-secondary)' }}>暂无友链</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-12">
-          {links.map((link, index) => (
-            <ScrollReveal key={link.id} className={`stagger-${(index % 4) + 1}`}>
-              <a href={link.url} target="_blank" rel="noopener noreferrer"
-                className="card-base group rounded-xl p-4 flex items-center gap-4 transition-all hover:scale-[1.02]"
-                style={{ color: 'var(--text-primary)' }}>
-                <div className="w-14 h-14 rounded-full overflow-hidden flex-shrink-0"
-                  style={{ background: 'var(--primary-sub)' }}>
-                  {link.avatar ? (
-                    <ImageWithFallback src={link.avatar} alt={link.name} className="w-full h-full object-cover" />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-lg font-bold"
-                      style={{ color: 'var(--primary)' }}>
-                      {link.name.charAt(0)}
-                    </div>
-                  )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="font-semibold flex items-center gap-1.5 transition-colors group-hover:text-[var(--primary)]">
-                    {link.name}
-                    <ExternalLink className="w-3.5 h-3.5 opacity-0 transition-opacity group-hover:opacity-100" />
-                  </div>
-                  {link.description && (
-                    <div className="text-xs mt-0.5 line-clamp-2" style={{ color: 'var(--text-info)' }}>
-                      {link.description}
-                    </div>
-                  )}
-                </div>
-              </a>
-            </ScrollReveal>
-          ))}
-        </div>
-      )}
+        <div className={styles.empty}><p>这里还在等第一位朋友。</p><button type="button" onClick={openApplication} aria-haspopup="dialog">留下你的网站，来打个招呼。</button></div>
+      ) : <FriendDirectory links={links} />}
 
-      {/* Apply form */}
-      <ScrollReveal>
-      <div className="glass-card rounded-2xl p-6">
-        <h2 className="text-lg font-bold mb-4 flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
-          <Send className="w-4 h-5" style={{ color: 'var(--primary)' }} />
-          申请友链
-        </h2>
+      <section id="friend-application" className={styles.application} aria-labelledby="friend-application-title">
+        <div className={styles.applicationInfo}>
+          <p className={styles.eyebrow}>APPLICATION · 友链申请</p>
+          <h2 id="friend-application-title">把你的坐标放进来</h2>
+          <p className={styles.applicationIntro}>欢迎交换友链。先把本站添加到你的网站，再点击下方按钮，留下你的信息。</p>
+          <ul className={styles.guidelines}>
+            <li>分享自己的生活、作品或想法，让我们慢慢认识你。</li>
+            <li>请提供能够正常访问的网站地址与头像链接。</li>
+            <li>申请审核通过后，你的网站会出现在上方的朋友名单中。</li>
+          </ul>
 
-        {submitted ? (
-          <div className="text-center py-8">
-            <CheckCircle className="w-12 h-12 mx-auto mb-3" style={{ color: 'var(--primary)' }} />
-            <p className="font-medium" style={{ color: 'var(--text-primary)' }}>申请已提交！</p>
-            <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>请等待管理员审核，审核通过后将会显示在列表中。</p>
+          <button type="button" className={styles.applyButton} onClick={openApplication} aria-haspopup="dialog">
+            申请友链 <Send size={15} aria-hidden="true" />
+          </button>
+        </div>
+
+        <div className={styles.siteInfo}>
+          <div className={styles.siteHeading}>
+            <FriendAvatar link={{ name: site.name, avatar: site.avatar }} />
+            <div><h3>{site.name}</h3><p>{site.description}</p></div>
           </div>
-        ) : (
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <dl>
+            <div><dt>站点名称</dt><dd>{site.name}</dd></div>
+            <div><dt>站点地址</dt><dd><a href={site.url || '/'}>{site.url || '—'}</a></dd></div>
+            <div><dt>站点简介</dt><dd>{site.description}</dd></div>
+            <div><dt>头像链接</dt><dd><a href={site.avatar} target="_blank" rel="noopener noreferrer">查看头像 <span aria-hidden="true">↗</span></a></dd></div>
+          </dl>
+          <button type="button" className={styles.copyButton} onClick={copySite}>
+            {copyState === 'copied' ? <Check size={14} aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />}
+            {copyState === 'copied' ? '已复制本站信息' : '复制本站信息'}
+          </button>
+          <p role="status" className={styles.copyFeedback}>{copyState === 'failed' ? '复制未成功，请从上方选取站点信息。' : ''}</p>
+        </div>
+      </section>
+
+      <Dialog.Root open={applicationOpen} onOpenChange={setApplicationOpen}>
+        <Dialog.Portal>
+          <Dialog.Overlay className={styles.dialogOverlay} />
+          <Dialog.Content className={styles.dialog} onOpenAutoFocus={event => {
+            event.preventDefault();
+            nameInputRef.current?.focus({ preventScroll: true });
+          }} onCloseAutoFocus={event => {
+            event.preventDefault();
+            applicationTriggerRef.current?.focus({ preventScroll: true });
+          }}>
+            <div className={styles.dialogHeader}>
               <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>网站名称 *</label>
-                <input type="text" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                  placeholder="你的网站名称" maxLength={100}
-                  className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
-                  style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
+                <p className={styles.eyebrow}>LEAVE YOUR COORDINATES</p>
+                <Dialog.Title className={styles.dialogTitle}>申请友链</Dialog.Title>
+                <Dialog.Description className={styles.formHint}>很高兴在这里遇见你。标有 * 的项目为必填。</Dialog.Description>
               </div>
-              <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>网站地址 *</label>
-                <input type="url" value={form.url} onChange={e => setForm(f => ({ ...f, url: e.target.value }))}
-                  placeholder="https://example.com" maxLength={500}
-                  className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
-                  style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
-              </div>
-              <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>描述</label>
-                <input type="text" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-                  placeholder="一句话描述你的网站" maxLength={500}
-                  className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
-                  style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
-              </div>
-              <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>头像链接</label>
-                <input type="url" value={form.avatar} onChange={e => setForm(f => ({ ...f, avatar: e.target.value }))}
-                  placeholder="https://example.com/avatar.png"
-                  className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
-                  style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
-              </div>
-              <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>邮箱</label>
-                <input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
-                  placeholder="用于联系（选填）"
-                  className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
-                  style={{ border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' }} />
-              </div>
+              <Dialog.Close asChild>
+                <button type="button" className={styles.closeButton} aria-label="关闭申请弹窗"><X size={20} aria-hidden="true" /></button>
+              </Dialog.Close>
             </div>
-
-            {formError && (
-              <p className="text-sm" style={{ color: 'var(--danger)' }}>{formError}</p>
+            {submitted ? (
+              <>
+                <div className={styles.success} role="status">
+                  <CheckCircle size={32} aria-hidden="true" />
+                  <h3>申请已提交</h3>
+                  <p>请等待管理员审核，审核通过后就能在这里见到你了。</p>
+                </div>
+                <div className={styles.dialogActions}>
+                  <Dialog.Close asChild><button ref={doneButtonRef} type="button" className={styles.submit}>完成</button></Dialog.Close>
+                </div>
+              </>
+            ) : (
+              <form onSubmit={handleSubmit} className={styles.form} aria-describedby={formError ? 'friend-form-error' : undefined}>
+                <div className={styles.formBody}>
+                  <div className={styles.field}>
+                    <label htmlFor="friend-name">网站名称 <span>*</span></label>
+                    <input ref={nameInputRef} id="friend-name" name="name" type="text" autoComplete="organization" required value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="你的网站叫什么？" maxLength={100} />
+                  </div>
+                  <div className={styles.field}>
+                    <label htmlFor="friend-url">网站地址 <span>*</span></label>
+                    <input id="friend-url" name="url" type="url" autoComplete="url" required value={form.url} onChange={e => setForm(f => ({ ...f, url: e.target.value }))} placeholder="https://example.com" maxLength={500} />
+                  </div>
+                  <div className={styles.field}>
+                    <label htmlFor="friend-description">一句话介绍</label>
+                    <input id="friend-description" name="description" type="text" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="分享些什么，或者喜欢些什么" maxLength={500} />
+                  </div>
+                  <div className={styles.field}>
+                    <label htmlFor="friend-avatar">头像链接</label>
+                    <input id="friend-avatar" name="avatar" type="url" value={form.avatar} onChange={e => setForm(f => ({ ...f, avatar: e.target.value }))} placeholder="https://example.com/avatar.png" maxLength={500} />
+                  </div>
+                  <div className={styles.field}>
+                    <label htmlFor="friend-email">联系邮箱 <span className={styles.optional}>选填，不会公开</span></label>
+                    <input id="friend-email" name="email" type="email" autoComplete="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="方便在需要时联系你" maxLength={255} />
+                  </div>
+                  {formError && <p id="friend-form-error" className={styles.formError} role="alert">{formError}</p>}
+                  {turnstileEnabled && <div className={styles.captcha}><Turnstile key={captchaAttempt} sitekey={turnstileSitekey} action="turnstile-link-v2" onToken={setTurnstileToken} /></div>}
+                </div>
+                <div className={styles.dialogActions}>
+                  <Dialog.Close asChild><button type="button" className={styles.cancelButton}>取消</button></Dialog.Close>
+                  <button type="submit" disabled={submitting} className={styles.submit}>
+                    <span>{submitting ? '正在寄出申请…' : '提交申请'}</span><Send size={15} aria-hidden="true" />
+                  </button>
+                </div>
+              </form>
             )}
-
-            {turnstileEnabled && (
-              <Turnstile key={captchaAttempt} sitekey={turnstileSitekey} action="turnstile-link-v2" onToken={setTurnstileToken} />
-            )}
-
-            <button type="submit" disabled={submitting}
-              className="flex items-center gap-1.5 px-5 py-2.5 rounded-lg text-sm font-medium text-white transition-colors cursor-pointer disabled:opacity-50"
-              style={{ background: 'var(--primary)' }}>
-              <Send className="w-4 h-4" />
-              {submitting ? '提交中...' : '提交申请'}
-            </button>
-          </form>
-        )}
-      </div>
-      </ScrollReveal>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
     </div>
   );
 }

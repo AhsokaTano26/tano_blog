@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { ImageWithFallback } from '@/components/ImageWithFallback';
 
@@ -42,7 +43,10 @@ export function ImageLightbox({ images, startIndex = 0, onClose }: ImageLightbox
   );
   const current = normalizedImages[index];
 
-  return (
+  if (typeof document === 'undefined') return null;
+
+  // Keep the fixed overlay outside page animations that establish a containing block.
+  return createPortal(
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-sm animate-fade-in"
       onClick={onClose}
@@ -103,6 +107,7 @@ export function ImageLightbox({ images, startIndex = 0, onClose }: ImageLightbox
           {index + 1} / {images.length}
         </div>
       )}
-    </div>
+    </div>,
+    document.body
   );
 }
