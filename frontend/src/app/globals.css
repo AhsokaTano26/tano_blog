@@ -17,7 +17,7 @@
   /* Glass */
   --glass-bg: rgba(255, 255, 255, 0.05);
   --glass-bg-mobile: rgba(0, 0, 0, 0.55);
-  --glass-border: hsla(0, 0%, 100%, 0.08);
+  --glass-border: hsla(0, 0%, 100%, 0.18);
   --glass-blur: 20px;
 
   /* Surfaces */
@@ -32,12 +32,12 @@
   --text-info: hsla(0, 0%, 100%, 0.55);
 
   /* Border */
-  --border-color: hsla(0, 0%, 100%, 0.08);
+  --border-color: hsla(0, 0%, 100%, 0.18);
 
   /* Page background */
   --color-bg-dark: #0c0e14;
-  --color-bg-light: #f5efdf;
-  --color-surface-light: #fbf6e8;
+  --color-bg-light: #faf7ef;
+  --color-surface-light: #fdfbf5;
   --color-bg: var(--color-bg-dark);
   --theme-transition-duration: 800ms;
   --theme-transition-easing: ease-in-out;
@@ -54,7 +54,7 @@
 .light {
   --glass-bg: color-mix(in srgb, var(--color-surface-light) 60%, transparent);
   --glass-bg-mobile: color-mix(in srgb, var(--color-surface-light) 85%, transparent);
-  --glass-border: rgba(87, 75, 52, 0.12);
+  --glass-border: rgba(87, 75, 52, 0.24);
   --glass-blur: 20px;
 
   --card-bg: color-mix(in srgb, var(--color-surface-light) 60%, transparent);
@@ -66,7 +66,7 @@
   --text-secondary: #70695d;
   --text-info: #726b5f;
 
-  --border-color: rgba(87, 75, 52, 0.12);
+  --border-color: rgba(87, 75, 52, 0.24);
   --color-bg: var(--color-bg-light);
 
   --color-error: hsl(0, 60%, 50%);
@@ -282,7 +282,7 @@ html.music-fullscreen body {
 }
 .card-base:hover {
   background: hsla(0, 0%, 100%, 0.08);
-  border-color: hsla(0, 0%, 100%, 0.12);
+  border-color: color-mix(in srgb, var(--glass-border) 75%, var(--text-secondary));
   transform: translateY(-2px);
   box-shadow: 0 8px 32px -8px rgba(0, 0, 0, 0.3);
 }
@@ -302,7 +302,7 @@ html.music-fullscreen body {
 }
 .btn-glass:hover {
   background: hsla(0, 0%, 100%, 0.1);
-  border-color: hsla(0, 0%, 100%, 0.15);
+  border-color: color-mix(in srgb, var(--glass-border) 75%, var(--text-secondary));
 }
 
 /* ===== Scrollbar ===== */
@@ -890,7 +890,7 @@ input[type="range"]::-moz-range-thumb {
 .gallery-masonry-inner:hover {
   transform: translateY(-2px);
   box-shadow: 0 8px 32px -8px rgba(0, 0, 0, 0.3);
-  border-color: hsla(0, 0%, 100%, 0.15);
+  border-color: color-mix(in srgb, var(--glass-border) 75%, var(--text-secondary));
 }
 .gallery-masonry-inner img {
   display: block;

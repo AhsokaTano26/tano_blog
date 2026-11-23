@@ -126,7 +126,7 @@ test('a single-day line chart has finite coordinates and measures the chart when
   let observations = 0;
   global.ResizeObserver = class { observe() { observations++; } disconnect() {} };
   t.after(() => { global.ResizeObserver = previousObserver; });
-  await mount(t, undefined, async () => ({ stats: { ...stats, daily_counts: [{ date: '2026-10-01', count: 5 }] } }));
+  await mount(t, undefined, async params => ({ stats: { ...stats, daily_counts: [{ date: params.end, count: 5 }] } }));
   await click('折线图');
   const line = document.querySelector('section[aria-label="每日请求趋势"] path[stroke="var(--primary)"]');
   assert.ok(line);

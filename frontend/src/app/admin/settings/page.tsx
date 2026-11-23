@@ -661,7 +661,7 @@ export default function AdminSettings() {
           {activeTab === 'about' && (
             <div className="space-y-5 max-w-2xl">
               {/* Version */}
-              <div className="p-5 rounded-xl" style={{ background: 'var(--glass-bg)', border: '1px solid var(--glass-border)' }}>
+              <div className="admin-form-section py-5">
                 <h3 className="text-sm font-semibold mb-3 flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
                   <Info className="w-4 h-4" style={{ color: 'var(--primary)' }} />
                   系统版本
@@ -687,7 +687,7 @@ export default function AdminSettings() {
               </div>
 
               {/* Changelog */}
-              <div className="p-5 rounded-xl" style={{ background: 'var(--glass-bg)', border: '1px solid var(--glass-border)' }}>
+              <div className="admin-form-section py-5">
                 <h3 className="text-sm font-semibold mb-3 flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
                   <FileText className="w-4 h-4" style={{ color: 'var(--primary)' }} />
                   {process.env.NEXT_PUBLIC_APP_VERSION && process.env.NEXT_PUBLIC_APP_VERSION !== 'dev'
@@ -743,7 +743,7 @@ export default function AdminSettings() {
               <RequestFeedback error={versionError} onRetry={() => setVersionRetry(value => value + 1)} pending={checkingVersion} />
 
               {/* Links */}
-              <div className="p-5 rounded-xl" style={{ background: 'var(--glass-bg)', border: '1px solid var(--glass-border)' }}>
+              <div className="admin-form-section py-5">
                 <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--text-primary)' }}>相关链接</h3>
                 <div className="space-y-2 text-sm">
                   <a href="https://github.com/AhsokaTano26/tano_blog" target="_blank" rel="noopener noreferrer"

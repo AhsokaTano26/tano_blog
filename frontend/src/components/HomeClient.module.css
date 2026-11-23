@@ -1,13 +1,14 @@
 .content { position: relative; z-index: 20; background: var(--color-bg); }
 .inner { max-width: var(--page-width); margin-inline: auto; padding: 40px 24px 64px; }
 .grid { display: grid; grid-template-columns: 240px minmax(0, 1fr); align-items: start; gap: 40px; }
-.sidebar { min-width: 0; padding-right: 28px; border-right: 1px solid var(--border-color); }
+.sidebar { min-width: 0; padding-right: 28px; }
 .profile { padding-bottom: 28px; }
 .profileImage { display: block; max-width: 192px; margin: 0 auto 20px; overflow: hidden; border-radius: 4px; }
 .profileImage img { display: block; width: 100%; height: auto; object-fit: cover; }
 .filter { min-height: 36px; padding: 4px 2px; border-bottom: 1px solid transparent; color: var(--text-secondary); font-size: 12px; transition: color 160ms ease, border-color 160ms ease; }
 .filter:hover, .filter[aria-pressed='true'] { color: var(--primary); border-bottom-color: var(--primary); }
-.feed { min-width: 0; }
+.feed { position: relative; min-width: 0; }
+.feed::before { content: ''; position: absolute; right: calc(100% + 40px); top: 0; bottom: 0; width: 1px; background: var(--border-color); pointer-events: none; }
 .feedHeading { display: flex; align-items: baseline; justify-content: space-between; gap: 20px; padding-bottom: 20px; border-bottom: 1px solid var(--border-color); }
 .feedHeading h1 { color: var(--text-primary); font-family: 'Noto Serif SC', 'Songti SC', 'STSong', serif; font-size: 26px; font-weight: 500; }
 .feedHeading p { color: var(--text-info); font-size: 12px; }
@@ -35,7 +36,8 @@
 @media (max-width: 1023px) {
   .grid { grid-template-columns: minmax(0, 1fr); gap: 48px; }
   .feed { grid-row: 1; }
-  .sidebar { padding-right: 0; border-right: 0; }
+  .sidebar { padding-right: 0; }
+  .feed::before { display: none; }
   .sidebar > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 32px; align-items: start; }
   .profile { grid-column: 1 / -1; border-top: 1px solid var(--border-color); padding-top: 28px; }
   .profileImage { max-width: 144px; }

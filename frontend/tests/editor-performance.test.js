@@ -284,12 +284,25 @@ test('compact editor uses one pane and preserves content when switching preview 
   assert.equal(document.querySelector('h1#mobile-draft')?.textContent, 'Mobile draft');
 });
 
-test('advanced formatting remains available without changing the current article', async t => {
+test('advanced formatting opens separately without moving common tools and applies to the selected text', async t => {
   const textarea = await mountEditor(t, 'Keep this content');
+  textarea.focus();
+  textarea.setSelectionRange(0, 4);
+  const toolbar = document.querySelector('[aria-label="正文格式"]');
+  const common = [...toolbar.querySelectorAll('button')];
+  const trigger = document.querySelector('[aria-label="更多格式工具"]');
   assert.equal(document.querySelector('button[data-tooltip="行内公式"]') === null, true);
-  await act(async () => document.querySelector('[aria-label="更多格式工具"]').click());
+  await act(async () => trigger.click());
+  assert.equal(toolbar.querySelectorAll('button').length, common.length);
+  assert.equal(common.every((button, index) => toolbar.querySelectorAll('button')[index] === button), true);
+  assert.equal(document.querySelector('[aria-label="更多格式工具"]') === trigger, true);
+  const popup = document.querySelector('[role="dialog"][aria-label="更多格式"]');
+  assert.equal(Boolean(popup), true);
   assert.equal(Boolean(document.querySelector('button[data-tooltip="行内公式"]')), true);
   assert.equal(Boolean(document.querySelector('button[data-tooltip="提示块：Note"]')), true);
-  await act(async () => document.querySelector('[aria-label="收起更多工具"]').click());
   assert.equal(textarea.value, 'Keep this content');
+  await act(async () => popup.querySelector('button[data-tooltip="行内公式"]').click());
+  assert.equal(document.querySelector('[role="dialog"][aria-label="更多格式"]') === null, true);
+  assert.equal(textarea.value, '$Keep$ this content');
+  assert.equal(trigger.getAttribute('aria-expanded'), 'false');
 });

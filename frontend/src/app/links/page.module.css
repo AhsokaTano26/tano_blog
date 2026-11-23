@@ -6,8 +6,9 @@
 .headerAside { flex-shrink: 0; text-align: right; }
 .count { font-size: 12px; color: var(--text-secondary); }
 .count span { margin-right: 4px; color: var(--text-primary); font-family: Georgia, serif; font-size: 40px; line-height: 1; font-variant-numeric: tabular-nums; }
-.headerAside button { display: inline-flex; align-items: center; gap: 7px; min-height: 44px; margin-top: 6px; color: var(--text-secondary); font-size: 11px; }
-.headerAside button:hover { color: var(--primary); }
+.headerAside button { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; margin-top: 12px; padding: 0 16px; border: 1px solid color-mix(in srgb, var(--primary) 40%, var(--border-color)); border-radius: 8px; background: var(--primary-sub); color: var(--text-primary); font-size: 12px; font-weight: 500; transition: border-color 160ms ease, background-color 160ms ease; }
+.headerAside button svg { color: var(--primary); }
+.headerAside button:hover { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 16%, transparent); }
 .loading { min-height: 420px; display: grid; place-items: center; }
 .empty { margin-top: 32px; padding: 80px 0; border-block: 1px solid var(--border-color); color: var(--text-secondary); text-align: center; }
 .empty button { display: inline-block; min-height: 44px; margin-top: 12px; color: var(--primary); font-size: 13px; }
@@ -16,8 +17,15 @@
 .applicationIntro { margin-top: 20px; color: var(--text-secondary); font-size: 13px; line-height: 1.9; }
 .guidelines { margin-top: 12px; padding-left: 16px; list-style: disc; color: var(--text-secondary); font-size: 12px; line-height: 1.9; }
 .guidelines li { padding-left: 3px; margin-top: 8px; }
-.applyButton { display: inline-flex; align-items: center; justify-content: space-between; gap: 40px; min-height: 48px; margin-top: 24px; padding: 0 2px; border-bottom: 1px solid var(--text-secondary); font-size: 14px; transition: color 160ms ease, border-color 160ms ease; }
-.applyButton:hover { color: var(--primary); border-color: var(--primary); }
+.applyButton { position: relative; isolation: isolate; display: inline-flex; align-items: center; justify-content: space-between; gap: 32px; min-width: 168px; min-height: 48px; margin-top: 24px; padding: 0 22px; border: 0; border-bottom: 1px solid var(--primary); border-radius: 0; background: transparent; color: var(--primary); font-size: 14px; font-weight: 600; transition: color 180ms ease; }
+.applyButton::before { content: ''; position: absolute; z-index: -1; inset: 0; background: var(--primary); transform: scaleY(0); transform-origin: bottom; transition: transform 240ms cubic-bezier(.22,1,.36,1); }
+.applyButton:active, .applyButton:focus-visible { color: #fff; }
+.applyButton:active::before, .applyButton:focus-visible::before { transform: scaleY(1); }
+.applyButton:focus-visible, .applyButton:focus-visible::before { transition: none; }
+@media (hover: hover) and (pointer: fine) {
+  .applyButton:hover { color: #fff; }
+  .applyButton:hover::before { transform: scaleY(1); }
+}
 .siteInfo { min-width: 0; }
 .siteHeading { display: flex; align-items: center; gap: 12px; padding-block: 20px; }
 .siteHeading h3 { font-family: 'Noto Serif SC', 'Songti SC', 'STSong', serif; font-size: 18px; }
@@ -88,6 +96,6 @@
   .field input { font-size: 16px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .field input, .submit, .applyButton { transition: none; }
+  .field input, .submit, .applyButton, .applyButton::before, .headerAside button { transition: none; }
   .dialogOverlay, .dialog { animation: none !important; }
 }

@@ -7,12 +7,13 @@ const { chromium, webkit, expect } = require('@playwright/test');
 const { SITE, OUT, startServices, stopServices } = require('./browser-environment.cjs');
 const { verifyAdminControls, withAdminControlPosts } = require('./browser-admin-controls.cjs');
 const { collectRuntimeErrors } = require('./browser-runtime-diagnostics.cjs');
+const { verifyLoadingMotion } = require('./browser-loading.cjs');
 
 const checks = [];
 const gates = [];
 let browser, page;
 const assert = (condition, message) => { if (!condition) throw new Error(message); };
-const editorFor = target => target.getByPlaceholder('输入 Markdown 内容，可直接粘贴截图或拖入多张图片自动上传...');
+const editorFor = target => target.getByRole('textbox', { name: 'Markdown 正文', exact: true });
 const frames = target => target.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
 function pass(engine, name) { checks.push({ engine, name, passed: true }); process.stdout.write(`PASS ${engine}: ${name}\n`); }
 function verifyProcessGroup(engine) {
@@ -77,6 +78,9 @@ async function verifyEngine(engine, launcher, password) {
     () => verifyAdminControls(page, SITE, name => screenshot(engine, name)),
   );
   pass(engine, 'custom admin controls, nested overlays, dates, files, themes and mobile dialog');
+
+  await verifyLoadingMotion(page, SITE);
+  pass(engine, 'loading wave respects live reduced-motion changes and retains its slower pace');
 
   await articlesLink.click();
   await page.getByRole('button', { name: '新建', exact: true }).first().click();
@@ -238,6 +242,12 @@ async function verifyEngine(engine, launcher, password) {
   await page.locator('input[type="password"]').press('Enter');
   await expect(page.getByText('UNLOCKED-BROWSER-BODY', { exact: true })).toBeVisible();
   await screenshot(engine, 'mobile-protected-unlocked');
+  await page.waitForLoadState('networkidle');
+  const missing = await page.goto(`${SITE}/posts/missing-browser-${engine}`);
+  assert(missing.status() === 404, 'Missing article must return HTTP 404');
+  await expect(page.locator('meta[name="robots"][content*="noindex"]').first()).toBeAttached();
+  await page.waitForLoadState('networkidle');
+  pass(engine, 'missing articles retain HTTP 404 and noindex metadata');
   assert(pageErrors.length === 0, `Browser runtime error: ${pageErrors.join('; ')}`);
   pass(engine, 'mobile rendering, comment policy, anonymous denial and password unlock');
   await anonymous.close(); await admin.close(); await browser.close(); browser = undefined;

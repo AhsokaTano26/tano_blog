@@ -7,7 +7,7 @@ import { DateTimePicker } from '@/components/ui/DateTimePicker';
 import { Checkbox } from '@/components/ui/Checkbox';
 import { Select } from '@/components/ui/Select';
 
-import { useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import { api, type Post, type PostMutation } from '@/lib/api';
 import { toDateTimeLocal, scheduledTimestamp, type ExcerptMode } from '@/lib/post-settings';
@@ -26,6 +26,7 @@ export default function PostDetailDialog({ post, categories, tags, seriesList, p
   onSave: (data: PostMutation, excerptMode: ExcerptMode) => Promise<void>;
   onClose: () => void;
 }) {
+  const authorFieldId = useId();
   const [authorName, setAuthorName] = useState(post?.author_name || '');
   const [status, setStatus] = useState(post?.status || 'draft');
   const [scheduledAt, setScheduledAt] = useState(toDateTimeLocal(post?.scheduled_at));
@@ -127,11 +128,11 @@ export default function PostDetailDialog({ post, categories, tags, seriesList, p
 
           {/* Author */}
           <div>
-            <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-info)' }}>作者（文章创作者）</label>
-            <Input type="text" value={authorName} onChange={e => setAuthorName(e.target.value)}
+            <label htmlFor={authorFieldId} className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-info)' }}>作者</label>
+            <Input id={authorFieldId} aria-describedby={`${authorFieldId}-help`} type="text" value={authorName} onChange={e => setAuthorName(e.target.value)}
               placeholder="输入作者名称" className="w-full px-3 py-2 rounded-xl text-sm outline-none glass-card"
               style={{ color: 'var(--text-primary)' }} />
-            <p className="mt-1 text-xs" style={{ color: 'var(--text-info)' }}>留空则不显示作者</p>
+            <p id={`${authorFieldId}-help`} className="sr-only">留空则不显示作者</p>
           </div>
 
           {/* Status */}

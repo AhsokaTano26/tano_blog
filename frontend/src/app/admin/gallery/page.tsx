@@ -138,14 +138,13 @@ export default function AdminGalleryPage() {
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
           {images.map((img, index) => (
-            <div key={img.id}
-              className="rounded-xl overflow-hidden card-base group"
-              style={{ background: 'var(--card-bg)', border: '1px solid var(--glass-border)' }}>
-              <div className="aspect-[4/3] overflow-hidden cursor-pointer" onClick={() => openEdit(img)}>
+            <article key={img.id} className="admin-gallery-item">
+              <button type="button" className="block w-full aspect-[4/3] overflow-hidden rounded"
+                aria-label={`编辑 ${img.title || '无标题'}`} onClick={() => openEdit(img)}>
                 <ImageWithFallback src={img.thumbnail_url || img.url} fallbackSrc={img.url} alt={img.title || '图片'} loading="lazy" decoding="async"
                   className="w-full h-full object-cover" />
-              </div>
-              <div className="p-3">
+              </button>
+              <div className="pt-3 pb-4">
                 <div className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>
                   {img.title || '无标题'}
                 </div>
@@ -167,13 +166,14 @@ export default function AdminGalleryPage() {
                     </button>
                   </div>
                   <button onClick={() => handleDelete(img.id)}
+                    aria-label={`删除 ${img.title || '无标题'}`}
                     className="p-1 rounded-lg btn-glass transition-colors hover:bg-red-500/20"
                     style={{ color: 'var(--color-error)' }}>
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 </div>
               </div>
-            </div>
+            </article>
           ))}
         </div>
       )}

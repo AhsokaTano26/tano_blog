@@ -773,7 +773,7 @@ export default function PostClient({ slug, initialData, initialError = '', initi
             {/* Honeypot - hidden from humans */}
             <input type="text" name="website_confirm" value={commentForm.hp_field}
               onChange={e => setCommentForm(prev => ({ ...prev, hp_field: e.target.value }))}
-              tabIndex={-1} autoComplete="off"
+              tabIndex={-1} aria-hidden="true" autoComplete="off"
               className="absolute opacity-0 pointer-events-none" style={{ height: 0, width: 0, padding: 0, margin: 0 }} />
             {replyTo && (
               <div className={`${styles.notice} flex items-center gap-2`}

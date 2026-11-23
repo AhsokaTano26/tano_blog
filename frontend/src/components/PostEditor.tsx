@@ -2,6 +2,7 @@
 import { localDateTimeTimestamp } from '@/lib/date-value';
 
 import { Tooltip } from '@/components/ui/Tooltip';
+import * as Popover from '@radix-ui/react-popover';
 import { Input } from '@/components/ui/Input';
 import { Textarea } from '@/components/ui/Textarea';
 import { Select } from '@/components/ui/Select';
@@ -20,7 +21,7 @@ import ImageEditDialog from './EditorImageDialog';
 import EditorConflictDialog from './EditorConflictDialog';
 import { toDateTimeLocal, scheduledTimestamp } from '@/lib/post-settings';
 import {
-  ExternalLink, X, FileText, MoreHorizontal,
+  ExternalLink, X, FileText, MoreHorizontal, ChevronDown,
   ArrowLeft, Save,
   Bold, Italic, Underline, Strikethrough, Link, Code, Quote, List, ListOrdered, AlignLeft, AlignCenter, AlignRight,
   Image as ImageIcon, Heading1, Heading2, Heading3, LayoutGrid,
@@ -42,6 +43,14 @@ import PostDetailDialog from './PostDetailDialog';
 const ArticleMarkdown = dynamic(() => import('./ArticleMarkdown'), {
   loading: () => <p className="text-sm" role="status">正在加载预览...</p>,
 });
+
+const commonTools = new Set(['粗体 (Ctrl+B)', '斜体 (Ctrl+I)', '标题 1', '标题 2', '左对齐', '居中', '右对齐', '链接 (Ctrl+K)', '图片', '引用', '无序列表', '有序列表', '代码块']);
+const extraToolGroups = [
+  { label: '文字样式', tools: ['下划线', '删除线 (Ctrl+Shift+X)', '标题 3', '文字颜色'] },
+  { label: '插入内容', tools: ['行内代码', '表格', '分割线', '图片画廊', '视频', '音频'] },
+  { label: '公式与图表', tools: ['行内公式', '公式块', 'Mermaid 图'] },
+  { label: '提示块', tools: ['提示块：Note', '提示块：Tip', '提示块：Important', '提示块：Warning', '提示块：Caution'] },
+];
 
 const markdownReference = [
   { title: '标题与强调', example: '# 一级标题\n## 二级标题\n**粗体**  *斜体*  ~~删除线~~' },
@@ -121,6 +130,8 @@ export default function PostEditor({ post, onClose }: { post: Partial<Post> | nu
   const [revisionsLoading, setRevisionsLoading] = useState(false);
   const [showRightPanel, setShowRightPanel] = useState(false);
   const [showMoreTools, setShowMoreTools] = useState(false);
+  const moreToolsTriggerRef = useRef<HTMLButtonElement>(null);
+  const extraToolChosen = useRef(false);
   const [showMarkdownReference, setShowMarkdownReference] = useState(false);
   const [showDetailDialog, setShowDetailDialog] = useState(false);
   const [preferredView, setViewMode] = useState<'edit' | 'preview' | 'split'>('split');
@@ -760,10 +771,10 @@ export default function PostEditor({ post, onClose }: { post: Partial<Post> | nu
         </div>
       </header>
 
-      <div role="status" aria-live="polite" className={`${mediaUploading ? '' : 'editor-upload-hint'} px-4 sm:px-6 pt-2 text-xs flex-shrink-0`}
-        style={{ color: mediaUploading ? 'var(--primary)' : 'var(--text-info)' }}>
-        {mediaUploading ? `正在上传 ${mediaUploadCount} 个文件，可继续编辑，完成后会自动插入原位置` : '支持粘贴截图、图片文件或拖入多张图片，自动上传并插入正文'}
-      </div>
+      {mediaUploading && <div role="status" aria-live="polite" className="px-4 sm:px-6 pt-2 text-sm flex-shrink-0"
+        style={{ color: 'var(--primary)' }}>
+        正在上传 {mediaUploadCount} 个文件…
+      </div>}
 
       <div className="mx-4 flex-shrink-0"><RequestFeedback error={metadata.error} onRetry={metadata.reload} pending={metadata.loading} /></div>
       {/* Error */}
@@ -774,7 +785,7 @@ export default function PostEditor({ post, onClose }: { post: Partial<Post> | nu
         </div>
       )}
 
-      <div className="px-4 sm:px-6 py-2 text-xs flex-shrink-0" role={persistence.storageError ? 'alert' : 'status'}
+      <div className={persistence.storageError ? 'px-4 sm:px-6 py-2 text-sm flex-shrink-0' : 'sr-only'} role={persistence.storageError ? 'alert' : 'status'}
         style={{ color: persistence.storageError ? 'var(--color-error)' : 'var(--text-info)' }}>
         {persistence.storageError ? <>{persistence.storageError} <button type="button" className="underline" onClick={persistence.retry}>重试草稿保存</button></>
           : persistence.savedAt ? '本地草稿已保存' : persistence.isDirty ? '正在保留本地草稿…' : '修改后会自动保留本地草稿'}
@@ -802,10 +813,7 @@ export default function PostEditor({ post, onClose }: { post: Partial<Post> | nu
       {showMarkdownReference && (
         <section className="mx-4 mt-3 flex-shrink-0 rounded-2xl glass-card overflow-hidden" aria-label="Markdown 语法参考">
           <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: '1px solid var(--glass-border)' }}>
-            <div>
-              <h2 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Markdown 语法参考</h2>
-              <p className="text-xs mt-0.5" style={{ color: 'var(--text-info)' }}>示例可直接复制到正文中使用</p>
-            </div>
+            <h2 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Markdown 语法参考</h2>
             <button onClick={() => setShowMarkdownReference(false)} className="p-1.5 rounded-lg btn-glass" style={{ color: 'var(--text-secondary)' }} aria-label="收起语法参考">
               <X className="w-4 h-4" />
             </button>
@@ -850,24 +858,51 @@ export default function PostEditor({ post, onClose }: { post: Partial<Post> | nu
 
               {/* Toolbar */}
               <div className="editor-toolbar" role="group" aria-label="正文格式">
+                <div className="editor-toolbar-common">
                 {toolbarButtons.map((btn, i) => {
-                  if ('type' in btn && btn.type === 'divider') {
-                    return null;
-                  }
-                  const commonTools = ['粗体 (Ctrl+B)', '斜体 (Ctrl+I)', '标题 1', '标题 2', '左对齐', '居中', '右对齐', '链接 (Ctrl+K)', '图片', '引用', '无序列表', '有序列表', '代码块'];
-                  if (!showMoreTools && !commonTools.includes(btn.title!)) return null;
-                  const Icon = btn.icon!;
+                  if (!btn.icon || !btn.action || !commonTools.has(btn.title || '')) return null;
+                  const { icon: Icon, action } = btn;
                   return (
-                    <Tooltip content={btn.title} key={i}><button type="button" onMouseDown={e => e.preventDefault()} onClick={(e) => { btn.action(); mediaPickerBtnRef.current = e.currentTarget; }} data-tooltip={btn.title} aria-label={btn.title}
+                    <Tooltip content={btn.title} key={i}><button type="button" onMouseDown={e => e.preventDefault()} onClick={(e) => { action(); mediaPickerBtnRef.current = e.currentTarget; }} data-tooltip={btn.title} aria-label={btn.title}
                       aria-pressed={'alignment' in btn ? textAlignment === btn.alignment : undefined}
                       className="transition-colors duration-150" style={{ color: 'alignment' in btn && textAlignment === btn.alignment ? 'var(--primary)' : 'var(--text-secondary)' }}>
                       <Icon className="w-4 h-4" />
                     </button></Tooltip>
                   );
                 })}
-                <Tooltip content="公式、表格、提示块与更多格式"><button type="button" aria-expanded={showMoreTools} aria-label={showMoreTools ? '收起更多工具' : '更多格式工具'} onClick={() => setShowMoreTools(value => !value)} data-tooltip="公式、表格、提示块与更多格式">
-                  <MoreHorizontal size={16} /><span className="text-xs">{showMoreTools ? '收起' : '更多'}</span>
-                </button></Tooltip>
+                </div>
+                <Popover.Root open={showMoreTools} onOpenChange={open => { extraToolChosen.current = false; setShowMoreTools(open); }}>
+                  <Popover.Trigger asChild>
+                    <button ref={moreToolsTriggerRef} type="button" className="editor-more-trigger" aria-label="更多格式工具" onMouseDown={event => event.preventDefault()}>
+                      <MoreHorizontal size={16} aria-hidden="true" /><span>更多格式</span><ChevronDown size={12} aria-hidden="true" />
+                    </button>
+                  </Popover.Trigger>
+                  <Popover.Portal>
+                    <Popover.Content className="admin-ui-popover editor-more-content" aria-label="更多格式" align="end" sideOffset={8} collisionPadding={12}
+                      onCloseAutoFocus={event => { if (extraToolChosen.current) { event.preventDefault(); extraToolChosen.current = false; } }}>
+                      {extraToolGroups.map(group => <div key={group.label} className="editor-more-group" role="group" aria-label={group.label}>
+                        <p className="editor-more-heading">{group.label}</p>
+                        <div className="editor-more-grid">
+                          {group.tools.map(title => {
+                            const tool = toolbarButtons.find(button => button.title === title);
+                            if (!tool?.icon || !tool.action) return null;
+                            const { icon: Icon, action } = tool;
+                            return <button key={title} type="button" className="editor-more-item" aria-label={title} data-tooltip={title}
+                              onMouseDown={event => event.preventDefault()} onClick={() => {
+                                moreToolsTriggerRef.current?.focus({ preventScroll: true });
+                                extraToolChosen.current = true;
+                                mediaPickerBtnRef.current = moreToolsTriggerRef.current;
+                                setShowMoreTools(false);
+                                action();
+                              }}>
+                              <Icon size={16} aria-hidden="true" /><span>{title.replace(/\s*\(.*\)$/, '').replace(/^提示块：/, '')}</span>
+                            </button>;
+                          })}
+                        </div>
+                      </div>)}
+                    </Popover.Content>
+                  </Popover.Portal>
+                </Popover.Root>
               </div>
 
               {/* Media picker & upload for toolbar */}
@@ -894,7 +929,7 @@ export default function PostEditor({ post, onClose }: { post: Partial<Post> | nu
               <Textarea
                 ref={textareaRef}
                 aria-label="Markdown 正文"
-                placeholder="输入 Markdown 内容，可直接粘贴截图或拖入多张图片自动上传..."
+                placeholder="输入 Markdown 内容…"
                 value={content}
                 onChange={e => {
                   setContent(e.target.value);
@@ -928,11 +963,7 @@ export default function PostEditor({ post, onClose }: { post: Partial<Post> | nu
             }}>
             <div ref={previewContentRef} className="max-w-5xl mx-auto py-5 sm:py-6 px-4 sm:px-6">
               <div className="prose prose-sm max-w-none" style={{ color: 'var(--text-primary)' }}>
-                {deferredContent ? (
-                  <ArticleMarkdown content={deferredContent} variant="editor" />
-                ) : (
-                  <p className="text-sm" style={{ color: 'var(--text-info)' }}>输入内容开始预览...</p>
-                )}
+                {deferredContent && <ArticleMarkdown content={deferredContent} variant="editor" />}
               </div>
             </div>
           </div>}
@@ -1022,9 +1053,6 @@ export default function PostEditor({ post, onClose }: { post: Partial<Post> | nu
                         /posts/{post.slug}
                       </a>
                     </div>
-                  )}
-                  {!savedPostId && (
-                    <p className="text-sm" style={{ color: 'var(--text-info)' }}>保存后可见更多详情</p>
                   )}
                 </div>
               ) : (

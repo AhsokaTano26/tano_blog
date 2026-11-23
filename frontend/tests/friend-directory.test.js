@@ -27,7 +27,7 @@ test('friend search matches names, descriptions and domains and recovers from no
   for (const [query, id] of [['晚风', 'a'], ['PHOTOS', 'b'], ['garden.example', 'c']]) {
     await React.act(async () => input(search, query));
     assert.deepEqual([...element.querySelectorAll('[data-friend-row]')].map(row => row.dataset.friendRow), [id]);
-    assert.equal(element.querySelectorAll('[data-friend-star]').length, 1);
+    assert.equal(element.querySelectorAll('[data-friend-star][data-match="true"]').length, 1);
   }
   await React.act(async () => input(search, '没有这个朋友'));
   assert.equal(element.querySelectorAll('[data-friend-row]').length, 0);
@@ -38,7 +38,7 @@ test('friend search matches names, descriptions and domains and recovers from no
 
 test('friend preview supports keyboard focus, visiting a site and Escape', async t => {
   const element = await mount(t);
-  const trigger = element.querySelector('[data-friend-star="a"] button');
+  const trigger = element.querySelector('[data-friend-star="a"] a');
   await React.act(async () => trigger.focus());
   assert.equal(trigger.getAttribute('aria-expanded'), 'true');
   const preview = document.getElementById(trigger.getAttribute('aria-controls'));

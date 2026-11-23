@@ -54,6 +54,67 @@ test('system health reports a failed metrics request and retry restores a timest
   assert.match(panel.textContent, /10\.0 GiB/);
 });
 
+test('malformed metrics show retry feedback without crashing the dashboard or reporting idle traffic', async t => {
+  t.mock.getter(document, 'visibilityState', () => 'visible');
+  let snapshot = { items: [], total: 0, page: 1, size: 20 };
+  t.mock.method(global, 'fetch', async () => Response.json(snapshot));
+  await mount(t);
+  const panel = document.querySelector('section[aria-label="系统健康"]');
+  assert.equal(Boolean(panel.querySelector('[role="alert"]')), true);
+  assert.equal(panel.querySelector('time') === null, true);
+  assert.equal(panel.querySelector('output') === null, true);
+  assert.match(panel.textContent, /状态待确认/);
+  assert.doesNotMatch(panel.textContent, /暂无流量|未触发告警/);
+  assert.equal(Boolean(document.querySelector('a.admin-primary-action')), true);
+  snapshot = metrics();
+  await click('重试');
+  assert.equal(panel.querySelector('[role="alert"]') === null, true);
+  assert.equal(Boolean(panel.querySelector('time')), true);
+  assert.equal(panel.querySelector('[aria-label="5xx错误率"]').textContent, '无流量');
+});
+
+test('metrics rejects missing sections and invalid nested values at the API boundary', async t => {
+  const invalid = [
+    null,
+    [],
+    metrics({ requests: null }),
+    metrics({ requests: { error_rate: null, p95_ms: null, p95_overflow: false } }),
+    metrics({ requests: { requests: 1, error_rate: '0.2', p95_ms: null, p95_overflow: false } }),
+    metrics({ requests: { requests: 1, error_rate: null, p95_overflow: false } }),
+    metrics({ storage: { uploads: {}, backups: metrics().storage.backups } }),
+    metrics({ storage: { uploads: metrics().storage.uploads, backups: null } }),
+    metrics({ backup: null }),
+    metrics({ alerts: null }),
+    metrics({ alerts: [null] }),
+    metrics({ alerts: [{ code: 42, severity: 'warning', message: '', action: '' }] }),
+  ];
+  let snapshot;
+  t.mock.method(global, 'fetch', async () => Response.json(snapshot));
+  for (const value of invalid) {
+    snapshot = value;
+    await assert.rejects(api.admin.metrics(), error => error instanceof Error && /系统健康.*数据/.test(error.message));
+  }
+});
+
+test('a malformed refresh preserves the last successful metrics and check time until recovery', async t => {
+  t.mock.getter(document, 'visibilityState', () => 'visible');
+  let snapshot = metrics({ requests: { requests: 20, error_rate: .25, p95_ms: 500, p95_overflow: false } });
+  t.mock.method(global, 'fetch', async () => Response.json(snapshot));
+  await mount(t);
+  const panel = document.querySelector('section[aria-label="系统健康"]');
+  const checkedAt = panel.querySelector('time').getAttribute('datetime');
+  snapshot = {};
+  await click('刷新');
+  assert.equal(Boolean(panel.querySelector('[role="alert"]')), true);
+  assert.match(panel.textContent, /保留上次成功检查的数据/);
+  assert.equal(panel.querySelector('time').getAttribute('datetime'), checkedAt);
+  assert.equal(panel.querySelector('[aria-label="5xx错误率"]').textContent, '25.0%');
+  snapshot = metrics();
+  await click('重试');
+  assert.equal(panel.querySelector('[role="alert"]') === null, true);
+  assert.equal(panel.querySelector('[aria-label="5xx错误率"]').textContent, '无流量');
+});
+
 test('system health localizes actionable alerts and distinguishes idle traffic and failed disk probes', async t => {
   t.mock.getter(document, 'visibilityState', () => 'visible');
   let snapshot = metrics({

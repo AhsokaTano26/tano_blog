@@ -276,7 +276,7 @@ export default function AdminMusicPage() {
                 onChange={e => updateField('background', e.target.value)}
                 placeholder="背景图片 URL（选填）"
                 className={`${inputClass} flex-1`} style={inputStyle} />
-              <button ref={bgPickerBtnRef} onClick={() => setBgPickerOpen(true)}
+              <button type="button" ref={bgPickerBtnRef} aria-label="选择页面背景图" onClick={() => setBgPickerOpen(true)}
                 className="px-3 py-2 rounded-lg text-sm btn-glass whitespace-nowrap flex-shrink-0"
                 style={{ color: 'var(--text-secondary)' }}>
                 <Image className="w-4 h-4" />

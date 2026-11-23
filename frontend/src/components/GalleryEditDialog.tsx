@@ -148,7 +148,7 @@ export default function GalleryEditDialog({ initialAttrs, onSave, onClose }: Gal
 
           {/* Gallery description */}
           <div>
-            <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-info)' }}>画廊描述（显示在图片集下方）</label>
+            <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-info)' }}>画廊描述</label>
             <Textarea value={description} onChange={e => setDescription(e.target.value)} rows={2}
               className="w-full px-3 py-2 rounded-xl text-sm outline-none resize-none"
               style={{ background: 'var(--glass-bg)', color: 'var(--text-primary)', border: '1px solid var(--glass-border)' }}

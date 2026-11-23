@@ -4,7 +4,7 @@ import { uploadFilename } from './editor-upload';
 import { uploadForm, type UploadOptions } from './upload';
 import { httpErrorMessage } from './http-error';
 import type { Post, PostMutation, PostRevision } from './post-types';
-import type { SystemMetrics } from './system-health-types';
+import { parseSystemMetrics } from './system-health';
 import type { EntryAnimationConfig, EntryAnimationDocument, EntryAnimationSettings } from './entry-animation';
 export type { Post, PostMutation, PostRevision } from './post-types';
 
@@ -253,7 +253,7 @@ export const api = {
 
   // Admin
   admin: {
-    metrics: (signal?: AbortSignal) => request<SystemMetrics>('/api/v1/admin/metrics', { signal }),
+    metrics: async (signal?: AbortSignal) => parseSystemMetrics(await request<unknown>('/api/v1/admin/metrics', { signal })),
     summary: () => publicRequest<{ posts: number; comments: number; media: number; categories: number; tags: number; pending_comments: number; pending_links: number }>('/api/v1/admin/summary', 5000),
     posts: {
       list: (params?: Record<string, string>) =>

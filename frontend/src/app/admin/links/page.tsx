@@ -22,20 +22,14 @@ const tabs = [
 ];
 
 function statusBadge(status: string) {
-  const styles: Record<string, { bg: string; color: string }> = {
-    pending: { bg: 'rgba(234,179,8,0.15)', color: '#eab308' },
-    approved: { bg: 'rgba(34,197,94,0.15)', color: '#22c55e' },
-    rejected: { bg: 'rgba(239,68,68,0.15)', color: '#ef4444' },
-  };
   const labels: Record<string, string> = {
     pending: '待审核',
     approved: '已通过',
     rejected: '已拒绝',
   };
-  const s = styles[status] || styles.pending;
   return (
-    <span className="inline-block px-2.5 py-0.5 rounded-full text-xs font-medium"
-      style={{ background: s.bg, color: s.color }}>
+    <span className="admin-status-badge inline-block px-2.5 py-0.5 rounded-full text-xs font-medium"
+      data-status={status}>
       {labels[status] || status}
     </span>
   );

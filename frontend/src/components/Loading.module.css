@@ -1,0 +1,14 @@
+.square {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: pulse 2.4s linear infinite;
+}
+
+@keyframes pulse {
+  0%, 50%, 100% { transform: scale(1); }
+  25% { transform: scale(.181446); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .square { animation: none; transform: none; }
+}

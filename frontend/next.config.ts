@@ -10,6 +10,9 @@ const nextConfig: NextConfig = {
     // Bound page-generation workers on developer machines and CI runners.
     cpus: 2,
     proxyClientMaxBodySize: '50MB',
+    // Keep development timings in the RSC stream. The separate debug channel
+    // can report negative timestamps for notFound(): react/react#37561.
+    reactDebugChannel: false,
   },
   images: {
     // The project renders media with native <img>; disable the optimizer so
