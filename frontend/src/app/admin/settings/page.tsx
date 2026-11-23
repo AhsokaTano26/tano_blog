@@ -261,6 +261,14 @@ export default function AdminSettings() {
           {activeTab === 'appearance' && (
             <div className="space-y-5 max-w-2xl">
               <div>
+                <Checkbox label="开放旧版界面" checked={config.legacy_ui_enabled === 'true'}
+                  aria-describedby="legacy-ui-help"
+                  onChange={checked => setConfig(current => ({ ...current, legacy_ui_enabled: String(checked) }))} />
+                <p id="legacy-ui-help" className="mt-1 text-sm" style={{ color: 'var(--text-secondary)' }}>
+                  保存后在前台页脚显示旧版入口。关闭时，旧版网址也无法访问。
+                </p>
+              </div>
+              <div>
                 <label htmlFor="admin-settings-field-7" className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>默认主题</label>
                 <Select id="admin-settings-field-7" aria-label="默认主题" value={config.default_theme || 'dark'}
                   onChange={v => setConfig({ ...config, default_theme: v })}

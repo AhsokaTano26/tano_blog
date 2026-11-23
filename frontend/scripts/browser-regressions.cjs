@@ -8,6 +8,7 @@ const { SITE, OUT, startServices, stopServices } = require('./browser-environmen
 const { verifyAdminControls, withAdminControlPosts } = require('./browser-admin-controls.cjs');
 const { collectRuntimeErrors } = require('./browser-runtime-diagnostics.cjs');
 const { verifyLoadingMotion } = require('./browser-loading.cjs');
+const { verifyLegacyPortal } = require('./browser-legacy.cjs');
 
 const checks = [];
 const gates = [];
@@ -250,7 +251,20 @@ async function verifyEngine(engine, launcher, password) {
   pass(engine, 'missing articles retain HTTP 404 and noindex metadata');
   assert(pageErrors.length === 0, `Browser runtime error: ${pageErrors.join('; ')}`);
   pass(engine, 'mobile rendering, comment policy, anonymous denial and password unlock');
-  await anonymous.close(); await admin.close(); await browser.close(); browser = undefined;
+  await anonymous.close();
+
+  const legacyContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  try {
+    await isolateRequests(legacyContext);
+    await collectRuntimeErrors(legacyContext, engine, pageErrors);
+    const visitor = await legacyContext.newPage();
+    await verifyLegacyPortal(admin.pages()[0], visitor, SITE, slug, `protected-${engine}`, password);
+    assert(pageErrors.length === 0, `Browser runtime error: ${pageErrors.join('; ')}`);
+    pass(engine, 'legacy portal supports settings, notices, search, protected reading and real login, and closes every route');
+  } finally {
+    await legacyContext.close();
+  }
+  await admin.close(); await browser.close(); browser = undefined;
 }
 
 (async () => {

@@ -1,0 +1,101 @@
+.navigation {
+  position: relative;
+  z-index: 2;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.primary {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  border-block: 1px solid #256648;
+  background: linear-gradient(#88c8a5, #367c59 46%, #246b47 55%, #1e573c);
+}
+
+.navigation .primary a {
+  display: grid;
+  place-items: center;
+  min-height: 38px;
+  padding: 4px 6px;
+  border-inline-end: 1px solid #bfdfc095;
+  color: #fff4b1;
+  text-align: center;
+}
+
+.primary a:last-child { border-inline-end: 0; }
+.primary a:is(:hover, [data-preview='true']) {
+  color: #173e36;
+  background: linear-gradient(#e8fbfc, #a5d4dc 54%, #93c9d3);
+  text-decoration: none;
+}
+
+.secondary {
+  display: flex;
+  align-items: stretch;
+  flex-wrap: wrap;
+  gap: 0 10px;
+  min-height: 33px;
+  padding-inline: 8px;
+  border-bottom: 1px solid #31778d;
+  background: linear-gradient(#1b7593, #276a83 72%, #3a8096);
+  font-size: 14px;
+}
+
+.navigation .secondary > a, .flyout > button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 32px;
+  padding: 2px 10px;
+  color: #fff;
+  white-space: nowrap;
+}
+
+.secondary > a:hover, .flyout > button:is(:hover, [aria-expanded='true']) {
+  color: #173e36;
+  background: #d2edf0;
+  text-decoration: none;
+}
+
+.navigation :is(a, button):focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: -3px;
+}
+
+.flyout { position: relative; display: flex; }
+.flyout > button { cursor: pointer; }
+.categoryMenu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  width: max-content;
+  min-width: 144px;
+  max-width: min(290px, 80vw);
+  max-height: min(48vh, 360px);
+  overflow-y: auto;
+  border: 1px solid #ad7916;
+  background: linear-gradient(115deg, #fff077, #efb139);
+  box-shadow: 3px 3px #77481436;
+}
+
+.navigation .categoryMenu a {
+  display: block;
+  padding: 5px 11px;
+  color: #452f0d;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.categoryMenu a:is(:hover, :focus-visible) {
+  background: linear-gradient(#b6502b, #87350e);
+  color: #fff;
+  text-decoration: none;
+}
+
+@media (max-width: 600px) {
+  .primary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .primary a { border-bottom: 1px solid #bfdfc04d; font-size: 14px; min-height: 36px; }
+  .primary a:nth-child(3n) { border-inline-end: 0; }
+  .secondary { gap: 0; padding-inline: 2px; }
+  .secondary > a, .flyout > button { min-height: 36px; padding-inline: 7px; }
+}

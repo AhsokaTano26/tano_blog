@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import DOMPurify from 'dompurify';
 import { api } from '@/lib/api';
 import { FooterInjection } from '@/components/HtmlInjection';
+import { LegacyEntry } from '@/components/LegacyAvailability';
 import styles from './Footer.module.css';
 
 export function Footer() {
@@ -30,10 +31,11 @@ export function Footer() {
             <p className={styles.copyright}
               dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(text, { ALLOWED_TAGS: ['a', 'b', 'i', 'em', 'strong', 'br', 'span', 'code'] }) }} />
           ) : <p className={styles.copyright}>© {currentYear} {config.site_title || '朝花夕拾录'}. All Rights Reserved.</p>}
-          <nav className={styles.links} aria-label="站点订阅">
+          <nav className={styles.links} aria-label="站点链接">
             <a href="/rss.xml">RSS</a>
             <span aria-hidden="true">/</span>
             <a href="/sitemap.xml">Sitemap</a>
+            <LegacyEntry />
           </nav>
         </div>
       </div>

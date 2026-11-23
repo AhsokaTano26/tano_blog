@@ -104,6 +104,8 @@ export const api = {
   // Public config
   getPublicConfig: () =>
     publicRequest<{ config: Record<string, string> }>('/api/v1/config/public'),
+  getLegacyAvailability: (signal?: AbortSignal) =>
+    request<{ enabled: boolean }>('/api/v1/config/legacy', { cache: 'no-store', timeoutMs: 3000, signal }),
   getAboutConfig: () =>
     publicRequest<{ config: Record<string, string> }>('/api/v1/config/about'),
   getMusicConfig: () =>

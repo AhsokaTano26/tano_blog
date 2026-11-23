@@ -23,6 +23,8 @@ import (
 	"tano_blog/backend/internal/utils"
 )
 
+const legacyUIEnabledKey = "legacy_ui_enabled"
+
 type SiteConfigHandler struct {
 	repo                 *repository.SiteConfigRepo
 	db                   *gorm.DB
@@ -39,6 +41,17 @@ func NewSiteConfigHandler(db *gorm.DB, emailService *service.EmailService, jwtSe
 		jwtSecret:            jwtSecret,
 		syncKeyEncryptionKey: syncKeyEncryptionKey,
 	}
+}
+
+func (h *SiteConfigHandler) GetLegacy(c *gin.Context) {
+	h = h.withContext(c.Request.Context())
+	c.Header("Cache-Control", "no-store")
+	configs, err := h.repo.GetByKeys([]string{legacyUIEnabledKey})
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "无法读取旧版开放状态"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"enabled": len(configs) == 1 && configs[0].Value == "true"})
 }
 
 // GetPublic returns public site config values (no auth required)
@@ -130,6 +143,10 @@ func (h *SiteConfigHandler) Update(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
 		return
 	}
+	if value, ok := input[legacyUIEnabledKey]; ok && value != "true" && value != "false" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "旧版开放状态无效"})
+		return
+	}
 	settings, err := h.repo.GetByKeys([]string{"sync_role", "sync_enabled"})
 	if err != nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "无法确认服务器同步角色，暂时禁止写入"})
@@ -162,7 +179,8 @@ func (h *SiteConfigHandler) Update(c *gin.Context) {
 	}
 
 	allowedKeys := map[string]bool{
-		"site_title": true, "site_description": true, "site_url": true,
+		legacyUIEnabledKey: true,
+		"site_title":       true, "site_description": true, "site_url": true,
 		"footer_text": true, "comment_enabled": true, "default_theme": true,
 		"accent_color": true, "posts_per_page": true, "excerpt_length": true,
 		"head_injection": true, "content_head_injection": true, "footer_injection": true,

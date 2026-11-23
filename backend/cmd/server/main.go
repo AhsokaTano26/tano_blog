@@ -251,6 +251,7 @@ func main() {
 
 		// Public config endpoint (for injection)
 		api.GET("/config/public", siteConfigHandler.GetPublic)
+		api.GET("/config/legacy", siteConfigHandler.GetLegacy)
 		api.GET("/config/about", siteConfigHandler.GetPublic)
 		api.GET("/config/music", siteConfigHandler.GetMusic)
 

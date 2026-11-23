@@ -19,6 +19,7 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
   const isAdmin = pathname.startsWith('/admin');
   const isHome = pathname === '/';
   const isMusic = pathname === '/music';
+  const isLegacy = pathname === '/legacy' || pathname.startsWith('/legacy/');
   const [playerReady, setPlayerReady] = useState(false);
 
   useEffect(() => {
@@ -28,14 +29,16 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
   }, [isMusic]);
 
   useEffect(() => {
-    if (playerReady || isAdmin || isMusic) return;
+    if (playerReady || isAdmin || isMusic || isLegacy) return;
     if ('requestIdleCallback' in window) {
       const id = window.requestIdleCallback(() => setPlayerReady(true), { timeout: 1500 });
       return () => window.cancelIdleCallback(id);
     }
     const id = setTimeout(() => setPlayerReady(true), 200);
     return () => clearTimeout(id);
-  }, [isAdmin, isMusic, playerReady]);
+  }, [isAdmin, isMusic, isLegacy, playerReady]);
+
+  if (isLegacy) return children;
 
   return (
     <>
