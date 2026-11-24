@@ -1,5 +1,7 @@
 'use client';
 
+import { useLocalTransition } from '@/lib/use-local-transition';
+
 import { AdminPageHeader } from '@/components/AdminPageHeader';
 
 import { Textarea } from '@/components/ui/Textarea';
@@ -7,7 +9,7 @@ import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { useState, useEffect, useCallback } from 'react';
 import { requestError, useLatestRequest } from '@/lib/request-feedback';
-import { RequestFeedback } from '@/components/RequestFeedback';
+import { AdminRequestFeedback, AdminToast, useAdminNotice } from '@/components/AdminToast';
 import { api } from '@/lib/api';
 import QRCode from 'qrcode';
 import { Save, Lock, User, Shield, KeyRound, Trash2, Plus, AlertTriangle, Globe } from 'lucide-react';
@@ -23,7 +25,7 @@ export default function AdminProfile() {
   const [userError, setUserError] = useState('');
   const [passkeyError, setPasskeyError] = useState('');
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState('');
+  const [notice, notify] = useAdminNotice();
   const [tab, setTab] = useState<'profile' | 'password' | 'totp' | 'passkey'>('profile');
   const forcePassword = typeof window !== 'undefined' && window.location.search.includes('force_password=1');
 
@@ -92,7 +94,7 @@ export default function AdminProfile() {
 
   async function handleSaveProfile() {
     setSaving(true);
-    setMessage('');
+    notify('');
     try {
       await api.updateProfile({
         display_name: displayName,
@@ -100,9 +102,9 @@ export default function AdminProfile() {
         avatar_url: avatarUrl,
         bio,
       });
-      setMessage('个人信息已保存');
+      notify('个人信息已保存');
     } catch (e: any) {
-      setMessage(requestError(e, '保存失败'));
+      notify(requestError(e, '保存失败'), 'error');
     }
     setSaving(false);
   }
@@ -112,31 +114,31 @@ export default function AdminProfile() {
     setPubSaving(true);
     try {
       await api.admin.config.update(siteConfig);
-      setMessage('公开资料已保存');
+      notify('公开资料已保存');
     } catch (e: any) {
-      setMessage(requestError(e, '保存失败'));
+      notify(requestError(e, '保存失败'), 'error');
     }
     setPubSaving(false);
   }
 
   async function handleChangePassword() {
     if (newPassword !== confirmPassword) {
-      setMessage('两次输入的密码不一致');
+      notify('两次输入的密码不一致', 'error');
       return;
     }
     if (oldPassword === newPassword) {
-      setMessage('新密码不能与旧密码相同');
+      notify('新密码不能与旧密码相同', 'error');
       return;
     }
     if (newPassword.length < 8) {
-      setMessage('新密码不能少于8个字符');
+      notify('新密码不能少于8个字符', 'error');
       return;
     }
     setSaving(true);
-    setMessage('');
+    notify('');
     try {
       await api.changePassword({ old_password: oldPassword, new_password: newPassword });
-      setMessage('密码已修改');
+      notify('密码已修改');
       setOldPassword('');
       setNewPassword('');
       setConfirmPassword('');
@@ -147,7 +149,7 @@ export default function AdminProfile() {
         window.history.replaceState({}, document.title, '/admin/profile');
       }
     } catch (e: any) {
-      setMessage(requestError(e, '修改失败'));
+      notify(requestError(e, '修改失败'), 'error');
     }
     setSaving(false);
   }
@@ -159,13 +161,13 @@ export default function AdminProfile() {
       const dataUrl = await QRCode.toDataURL(res.qr_code, { width: 192, margin: 2 });
       setTotpQrCode(dataUrl);
     } catch (e: any) {
-      setMessage(requestError(e, '设置失败'));
+      notify(requestError(e, '设置失败'), 'error');
     }
   }
 
   async function handleVerifyTOTP() {
     if (totpCode.length !== 6) {
-      setMessage('请输入6位验证码');
+      notify('请输入6位验证码', 'error');
       return;
     }
     try {
@@ -174,9 +176,9 @@ export default function AdminProfile() {
       setTotpSecret('');
       setTotpQrCode('');
       setTotpCode('');
-      setMessage('两步验证已启用');
+      notify('两步验证已启用');
     } catch (e: any) {
-      setMessage(requestError(e, '验证失败'));
+      notify(requestError(e, '验证失败'), 'error');
     }
   }
 
@@ -185,9 +187,9 @@ export default function AdminProfile() {
     try {
       await api.disableTOTP();
       setTotpEnabled(false);
-      setMessage('两步验证已关闭');
+      notify('两步验证已关闭');
     } catch (e: any) {
-      setMessage(requestError(e, '操作失败'));
+      notify(requestError(e, '操作失败'), 'error');
     }
   }
 
@@ -229,11 +231,11 @@ export default function AdminProfile() {
           transports: attestation.response.getTransports ? attestation.response.getTransports() : ['internal'],
         },
       });
-      setMessage('通行密钥已添加');
+      notify('通行密钥已添加');
       loadPasskeys();
     } catch (e: any) {
       if (e.name !== 'NotAllowedError') {
-        setMessage(requestError(e, '注册失败'));
+        notify(requestError(e, '注册失败'), 'error');
       }
     }
   }
@@ -243,9 +245,9 @@ export default function AdminProfile() {
     try {
       await api.passkeyDelete(id);
       setPasskeys(passkeys.filter(p => p.id !== id));
-      setMessage('通行密钥已删除');
+      notify('通行密钥已删除');
     } catch (e: any) {
-      setMessage(requestError(e, '删除失败'));
+      notify(requestError(e, '删除失败'), 'error');
     }
   }
 
@@ -255,29 +257,25 @@ export default function AdminProfile() {
     try {
       await api.passkeyRename(id, name);
       setPasskeys(passkeys.map(p => p.id === id ? { ...p, nickname: name } : p));
-      setMessage('已重命名');
+      notify('已重命名');
     } catch (e: any) {
-      setMessage(requestError(e, '重命名失败'));
+      notify(requestError(e, '重命名失败'), 'error');
     }
   }
 
   const inputClass = "w-full px-3 py-2.5 rounded-lg text-sm outline-none";
   const inputStyle = { border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' };
 
+  const panelRef = useLocalTransition<HTMLDivElement>(tab);
   if (loading) return <Loading />;
-  if (userError) return <RequestFeedback error={userError} onRetry={loadUser} pending={loading} />;
+  if (userError) return <AdminRequestFeedback error={userError} onRetry={loadUser} pending={loading} />;
 
   return (
     <div className="admin-page">
       <AdminPageHeader title="个人资料" description="管理个人展示信息、密码与登录安全。" section="账户管理" />
 
-      <RequestFeedback error={publicSettings.error} onRetry={publicSettings.reload} pending={publicSettings.loading} />
-      {message && (
-        <div role={message.includes('失败') || !message.includes('已') ? 'alert' : 'status'} className="mb-4 px-4 py-2.5 rounded-lg text-sm glass-card"
-          style={{ color: !message.includes('失败') && message.includes('已') ? 'hsl(142, 60%, 50%)' : 'hsl(0, 60%, 55%)' }}>
-          {message}
-        </div>
-      )}
+      <AdminRequestFeedback error={publicSettings.error} onRetry={publicSettings.reload} pending={publicSettings.loading} />
+      <AdminToast {...notice} />
 
       <div className="glass-card rounded-xl overflow-hidden">
         {/* Tabs */}
@@ -312,7 +310,7 @@ export default function AdminProfile() {
           </button>
         </div>
 
-        <div className="p-6">
+        <div ref={panelRef} className="p-6">
           {tab === 'profile' && (
             <div className="space-y-5 max-w-2xl">
               <div className="flex items-center gap-4">
@@ -500,8 +498,8 @@ export default function AdminProfile() {
                       <span className="font-mono cursor-pointer hover:opacity-80 underline underline-offset-2"
                         style={{ color: 'var(--primary)' }}
                         onClick={async () => {
-                          try { await navigator.clipboard.writeText(totpSecret); setMessage('密钥已复制'); }
-                          catch (cause) { setMessage(requestError(cause, '复制密钥失败，请手动复制')); }
+                          try { await navigator.clipboard.writeText(totpSecret); notify('密钥已复制'); }
+                          catch (cause) { notify(requestError(cause, '复制密钥失败，请手动复制'), 'error'); }
                         }}>
                         {totpSecret}
                       </span>
@@ -541,7 +539,7 @@ export default function AdminProfile() {
                 通行密钥（Passkey）让您无需输入密码即可安全登录。支持指纹、面容识别或设备密码。
               </p>
 
-              <RequestFeedback error={passkeyError} onRetry={loadPasskeys} pending={passkeyLoading} />
+              <AdminRequestFeedback error={passkeyError} onRetry={loadPasskeys} pending={passkeyLoading} />
               {passkeyError ? null : passkeyLoading ? (
                 <Loading text="加载中..." />
               ) : passkeys.length > 0 ? (

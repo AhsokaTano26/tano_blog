@@ -1,5 +1,7 @@
 'use client';
 
+import { useLocalTransition } from '@/lib/use-local-transition';
+
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Search, X } from 'lucide-react';
@@ -45,6 +47,7 @@ export default function ArchivePage() {
   const pagination = usePagedItems<ArchiveGroup>(fetchArchive, 50, mergeArchiveGroups);
   const { items, total, initialLoading, error, hasMore } = pagination;
   const [view, setView] = useState<TimelineView>('comfortable');
+  const timelineRef = useLocalTransition<HTMLDivElement>(view);
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState('');
   const searchRef = useRef<HTMLInputElement>(null);
@@ -106,7 +109,7 @@ export default function ArchivePage() {
           {query.trim() ? <><p>没有找到匹配的文章。</p><button type="button" onClick={() => { setQuery(''); searchRef.current?.focus(); }}>清除关键词</button></> : !error && <p>时间线还在等待第一篇文章。</p>}
         </div>
       ) : (
-        <div className={styles.timeline} aria-label="文章时间线">
+        <div ref={timelineRef} className={styles.timeline} aria-label="文章时间线">
           {years.map(year => {
             const maxCount = Math.max(...year.months.map(month => month.count));
             return (

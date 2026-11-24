@@ -1,31 +1,30 @@
 'use client';
 
 import { Input } from '@/components/ui/Input';
+import { AdminToast, useAdminNotice } from '@/components/AdminToast';
 import { useState } from 'react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
-  const [message, setMessage] = useState('');
-  const [error, setError] = useState('');
+  const [notice, notify] = useAdminNotice();
   const [loading, setLoading] = useState(false);
   const [resetLink, setResetLink] = useState('');
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setError('');
-    setMessage('');
+    notify('');
     setResetLink('');
     setLoading(true);
     try {
       const res = await api.forgotPassword(email);
-      setMessage(res.message);
+      notify(res.message);
       if (res.reset_link) {
         setResetLink(res.reset_link);
       }
     } catch (err: any) {
-      setError(err.message || '发送失败');
+      notify(err.message || '发送失败', 'error');
     }
     setLoading(false);
   }
@@ -36,21 +35,11 @@ export default function ForgotPasswordPage() {
         <div className="admin-auth-card glass-card rounded-2xl p-8">
           <h1 className="text-xl font-bold text-center mb-6" style={{ color: 'var(--text-primary)' }}>忘记密码</h1>
           <p className="admin-auth-description">输入账户邮箱，获取密码重置链接。</p>
-          {message && (
-            <div role="status" className="mb-4 px-4 py-2.5 rounded-xl text-sm" style={{ background: 'var(--primary-sub)', color: 'var(--primary)' }}>
-              <p>{message}</p>
-              {resetLink && (
-                <a href={resetLink} className="block mt-2 break-all hover:underline font-medium"
-                  style={{ color: 'var(--primary)' }}>
-                  {resetLink}
-                </a>
-              )}
-            </div>
-          )}
-          {error && (
-            <div role="alert" className="mb-4 px-4 py-2.5 rounded-xl text-sm" style={{ color: 'var(--color-error)' }}>
-              {error}
-            </div>
+          <AdminToast {...notice} />
+          {resetLink && (
+            <a href={resetLink} className="block mb-4 break-all text-sm hover:underline font-medium" style={{ color: 'var(--primary)' }}>
+              {resetLink}
+            </a>
           )}
           <form onSubmit={handleSubmit} className="space-y-4">
             <label htmlFor="recovery-email" className="admin-field-label">注册邮箱</label>

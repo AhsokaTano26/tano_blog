@@ -1,5 +1,7 @@
 'use client';
 
+import { AdminToast, AdminToastProvider, useAdminNotice } from '@/components/AdminToast';
+
 import { Tooltip } from './Tooltip';
 import { useEffect, useRef, useState, type CSSProperties, type SyntheticEvent } from 'react';
 import { LoaderCircle, Maximize, Minimize, Music, Pause, Play, Volume2, VolumeX } from 'lucide-react';
@@ -51,12 +53,13 @@ function MediaPreviewPlayer({ src, source, type, title, className = '', style }:
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(1);
   const [muted, setMuted] = useState(false);
-  const [mediaError, setMediaError] = useState('');
-  const [fullscreenError, setFullscreenError] = useState('');
+  const [mediaNotice, setMediaError] = useAdminNotice('error');
+  const [fullscreenNotice, setFullscreenError] = useAdminNotice('error');
   const [fullscreen, setFullscreen] = useState(false);
   const mediaName = type === 'video' ? '视频' : '音频';
   const invalidMessage = src.trim() ? `${mediaName}地址无效` : `暂无${mediaName}地址`;
   const pending = requestingPlay || buffering;
+  const toast = <AdminToast {...(mediaNotice.message ? mediaNotice : fullscreenNotice)} />;
 
   useEffect(() => {
     mountedRef.current = true;
@@ -90,7 +93,7 @@ function MediaPreviewPlayer({ src, source, type, title, className = '', style }:
     setRequestingPlay(true);
     setMediaError('');
     try {
-      if (media.error || mediaError) media.load();
+      if (media.error || mediaNotice.message) media.load();
       await media.play();
       if (!mountedRef.current || request !== playRequestRef.current) {
         if (!playIntentRef.current) media.pause();
@@ -209,6 +212,7 @@ function MediaPreviewPlayer({ src, source, type, title, className = '', style }:
   return (
     <div ref={frameRef} role="group" aria-label={title ? `${title} ${mediaName}预览` : `${mediaName}预览`}
       className={`admin-ui-media-preview ${className}`} style={style}>
+      {fullscreen ? <AdminToastProvider>{toast}</AdminToastProvider> : toast}
       {type === 'video' ? (
         <video ref={node => { mediaRef.current = node; }} src={source || undefined} preload="metadata" playsInline
           {...mediaEvents} aria-label={title || '视频预览画面'}
@@ -246,9 +250,8 @@ function MediaPreviewPlayer({ src, source, type, title, className = '', style }:
           aria-valuetext={`${formatTime(currentTime)} / ${formatTime(duration)}`}
           min={0} max={duration || 1} step={0.1} value={Math.min(currentTime, duration || 0)}
           disabled={!source || !duration} onChange={event => seek(event.currentTarget.value)} />
-        {!source ? <p role="status" className="admin-ui-media-status">{invalidMessage}</p>
-          : (mediaError || fullscreenError) ? <p role="alert" className="admin-ui-media-status">{mediaError || fullscreenError}</p>
-            : pending ? <p role="status" className="admin-ui-media-status">正在加载{mediaName}…</p> : null}
+        {!source ? <p className="admin-ui-media-status">{invalidMessage}</p>
+          : pending ? <p role="status" className="admin-ui-media-status">正在加载{mediaName}…</p> : null}
       </div>
     </div>
   );

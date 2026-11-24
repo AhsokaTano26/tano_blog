@@ -1,6 +1,7 @@
 'use client';
 
 import { AdminPageHeader } from '@/components/AdminPageHeader';
+import { AdminToast, useAdminNotice } from '@/components/AdminToast';
 
 import { Dialog } from '@/components/ui/Dialog';
 import { Textarea } from '@/components/ui/Textarea';
@@ -30,11 +31,11 @@ interface GalleryImage {
 const fetchImages = (params: Record<string, string>) => api.admin.gallery.list(params);
 
 export default function AdminGalleryPage() {
-  const { confirm, alert } = useConfirm();
+  const { confirm } = useConfirm();
   const pagination = usePagedItems<GalleryImage>(fetchImages, 48, mergeById);
   const { items: images, setItems: setImages, total, initialLoading, reload: loadImages } = pagination;
   const [moving, setMoving] = useState(false);
-  const [moveError, setMoveError] = useState('');
+  const [notice, notify] = useAdminNotice();
   const [showDialog, setShowDialog] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formUrl, setFormUrl] = useState('');
@@ -76,7 +77,7 @@ export default function AdminGalleryPage() {
       setShowDialog(false);
       loadImages();
     } catch (e: any) {
-      await alert(e.message);
+      notify(e.message, 'error');
     }
   }
 
@@ -86,7 +87,7 @@ export default function AdminGalleryPage() {
       await api.admin.gallery.delete(id);
       loadImages();
     } catch (e: any) {
-      await alert(e.message);
+      notify(e.message, 'error');
     }
   }
 
@@ -94,7 +95,7 @@ export default function AdminGalleryPage() {
     const newIndex = index + direction;
     if (moving || newIndex < 0 || newIndex >= images.length) return;
     setMoving(true);
-    setMoveError('');
+    notify('');
     const items = [
       { id: images[index].id, sort_order: images[newIndex].sort_order },
       { id: images[newIndex].id, sort_order: images[index].sort_order },
@@ -107,7 +108,7 @@ export default function AdminGalleryPage() {
       await api.admin.gallery.reorder(items);
     } catch (error) {
       setImages(images);
-      setMoveError(error instanceof Error ? error.message : '排序失败，请重试');
+      notify(error instanceof Error ? error.message : '排序失败，请重试', 'error');
     } finally { setMoving(false); }
   }
 
@@ -130,7 +131,7 @@ export default function AdminGalleryPage() {
         </button>
       </AdminPageHeader>
 
-      {moveError && <p role="alert" className="mb-4 text-sm" style={{ color: 'var(--color-error)' }}>{moveError}</p>}
+      <AdminToast {...notice} />
       {images.length === 0 ? (
         <div className="text-center py-20" style={{ color: 'var(--text-info)' }}>
           还没有图片，点击右上角添加
@@ -178,7 +179,8 @@ export default function AdminGalleryPage() {
         </div>
       )}
 
-      <LoadMore {...pagination} />
+      <AdminToast message={pagination.error} tone="error" />
+      <LoadMore {...pagination} showError={false} />
 
       {/* 新增/编辑弹窗 */}
       {showDialog && (

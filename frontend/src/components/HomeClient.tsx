@@ -1,5 +1,7 @@
 'use client';
 
+import { useLocalTransition } from '@/lib/use-local-transition';
+
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
@@ -26,6 +28,7 @@ export default function HomeClient({ initialData, initialQuery }: { initialData:
   const [profile, setProfile] = useState(initialData.profile || {});
   const [retry, setRetry] = useState(0);
   const queryKey = JSON.stringify(query);
+  const resultsRef = useLocalTransition<HTMLDivElement>(loading || error ? null : posts);
   const loadedQuery = useRef(initialData.posts ? JSON.stringify(initialQuery) : '');
   const pageSize = HOME_PAGE_SIZE;
   const bgRef = useRef<HTMLDivElement>(null);
@@ -297,31 +300,31 @@ export default function HomeClient({ initialData, initialQuery }: { initialData:
                 <h1>文章</h1>
                 <p>共 {total} 篇</p>
               </div>
-              <div>
-                {/* Active filter indicator */}
-                {(activeCategory || activeTag) && (
-                  <div className={styles.activeFilter}>
-                    <div className="flex items-center gap-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
-                      <span>筛选：</span>
-                      {activeCategory && (
-                        <span className="text-xs font-medium" style={{ color: 'var(--primary)' }}>
-                          {categories.find(c => c.slug === activeCategory)?.name || activeCategory}
-                        </span>
-                      )}
-                      {activeTag && (
-                        <span className="text-xs font-medium" style={{ color: 'var(--primary)' }}>
-                          {tags.find(t => t.slug === activeTag)?.name || activeTag}
-                        </span>
-                      )}
-                      <span className="text-xs" style={{ color: 'var(--text-info)' }}>（{total} 篇文章）</span>
-                    </div>
-                    <button onClick={() => changeQuery({ page: 1, category: '', tag: '' })}
-                      className={editorial.action}
-                      style={{ color: 'var(--text-secondary)' }}>
-                      清除筛选
-                    </button>
+              {/* Active filter indicator */}
+              {(activeCategory || activeTag) && (
+                <div className={styles.activeFilter}>
+                  <div className="flex items-center gap-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
+                    <span>筛选：</span>
+                    {activeCategory && (
+                      <span className="text-xs font-medium" style={{ color: 'var(--primary)' }}>
+                        {categories.find(c => c.slug === activeCategory)?.name || activeCategory}
+                      </span>
+                    )}
+                    {activeTag && (
+                      <span className="text-xs font-medium" style={{ color: 'var(--primary)' }}>
+                        {tags.find(t => t.slug === activeTag)?.name || activeTag}
+                      </span>
+                    )}
+                    <span className="text-xs" style={{ color: 'var(--text-info)' }}>（{total} 篇文章）</span>
                   </div>
-                )}
+                  <button onClick={() => changeQuery({ page: 1, category: '', tag: '' })}
+                    className={editorial.action}
+                    style={{ color: 'var(--text-secondary)' }}>
+                    清除筛选
+                  </button>
+                </div>
+              )}
+              <div ref={resultsRef} aria-busy={loading}>
                 {loading ? (
                   <Loading />
                 ) : error ? (

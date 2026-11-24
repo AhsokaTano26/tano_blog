@@ -4,7 +4,7 @@ import { Tooltip } from '@/components/ui/Tooltip';
 import { useState, useEffect, useRef } from 'react';
 import { ApiError } from '@/lib/api';
 import { requestError, useFeedbackMutation } from '@/lib/request-feedback';
-import { RequestFeedback } from '@/components/RequestFeedback';
+import { AdminRequestFeedback, AdminToastProvider } from '@/components/AdminToast';
 import { AdminServerNotice } from '@/components/AdminServerNotice';
 import './admin.css';
 import { api } from '@/lib/api';
@@ -55,6 +55,10 @@ const navSections = [
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
+  return <AdminToastProvider><AdminShell>{children}</AdminShell></AdminToastProvider>;
+}
+
+function AdminShell({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState('');
@@ -180,7 +184,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
 
   if (!user) {
-    return <div className="p-6"><RequestFeedback error={authError} onRetry={() => setAuthRetry(value => value + 1)} pending={loading} /></div>;
+    return <div className="p-6"><AdminRequestFeedback error={authError} onRetry={() => setAuthRetry(value => value + 1)} pending={loading} /></div>;
   }
 
   return (
@@ -452,9 +456,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <ConfirmProvider>
             <EntryAnimationPreviewContext.Provider value={document => { setPreviewDocument(document); setShowWelcome(true); }}>
               <AdminServerNotice key={pathname} />
-              <RequestFeedback error={logout.error} />
-              <RequestFeedback error={summaryError} onRetry={() => setCountsRetry(value => value + 1)} />
-              <RequestFeedback error={notificationError} onRetry={() => setCountsRetry(value => value + 1)} />
+              <AdminRequestFeedback error={logout.error} />
+              <AdminRequestFeedback error={summaryError} onRetry={() => setCountsRetry(value => value + 1)} />
+              <AdminRequestFeedback error={notificationError} onRetry={() => setCountsRetry(value => value + 1)} />
               {children}
             </EntryAnimationPreviewContext.Provider>
           </ConfirmProvider>

@@ -1,6 +1,7 @@
 'use client';
 
 import { Input } from '@/components/ui/Input';
+import { AdminToast, useAdminNotice } from '@/components/AdminToast';
 import { Textarea } from '@/components/ui/Textarea';
 import { Dialog } from '@/components/ui/Dialog';
 import { DateTimePicker } from '@/components/ui/DateTimePicker';
@@ -43,7 +44,7 @@ export default function PostDetailDialog({ post, categories, tags, seriesList, p
   const [passwordSet, setPasswordSet] = useState(post?.password_set || false);
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
-  const [error, setError] = useState('');
+  const [errorNotice, setError] = useAdminNotice('error');
   const [aiGenerating, setAiGenerating] = useState(false);
 
   function generateExcerpt(md: string): string {
@@ -120,11 +121,7 @@ export default function PostDetailDialog({ post, categories, tags, seriesList, p
         {/* Body */}
         <div className="flex-1 min-h-0 min-w-0 overflow-y-auto">
         <fieldset disabled={saving} className="min-w-0 p-6 space-y-5">
-          {error && (
-            <div role="alert" className="px-4 py-2.5 rounded-xl text-sm" style={{ color: 'var(--color-error)', background: 'var(--glass-bg)' }}>
-              {error}
-            </div>
-          )}
+          <AdminToast {...errorNotice} />
 
           {/* Author */}
           <div>

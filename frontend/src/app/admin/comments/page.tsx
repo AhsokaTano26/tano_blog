@@ -1,5 +1,7 @@
 'use client';
 
+import { useLocalTransition } from '@/lib/use-local-transition';
+
 import { AdminPageHeader } from '@/components/AdminPageHeader';
 
 import { Tooltip } from '@/components/ui/Tooltip';
@@ -10,7 +12,7 @@ import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react
 import { api } from '@/lib/api';
 import type { AdminCommentItem, CommentRevision, IpBanItem } from '@/lib/admin-types';
 import { useFeedbackMutation } from '@/lib/request-feedback';
-import { RequestFeedback } from '@/components/RequestFeedback';
+import { AdminRequestFeedback } from '@/components/AdminToast';
 import { MessageSquare, Check, X, Trash2, ExternalLink, User, CheckSquare, Square, Info } from 'lucide-react';
 import { Loading } from '@/components/Loading';
 import { useConfirm, Select } from '@/components/ConfirmDialog';
@@ -86,8 +88,8 @@ function CommentDetail({ comment, onClose, onReload }: { comment: AdminCommentIt
         </button>
       </div>
 
-      <RequestFeedback error={mutation.error} />
-      <RequestFeedback error={revisionFeedback.error} onRetry={handleLoadRevisions} pending={loadingRevisions} />
+      <AdminRequestFeedback error={mutation.error} />
+      <AdminRequestFeedback error={revisionFeedback.error} onRetry={handleLoadRevisions} pending={loadingRevisions} />
       <div className="space-y-3">
         <div className="flex items-center gap-3 pb-3" style={{ borderBottom: '1px solid var(--glass-border)' }}>
           <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: 'var(--primary-sub)' }}>
@@ -348,6 +350,8 @@ export default function AdminComments() {
 
   const totalPages = filter === 'commenter' ? Math.ceil(commenterTotal / pageSize) : filter === 'blocked' ? Math.ceil(blockedTotal / pageSize) : Math.ceil(total / pageSize);
   const isCommentTab = !['commenter', 'blocked'].includes(filter);
+  const results = filter === 'commenter' ? commenterResults : filter === 'blocked' ? blockedItems : items;
+  const resultsRef = useLocalTransition<HTMLDivElement>(loading || loadError ? null : results);
 
   const handleCommenterSearch = () => {
     setCommenterQuery({ email: commenterEmail, ip: commenterIP });
@@ -370,8 +374,8 @@ export default function AdminComments() {
         </div>
       </AdminPageHeader>
 
-      <RequestFeedback error={loadError} onRetry={reloadLatest} pending={loading} />
-      <RequestFeedback error={mutation.error} />
+      <AdminRequestFeedback error={loadError} onRetry={reloadLatest} pending={loading} />
+      <AdminRequestFeedback error={mutation.error} />
 
       {/* Batch actions - only for comment tabs */}
       {isCommentTab && selected.size > 0 && (
@@ -404,6 +408,7 @@ export default function AdminComments() {
         ))}
       </div>
 
+      <div ref={resultsRef} aria-busy={loading}>
         {filter === 'commenter' ? (
           <div className="p-5">
             {/* Search form */}
@@ -640,6 +645,8 @@ export default function AdminComments() {
             ))}
           </div>
         )}
+
+      </div>
 
       {/* Pagination */}
       {isCommentTab && (

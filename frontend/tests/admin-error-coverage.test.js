@@ -129,6 +129,24 @@ test('profile initial failures display a retry instead of an empty editable prof
   assert.equal([...document.querySelectorAll('input')].some(node => node.value === 'Loaded profile'), true);
 });
 
+test('profile save feedback expires after three seconds and a repeat save shows it again', async t => {
+  t.mock.method(api.admin.config, 'get', async () => ({ config }));
+  t.mock.method(api, 'getMe', async () => user);
+  t.mock.method(api, 'updateProfile', async () => ({}));
+  await mount(t, 'profile');
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const toast = () => document.querySelector('.admin-toast[role="status"]')?.textContent;
+  await click('保存');
+  assert.equal(toast(), '个人信息已保存');
+  await act(async () => t.mock.timers.tick(2999));
+  assert.equal(toast(), '个人信息已保存');
+  await act(async () => t.mock.timers.tick(1));
+  assert.equal(toast(), undefined);
+  assert.doesNotMatch(document.body.textContent, /个人信息已保存/);
+  await click('保存');
+  assert.equal(toast(), '个人信息已保存');
+});
+
 test('passkey loading failures are exposed with retry', async t => {
   t.mock.method(api.admin.config, 'get', async () => ({ config }));
   t.mock.method(api, 'getMe', async () => user);
@@ -171,12 +189,13 @@ test('revision failures do not masquerade as missing history', async t => {
   assert.doesNotMatch(document.body.textContent, /暂无修订历史/);
 });
 
-test('preview generation rejection retains its reason in the wrapped alert', async t => {
+test('preview generation rejection retains its reason in an admin toast', async t => {
   editorMocks(t);
   t.mock.method(api.admin.posts, 'generatePreviewToken', async () => { throw new ApiError('备服务器为只读模式', 503); });
   await mount(t, require('../src/components/PostEditor.tsx').default, { post: article, onClose() {} });
   await act(async () => document.querySelector('[aria-label="复制预览链接"]').click());
-  assert.match(document.querySelector('[role=alertdialog]')?.textContent || '', /备服务器.*HTTP 503/);
+  assert.match(document.querySelector('.admin-toast[role=alert]')?.textContent || '', /备服务器.*HTTP 503/);
+  assert.equal(document.querySelector('[role=alertdialog]') === null, true);
 });
 
 test('media field upload rejection is shown next to the unchanged field', async t => {

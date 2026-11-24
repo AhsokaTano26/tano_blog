@@ -1,7 +1,9 @@
 'use client';
+
+import { useLocalTransition } from '@/lib/use-local-transition';
 import { Tooltip } from '@/components/ui/Tooltip';
 
-import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react';
+import { useEffect, useId, useMemo, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react';
 import { BarChart3, LineChart } from 'lucide-react';
 import styles from './VisitTrendChart.module.css';
 
@@ -62,7 +64,7 @@ export default function RequestTrendChart({ data, title, subtitle, metricLabel, 
   const [mode, setMode] = useState(initialMode);
   const [selection, setSelection] = useState<{ data: RequestSample[]; index: number } | null>(null);
   const [width, setWidth] = useState(720);
-  const plotRef = useRef<HTMLDivElement>(null);
+  const plotRef = useLocalTransition<HTMLDivElement>(mode);
   const id = useId();
   const series = useMemo(() => data.filter(item => Number.isFinite(item.count)).map(item => ({ ...item, count: Math.max(0, item.count) })), [data]);
 

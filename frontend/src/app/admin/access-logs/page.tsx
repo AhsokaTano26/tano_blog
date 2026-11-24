@@ -1,6 +1,7 @@
 'use client';
 
 import { AdminPageHeader } from '@/components/AdminPageHeader';
+import { AdminRequestFeedback, AdminToast, useAdminNotice } from '@/components/AdminToast';
 import { validDateValue } from '@/lib/date-value';
 
 import { Tooltip } from '@/components/ui/Tooltip';
@@ -70,7 +71,7 @@ export default function AdminAccessLogs() {
   const [loading, setLoading] = useState(true);
   const [listError, setListError] = useState('');
   const [statsError, setStatsError] = useState('');
-  const [filterError, setFilterError] = useState('');
+  const [filterNotice, notifyFilter] = useAdminNotice();
   const [refresh, setRefresh] = useState(0);
   const [stats, setStats] = useState<Stats | null>(null);
   const [detailLog, setDetailLog] = useState<AccessLog | null>(null);
@@ -134,10 +135,10 @@ export default function AdminAccessLogs() {
   function handleFilter() {
     const days = (Date.parse(endDate) - Date.parse(startDate)) / 86400000;
     if (!validDateValue(startDate) || !validDateValue(endDate) || !Number.isFinite(days) || days < 0 || days > 365) {
-      setFilterError('请选择有效日期范围，开始日期不能晚于结束日期，最多 366 天');
+      notifyFilter('请选择有效日期范围，开始日期不能晚于结束日期，最多 366 天', 'error');
       return;
     }
-    setFilterError('');
+    notifyFilter('');
     pageCursors.current = {};
     listSequence.current++;
     setPage(1);
@@ -152,7 +153,7 @@ export default function AdminAccessLogs() {
     setIpFilter('');
     setStartDate(defaults.start);
     setEndDate(defaults.end);
-    setFilterError('');
+    notifyFilter('');
     pageCursors.current = {};
     listSequence.current++;
     setPage(1);
@@ -218,9 +219,7 @@ export default function AdminAccessLogs() {
       <p className="text-xs mb-3 leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
         统计日期：{appliedFilters.start} 至 {appliedFilters.end}（UTC+8，包含结束日）。统计日期范围内全部请求；路径、方法、状态码与 IP 仅筛选下方日志列表。
       </p>
-      {statsError && <div role="alert" className="mb-4 text-sm" style={{ color: 'var(--color-error)' }}>
-        {statsError} <button onClick={() => void loadStats()} className="underline ml-2">重试统计</button>
-      </div>}
+      <AdminRequestFeedback error={statsError} onRetry={loadStats} retryLabel="重试统计" />
       {stats && <div className="space-y-4 mb-5">
         <RequestSummary stats={stats} />
         <VisitTrendChart data={stats.daily_counts} range={appliedFilters} compact />
@@ -294,13 +293,11 @@ export default function AdminAccessLogs() {
             </div>
           </div>
           <p className="text-xs mt-3" style={{ color: 'var(--text-info)' }}>默认查询近 30 天；可选择任意历史日期，每次最多 366 天。导出使用已应用的筛选。</p>
-          {filterError && <p role="alert" className="text-sm mt-2" style={{ color: 'var(--color-error)' }}>{filterError}</p>}
+          <AdminToast {...filterNotice} />
         </div>
 
         {/* Table */}
-        {listError && <div role="alert" className="p-4 text-sm" style={{ color: 'var(--color-error)' }}>
-          {listError} <button onClick={() => void load()} className="underline ml-2">重试日志</button>
-        </div>}
+        <AdminRequestFeedback error={listError} onRetry={() => void load()} retryLabel="重试日志" />
         {loading ? (
           <Loading />
         ) : listError ? null : items.length === 0 ? (

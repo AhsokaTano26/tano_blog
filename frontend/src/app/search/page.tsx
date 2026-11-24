@@ -1,5 +1,7 @@
 'use client';
 
+import { useLocalTransition } from '@/lib/use-local-transition';
+
 import React, { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
@@ -34,6 +36,7 @@ function SearchContent() {
   const [query, setQuery] = useState(q);
   const [tags, setTags] = useState<any[]>([]);
   const [recentPosts, setRecentPosts] = useState<any[]>([]);
+  const resultsRef = useLocalTransition<HTMLDivElement>(q && !loading && !error ? posts : null);
 
   useEffect(() => {
     api.getTags().then(res => setTags(res.items || [])).catch(() => {});
@@ -104,7 +107,7 @@ function SearchContent() {
           {error ? <p role="alert">{error} <button onClick={() => setRetry(value => value + 1)}>重试</button></p> : loading ? (
             <Loading />
           ) : (
-            <div className="space-y-4">
+            <div ref={resultsRef} className="space-y-4">
               {posts.map((post) => (
                 <div key={post.id} className="card-base rounded-2xl p-6" style={{ background: 'var(--card-bg)' }}>
                   <h2 className="text-xl font-bold">

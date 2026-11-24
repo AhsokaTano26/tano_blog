@@ -21,8 +21,11 @@
 .commentMeta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; }
 .comments { padding-top: 28px; border-top: 1px solid var(--border-color); }
 .sort { display: flex; flex-wrap: wrap; gap: 20px; margin-bottom: 8px; }
-.sort button { min-height: 44px; border-bottom: 1px solid transparent; color: var(--text-secondary); font-size: 12px; }
+.sort button { min-height: 44px; border-bottom: 1px solid transparent; color: var(--text-secondary); font-size: 12px; transition: color 140ms ease, border-color 140ms ease; }
 .sort button[aria-pressed='true'], .sort button:hover { color: var(--primary); border-bottom-color: var(--primary); }
+.commentResults { display: flow-root; }
+.listMessage { padding-block: 12px; color: var(--text-info); font-size: 13px; }
+.commentForm { max-width: 32rem; margin-inline: auto; }
 .notice { margin-bottom: 16px; padding-block: 12px; border-bottom: 1px solid var(--border-color); font-size: 13px; }
 .preview { max-height: 200px; overflow-y: auto; padding-block: 16px; border-block: 1px solid var(--border-color); }
 .submit { display: inline-flex; align-items: center; justify-content: space-between; gap: 32px; min-height: 44px; margin-top: 12px; padding: 4px 0; border-bottom: 1px solid var(--text-secondary); color: var(--primary); font-size: 13px; transition: border-color 160ms ease; }
@@ -38,4 +41,4 @@
   .adjacent a { padding-right: 12px; }
   .adjacent > div + div a { padding-left: 12px; }
 }
-@media (prefers-reduced-motion: reduce) { .tag, .relatedText h3, .submit { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .tag, .relatedText h3, .sort button, .submit { transition: none; } }

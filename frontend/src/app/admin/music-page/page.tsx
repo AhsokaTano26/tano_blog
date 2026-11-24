@@ -1,12 +1,14 @@
 'use client';
 
+import { useLocalTransition } from '@/lib/use-local-transition';
+
 import { AdminPageHeader } from '@/components/AdminPageHeader';
 
 import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
 import { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react';
 import { requestError, useLatestRequest } from '@/lib/request-feedback';
-import { RequestFeedback } from '@/components/RequestFeedback';
+import { AdminRequestFeedback, AdminToast, useAdminNotice } from '@/components/AdminToast';
 import { api } from '@/lib/api';
 import { Save, Music, Plus, Trash2, ArrowUp, ArrowDown, Image, Headphones, X } from 'lucide-react';
 import { Loading } from '@/components/Loading';
@@ -43,7 +45,7 @@ const defaultConfig: MusicPageConfig = {
 export default function AdminMusicPage() {
   const [configStr, setConfigStr] = useState('');
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState('');
+  const [notice, notify] = useAdminNotice();
   const [activeTab, setActiveTab] = useState<'settings' | 'playlists'>('settings');
   const [selectedPlaylistId, setSelectedPlaylistId] = useState<string | null>(null);
   const [musicPassword, setMusicPassword] = useState('');
@@ -175,7 +177,7 @@ export default function AdminMusicPage() {
 
   async function handleSave() {
     setSaving(true);
-    setMessage('');
+    notify('');
     let saved = false;
     const submitted = { configStr, musicPassword, passwordSet };
     try {
@@ -193,9 +195,9 @@ export default function AdminMusicPage() {
       setConfigStr(current => current === submitted.configStr ? res.config?.music_page_config || '' : current);
       setPasswordSet(current => current === submitted.passwordSet ? !!res.config?.music_password : current);
       setMusicPassword(current => current === submitted.musicPassword ? '' : current);
-      setMessage(newerEdits ? '提交的音乐馆设置已保存，仍有未保存的修改' : '已保存');
+      notify(newerEdits ? '提交的音乐馆设置已保存，仍有未保存的修改' : '已保存');
     } catch (cause) {
-      setMessage(requestError(cause, saved ? '音乐馆设置已保存，但重新读取配置失败' : '保存音乐馆设置失败'));
+      notify(requestError(cause, saved ? '音乐馆设置已保存，但重新读取配置失败' : '保存音乐馆设置失败'), 'error');
     }
     setSaving(false);
   }
@@ -203,19 +205,15 @@ export default function AdminMusicPage() {
   const inputClass = "w-full px-3 py-2.5 rounded-lg text-sm outline-none";
   const inputStyle = { border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' };
 
+  const panelRef = useLocalTransition<HTMLDivElement>(activeTab);
   if (settings.loading && !settings.data) return <Loading />;
-  if (!settings.data) return <RequestFeedback error={settings.error} onRetry={settings.reload} pending={settings.loading} />;
+  if (!settings.data) return <AdminRequestFeedback error={settings.error} onRetry={settings.reload} pending={settings.loading} />;
 
   return (
     <div className="admin-page">
       <AdminPageHeader title="音乐馆" description="配置音乐页面，编排歌单与曲目信息。" />
 
-      {message && (
-        <div role={message.includes('失败') ? 'alert' : 'status'} className="mb-4 px-4 py-2.5 rounded-lg text-sm glass-card"
-          style={{ color: message.includes('失败') ? 'hsl(0, 60%, 55%)' : 'hsl(142, 60%, 50%)' }}>
-          {message}
-        </div>
-      )}
+      <AdminToast {...notice} />
 
       {/* Tab bar */}
       <div className="admin-tabs admin-tabs-segmented mb-6 p-1 rounded-xl w-fit" role="group" aria-label="音乐馆分区" style={{ background: 'var(--surface-bg)' }}>
@@ -240,7 +238,7 @@ export default function AdminMusicPage() {
       </div>
 
       {activeTab === 'settings' && (
-        <div className="glass-card rounded-xl p-6 space-y-6 max-w-3xl">
+        <div ref={panelRef} className="glass-card rounded-xl p-6 space-y-6 max-w-3xl">
           {/* Page title */}
           <div>
             <label htmlFor="admin-music-page-field-1" className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>页面标题</label>
@@ -312,7 +310,7 @@ export default function AdminMusicPage() {
       )}
 
       {activeTab === 'playlists' && (
-        <div className="glass-card rounded-xl p-6 max-w-3xl">
+        <div ref={panelRef} className="glass-card rounded-xl p-6 max-w-3xl">
           {/* New playlist button */}
           <button onClick={addPlaylist}
             className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-white mb-4 transition-colors hover:opacity-90"

@@ -5,7 +5,7 @@ import { AdminPageHeader } from '@/components/AdminPageHeader';
 import { Tooltip } from '@/components/ui/Tooltip';
 import { useState, useCallback } from 'react';
 import { useLatestRequest, useFeedbackMutation } from '@/lib/request-feedback';
-import { RequestFeedback } from '@/components/RequestFeedback';
+import { AdminRequestFeedback } from '@/components/AdminToast';
 import { api } from '@/lib/api';
 import { Bell, CheckCheck, MessageSquare, Link as LinkIcon, ExternalLink, LogIn, KeyRound } from 'lucide-react';
 
@@ -57,8 +57,8 @@ export default function NotificationsPage() {
         </button>
       </AdminPageHeader>
 
-      <RequestFeedback error={error} onRetry={load} pending={loading} />
-      <RequestFeedback error={mutation.error} />
+      <AdminRequestFeedback error={error} onRetry={load} pending={loading} />
+      <AdminRequestFeedback error={mutation.error} />
       {error ? null : loading ? (
         <div className="text-center py-12 text-gray-400">加载中...</div>
       ) : notifications.length === 0 ? (

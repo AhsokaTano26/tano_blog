@@ -1,5 +1,7 @@
 'use client';
 
+import { useLocalTransition } from '@/lib/use-local-transition';
+
 import { AdminPageHeader } from '@/components/AdminPageHeader';
 import { Switch } from '@/components/ui/Switch';
 
@@ -10,11 +12,11 @@ import { Input } from '@/components/ui/Input';
 import { Progress } from '@/components/ui/Progress';
 import { FilePicker } from '@/components/ui/FilePicker';
 import { MediaPreview } from '@/components/ui/MediaPreview';
-import { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react';
+import { useState, useEffect, useRef, useCallback, useLayoutEffect, useMemo } from 'react';
 import { api } from '@/lib/api';
 import type { MediaItem, MediaTag } from '@/lib/admin-types';
 import { useFeedbackMutation, useLatestRequest } from '@/lib/request-feedback';
-import { RequestFeedback } from '@/components/RequestFeedback';
+import { AdminRequestFeedback, AdminToast, useAdminNotice } from '@/components/AdminToast';
 import { FloatingPopover } from '@/components/FloatingPopover';
 import { Image, Trash2, Copy, Check, Grid, List, Search, X, FileText, Video, Music, File, Tag, Plus, Settings, Play, ExternalLink } from 'lucide-react';
 import { Loading } from '@/components/Loading';
@@ -116,15 +118,14 @@ export default function AdminMedia() {
   const uploadMounted = useRef(true);
   const uploadProgress = `${uploadQueue.filter(item => item.status !== 'pending' && item.status !== 'uploading').length}/${uploadQueue.length}`;
   const failedUploads = uploadQueue.filter(item => item.status === 'failed');
-  const [uploadError, setUploadError] = useState('');
-  const [copiedKey, setCopiedKey] = useState('');
+  const [copyNotice, notifyCopy] = useAdminNotice();
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [typeFilter, setTypeFilter] = useState('');
   const [search, setSearch] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [loadError, setLoadError] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
-  const [uploadNotice, setUploadNotice] = useState('');
+  const [uploadNotice, notifyUpload] = useAdminNotice();
   const [dragOver, setDragOver] = useState(false);
   const loadSequence = useRef(0);
   const [openLinksId, setOpenLinksId] = useState<string | null>(null);
@@ -229,8 +230,7 @@ export default function AdminMedia() {
     if (!tasks.length || uploadRunning.current) return;
     uploadRunning.current = true;
     setUploading(true);
-    setUploadError('');
-    setUploadNotice('');
+    notifyUpload('');
     publishUploads();
     let cursor = 0;
     async function worker() {
@@ -274,8 +274,7 @@ export default function AdminMedia() {
     const failures = entries.filter(item => item.status === 'failed');
     const completed = entries.filter(item => item.status === 'completed').length;
     const cancelled = entries.filter(item => item.status === 'cancelled').length;
-    setUploadError(failures.map(item => `${item.name}：${item.error}`).join('；'));
-    setUploadNotice(`已上传 ${completed}/${entries.length} 个文件${failures.length ? `，${failures.length} 个失败，可重试` : ''}${cancelled ? `，${cancelled} 个已取消` : ''}`);
+    notifyUpload(`已上传 ${completed}/${entries.length} 个文件${failures.length ? `，${failures.length} 个失败，可重试` : ''}${cancelled ? `，${cancelled} 个已取消` : ''}`, failures.length ? 'error' : cancelled ? 'info' : 'success');
     setUploading(false);
     setPage(1);
     setRefreshKey(key => key + 1);
@@ -315,11 +314,10 @@ export default function AdminMedia() {
     }, '删除文件失败，请重试');
   }
 
-  async function copyValue(value: string, key: string) {
+  async function copyValue(value: string) {
     await mutation.run(async () => {
       await navigator.clipboard.writeText(value);
-      setCopiedKey(key);
-      setTimeout(() => setCopiedKey(''), 2000);
+      notifyCopy('链接已复制');
     }, '复制失败，请重试或手动复制链接');
   }
 
@@ -330,6 +328,8 @@ export default function AdminMedia() {
   }
 
   const filtered = items;
+  const resultsKey = useMemo(() => ({ items, viewMode }), [items, viewMode]);
+  const resultsRef = useLocalTransition<HTMLDivElement>(loading || loadError ? null : resultsKey);
 
   function handleSearch() { setPage(1); setSearchQuery(search.trim()); }
 
@@ -431,17 +431,16 @@ export default function AdminMedia() {
             <div className="text-xs font-medium mb-1.5" style={{ color: 'var(--text-info)' }}>{group.label}</div>
             <div className="space-y-1">
               {group.items.map((link) => {
-                const copyKey = `${item.id}-${link.fmt}-${group.label}`;
                 return (
                   <div key={link.fmt} className="flex items-center gap-2">
                     <span className="w-16 text-xs flex-shrink-0" style={{ color: 'var(--text-secondary)' }}>{link.fmt}</span>
                     <code className="flex-1 text-xs truncate px-2 py-1 rounded" style={{ background: 'var(--surface-bg)', color: 'var(--text-primary)' }}>
                       {link.value}
                     </code>
-                    <Tooltip content={`复制${link.fmt}`}><button onClick={() => copyValue(link.value, copyKey)}
+                    <Tooltip content={`复制${link.fmt}`}><button onClick={() => copyValue(link.value)}
                       className="p-1 rounded transition-colors btn-glass flex-shrink-0"
                       data-tooltip={`复制${link.fmt}`} aria-label={`复制${link.fmt}`}>
-                      {copiedKey === copyKey ? <Check className="w-3.5 h-3.5" style={{ color: 'var(--color-success)' }} /> : <Copy className="w-3.5 h-3.5" style={{ color: 'var(--text-info)' }} />}
+                      <Copy className="w-3.5 h-3.5" style={{ color: 'var(--text-info)' }} />
                     </button></Tooltip>
                   </div>
                 );
@@ -517,8 +516,10 @@ export default function AdminMedia() {
         </div>
       </AdminPageHeader>
 
-      <div role="status" aria-live="polite" className="mb-3 text-xs" style={{ color: 'var(--text-info)' }}>
-        {uploading ? `正在上传 ${uploadProgress}，请稍候…` : uploadNotice || '支持选择多个文件或拖拽上传，点击缩略图查看原图'}
+      <AdminToast {...uploadNotice} />
+      <AdminToast {...copyNotice} />
+      <div role={uploading ? 'status' : undefined} className="mb-3 text-xs" style={{ color: 'var(--text-info)' }}>
+        {uploading ? `正在上传 ${uploadProgress}，请稍候…` : '支持选择多个文件或拖拽上传，点击缩略图查看原图'}
       </div>
       {uploadQueue.length > 0 && <div className="glass-card rounded-xl p-3 mb-4">
         <div className="flex items-center justify-between mb-2">
@@ -541,21 +542,10 @@ export default function AdminMedia() {
       </div>}
       {failedUploads.length > 0 && !uploading && <button onClick={retryFailedUploads}
         className="mb-3 px-3 py-2 rounded-xl text-sm btn-glass" style={{ color: 'var(--primary)' }}>重试失败文件（{failedUploads.length}）</button>}
-      {!editingMetadataItem && <RequestFeedback error={mutation.error} />}
-      <RequestFeedback error={tagError} onRetry={loadTags} pending={tagsLoading} />
-      {loadError && <div role="alert" className="mb-3 text-sm" style={{ color: 'var(--color-error)' }}>
-        {loadError} <button onClick={() => void load()} className="underline">重试加载</button>
-      </div>}
+      {!editingMetadataItem && <AdminRequestFeedback error={mutation.error} />}
+      <AdminRequestFeedback error={tagError} onRetry={loadTags} pending={tagsLoading} />
+      <AdminRequestFeedback error={loadError} onRetry={() => void load()} retryLabel="重试加载" />
       {loading && items.length > 0 && <p className="mb-2 text-xs" style={{ color: 'var(--text-info)' }}>正在刷新…</p>}
-
-      {/* Upload error */}
-      {uploadError && (
-        <div className="mb-4 px-4 py-2.5 rounded-lg text-sm flex items-center justify-between" style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.2)' }}>
-          <span>{uploadError}</span>
-          <button onClick={() => setUploadError('')} className="ml-3 p-0.5 rounded hover:bg-white/10" aria-label="关闭">
-            <X className="w-4 h-4" />
-          </button>
-        </div>)}
 
       {/* Upload tag selector */}
       {mediaTags.length > 0 && (
@@ -712,14 +702,14 @@ export default function AdminMedia() {
         {loading && items.length === 0 ? (
           <Loading />
         ) : loadError ? null : filtered.length === 0 ? (
-          <div className="text-center py-20" style={{ color: 'var(--text-secondary)' }}>
+          <div ref={resultsRef} className="text-center py-20" style={{ color: 'var(--text-secondary)' }}>
             <Image className="w-12 h-12 mx-auto mb-3" style={{ color: 'var(--text-info)' }} />
             <p>{search || tagFilter || typeFilter ? '未找到匹配文件' : '把文章素材放在这里'}</p>
             <p className="mt-2 text-xs" style={{ color: 'var(--text-info)' }}>{search || tagFilter || typeFilter ? '试试其他关键词，或清除筛选查看全部素材。' : '点击上方上传，或将文件拖到这个页面。图片会自动生成缩略图。'}</p>
             {(search || tagFilter || typeFilter) && <button className="mt-3 text-sm underline" style={{ color: 'var(--primary)' }} onClick={() => { setSearch(''); setSearchQuery(''); setTagFilter(''); setTypeFilter(''); setPage(1); }}>清除筛选</button>}
           </div>
         ) : viewMode === 'grid' ? (
-          <div className="p-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+          <div ref={resultsRef} className="p-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
             {filtered.map((item) => {
               const Icon = getMediaIcon(item.mime_type);
               return (
@@ -823,7 +813,7 @@ export default function AdminMedia() {
           </div>
         ) : (
           <div>
-            <div className="admin-table-scroll" role="region" aria-label="附件列表" tabIndex={0}>
+            <div ref={resultsRef} className="admin-table-scroll" role="region" aria-label="附件列表" tabIndex={0}>
               <table className="admin-data-table w-full">
                 <thead>
                   <tr style={{ borderBottom: '1px solid var(--glass-border)' }}>
@@ -1072,7 +1062,7 @@ export default function AdminMedia() {
             onClose={() => { if (!mutation.pending) { setShowBatchTag(false); setPendingBatchTagIds([]); } }}>
             <div className="p-3">
               <div className="text-xs font-medium mb-2" style={{ color: 'var(--text-info)' }}>批量添加标签</div>
-              <RequestFeedback error={mutation.error} />
+              <AdminRequestFeedback error={mutation.error} />
               {mediaTags.length === 0 ? (
                 <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>暂无标签</p>
               ) : (
@@ -1129,7 +1119,7 @@ export default function AdminMedia() {
               </button>
             </div>
 
-            <RequestFeedback error={mutation.error} />
+            <AdminRequestFeedback error={mutation.error} />
             <fieldset disabled={mutation.pending} className="space-y-3">
               {/* Cover image */}
               <div className="pb-3" style={{ borderBottom: '1px solid var(--glass-border)' }}>

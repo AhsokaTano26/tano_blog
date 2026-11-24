@@ -1,5 +1,7 @@
 'use client';
 
+import { useLocalTransition } from '@/lib/use-local-transition';
+
 import { AdminPageHeader } from '@/components/AdminPageHeader';
 
 import { useState } from 'react';
@@ -564,6 +566,7 @@ export default function AdminHelp() {
   const [activeSection, setActiveSection] = useState(sections[0].id);
 
   const currentSection = sections.find(s => s.id === activeSection) || sections[0];
+  const panelRef = useLocalTransition<HTMLDivElement>(activeSection);
 
   return (
     <div className="admin-page">
@@ -596,7 +599,7 @@ export default function AdminHelp() {
         </div>
 
         {/* Content */}
-        <div className="flex-1 min-w-0">
+        <div ref={panelRef} className="flex-1 min-w-0">
           <div className="glass-card rounded-xl p-5">
             <div className="flex items-center gap-2 mb-4">
               <currentSection.icon className="w-5 h-5" style={{ color: 'var(--primary)' }} />

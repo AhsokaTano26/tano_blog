@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-require-imports -- Node regressions reuse the TypeScript loader. */
-require('./dom-setup.js');
+const { input } = require('./dom-setup.js');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const React = require('react');
@@ -113,4 +113,39 @@ test('global comment disable preserves visible prior comments and prevents submi
   const form = view.querySelector('form');
   if (form) await React.act(async () => form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
   assert.equal(submitted, 0);
+});
+
+test('sorting comments keeps the list area stable and preserves the comment draft', async t => {
+  const newest = deferred();
+  t.mock.method(api, 'getMe', async () => { throw new Error('anonymous'); });
+  t.mock.method(api, 'getPublicConfig', async () => ({ config: { comment_enabled: 'true' } }));
+  t.mock.method(api, 'getAdjacentPosts', async () => ({ prev: null, next: null }));
+  t.mock.method(api, 'getRelatedPosts', async () => ({ items: [] }));
+  t.mock.method(api, 'recordPostView', async () => ({ reactions: {}, user_emojis: [] }));
+  t.mock.method(api, 'getComments', (_slug, sort) => sort === 'newest'
+    ? newest.promise
+    : Promise.resolve({ items: [item('oldest', 'approved')], total: 1, page: 1, size: 20 }));
+
+  const PostClient = require('../src/app/posts/[slug]/PostClient.tsx').default;
+  const view = await mount(t, React.createElement(AppRouterContext.Provider,
+    { value: { push() {}, replace() {}, refresh() {}, prefetch() {} } },
+    React.createElement(PostClient, { slug: 'article', initialData: { post: {
+      id: 'article', slug: 'article', title: 'Article', content: 'Body', status: 'published', allow_comment: true,
+    } } })));
+  const results = view.querySelector('[aria-label="评论列表"]');
+  assert.equal(Boolean(results), true);
+  Object.defineProperty(results, 'offsetHeight', { value: 280 });
+  const draft = view.querySelector('textarea[aria-label="评论内容"]');
+  await React.act(async () => input(draft, 'Keep my comment'));
+  await click('最新', view);
+  assert.equal(results.getAttribute('aria-busy'), 'true');
+  assert.equal(results.style.minHeight, '280px');
+  assert.match(results.textContent, /正在加载评论/);
+
+  await React.act(async () => newest.resolve({ items: [item('newest', 'approved')], total: 1, page: 1, size: 20 }));
+  assert.equal(results.style.minHeight, '');
+  assert.equal(results.getAttribute('aria-busy'), 'false');
+  assert.match(results.textContent, /Body newest/);
+  assert.equal(draft === view.querySelector('textarea[aria-label="评论内容"]'), true);
+  assert.equal(draft.value, 'Keep my comment');
 });

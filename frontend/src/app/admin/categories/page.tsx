@@ -8,7 +8,7 @@ import { useState, useCallback } from 'react';
 import { api } from '@/lib/api';
 import type { TaxonomyItem } from '@/lib/admin-types';
 import { useLatestRequest, useFeedbackMutation } from '@/lib/request-feedback';
-import { RequestFeedback } from '@/components/RequestFeedback';
+import { AdminRequestFeedback } from '@/components/AdminToast';
 import { Plus, Pencil, Trash2, FolderTree } from 'lucide-react';
 import { Loading } from '@/components/Loading';
 import { useConfirm, Select } from '@/components/ConfirmDialog';
@@ -58,8 +58,8 @@ export default function AdminCategories() {
 
   return (
     <div className="admin-page">
-      <RequestFeedback error={loadError} onRetry={load} pending={loading} />
-      <RequestFeedback error={mutation.error} />
+      <AdminRequestFeedback error={loadError} onRetry={load} pending={loading} />
+      <AdminRequestFeedback error={mutation.error} />
       <AdminPageHeader title="分类" description="整理内容层级，让读者更容易发现相关文章。" />
 
       {/* Add form */}

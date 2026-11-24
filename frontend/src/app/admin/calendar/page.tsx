@@ -1,11 +1,13 @@
 'use client';
 
+import { useLocalTransition } from '@/lib/use-local-transition';
+
 import { AdminPageHeader } from '@/components/AdminPageHeader';
 
 import { Dialog } from '@/components/ui/Dialog';
 import { useState, useCallback } from 'react';
 import { useLatestRequest } from '@/lib/request-feedback';
-import { RequestFeedback } from '@/components/RequestFeedback';
+import { AdminRequestFeedback } from '@/components/AdminToast';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { api } from '@/lib/api';
 
@@ -21,6 +23,7 @@ export default function CalendarPage() {
         year: year.toString(), month: month.toString().padStart(2, '0'),
     }), [year, month]), '加载文章日历失败');
     const posts = calendar.data?.items || [];
+    const calendarRef = useLocalTransition<HTMLDivElement>(calendar.loading || calendar.error ? null : calendar.data ?? null);
 
     const prevMonth = () => {
         if (month === 1) { setYear(y => y - 1); setMonth(12); }
@@ -73,9 +76,9 @@ export default function CalendarPage() {
                 </div>
             </AdminPageHeader>
 
-            <RequestFeedback error={calendar.error} onRetry={calendar.reload} pending={calendar.loading} />
+            <AdminRequestFeedback error={calendar.error} onRetry={calendar.reload} pending={calendar.loading} />
             {calendar.loading && <p role="status">正在加载日历...</p>}
-            <div className="admin-calendar-scroll" role="region" aria-label="文章月历" tabIndex={0}>
+            <div ref={calendarRef} className="admin-calendar-scroll" role="region" aria-label="文章月历" tabIndex={0}>
             <div className="admin-calendar-grid grid grid-cols-7 gap-px rounded-xl overflow-hidden">
                 {weekDays.map(d => (
                     <div key={d} className="admin-calendar-weekday p-3 text-center text-sm font-medium">

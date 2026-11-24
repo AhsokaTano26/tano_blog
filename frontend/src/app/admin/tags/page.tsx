@@ -8,7 +8,7 @@ import { useState, useCallback } from 'react';
 import { api } from '@/lib/api';
 import type { TaxonomyItem } from '@/lib/admin-types';
 import { useLatestRequest, useFeedbackMutation } from '@/lib/request-feedback';
-import { RequestFeedback } from '@/components/RequestFeedback';
+import { AdminRequestFeedback } from '@/components/AdminToast';
 import { Plus, Pencil, Trash2, Tags } from 'lucide-react';
 import { Loading } from '@/components/Loading';
 import { useConfirm, Select } from '@/components/ConfirmDialog';
@@ -48,8 +48,8 @@ export default function AdminTags() {
 
   return (
     <div className="admin-page">
-      <RequestFeedback error={loadError} onRetry={load} pending={loading} />
-      <RequestFeedback error={mutation.error} />
+      <AdminRequestFeedback error={loadError} onRetry={load} pending={loading} />
+      <AdminRequestFeedback error={mutation.error} />
       <AdminPageHeader title="标签" description="用灵活的关键词连接内容，维护博客的主题索引。" />
 
       {/* Add form */}

@@ -1,6 +1,7 @@
 'use client';
 
 import { Input } from '@/components/ui/Input';
+import { AdminToast, useAdminNotice } from '@/components/AdminToast';
 import { useState } from 'react';
 import { api } from '@/lib/api';
 import { ArrowLeft, Eye, EyeOff, KeyRound } from 'lucide-react';
@@ -15,12 +16,12 @@ export default function LoginPage() {
   const [totpCode, setTotpCode] = useState('');
   const [totpRequired, setTotpRequired] = useState(false);
   const [totpToken, setTotpToken] = useState('');
-  const [error, setError] = useState('');
+  const [notice, notify] = useAdminNotice();
   const [loading, setLoading] = useState(false);
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
-    setError('');
+    notify('');
     setLoading(true);
     try {
       const res = await api.login({ username, password, remember_me: rememberMe });
@@ -32,26 +33,26 @@ export default function LoginPage() {
         window.location.href = '/admin';
       }
     } catch (err: any) {
-      setError(err.message);
+      notify(err.message, 'error');
     }
     setLoading(false);
   }
 
   async function handleTOTP() {
-    setError('');
+    notify('');
     setLoading(true);
     try {
       await api.loginWithTOTP({ totp_token: totpToken, code: totpCode, remember_me: rememberMe });
       sessionStorage.setItem('jl', '1');
       window.location.href = '/admin';
     } catch (err: any) {
-      setError(err.message);
+      notify(err.message, 'error');
     }
     setLoading(false);
   }
 
   async function handlePasskeyLogin() {
-    setError('');
+    notify('');
     setLoading(true);
     try {
       const res = await api.passkeyLoginOptions();
@@ -79,7 +80,7 @@ export default function LoginPage() {
       sessionStorage.setItem('jl', '1');
       window.location.href = '/admin';
     } catch (err: any) {
-      setError(err.name === 'NotAllowedError' ? 'Passkey 验证已取消' : (err.message || 'Passkey 登录失败'));
+      notify(err.name === 'NotAllowedError' ? 'Passkey 验证已取消' : (err.message || 'Passkey 登录失败'), 'error');
     }
     setLoading(false);
   }
@@ -109,12 +110,7 @@ export default function LoginPage() {
 
         {/* Login card */}
         <div className="admin-auth-card glass-card rounded-2xl p-6">
-          {error && (
-            <div role="alert" className="mb-4 px-4 py-3 rounded-xl text-sm glass-card"
-              style={{ color: 'var(--color-error)' }}>
-              {error}
-            </div>
-          )}
+          <AdminToast {...notice} />
 
           {!totpRequired ? (
             <>

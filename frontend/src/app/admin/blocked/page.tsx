@@ -1,5 +1,7 @@
 'use client';
 
+import { useLocalTransition } from '@/lib/use-local-transition';
+
 import { AdminPageHeader } from '@/components/AdminPageHeader';
 import { localDateTimeTimestamp } from '@/lib/date-value';
 
@@ -12,7 +14,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { api } from '@/lib/api';
 import type { IpBanItem } from '@/lib/admin-types';
 import { useLatestRequest, useFeedbackMutation } from '@/lib/request-feedback';
-import { RequestFeedback } from '@/components/RequestFeedback';
+import { AdminRequestFeedback, AdminToast, useAdminNotice } from '@/components/AdminToast';
 import { Trash2, Plus, ShieldOff, Globe, Settings } from 'lucide-react';
 import { Loading } from '@/components/Loading';
 import { useConfirm, Select } from '@/components/ConfirmDialog';
@@ -47,7 +49,7 @@ export default function AdminBlocked() {
   const [pageSize, setPageSize] = useState(20);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ ip_address: '', reason: '', scopes: [] as string[], expires_at: '' });
-  const [formError, setFormError] = useState('');
+  const [formNotice, notifyForm] = useAdminNotice();
 
   // Auto-ban config
   const [autoConfig, setAutoConfig] = useState<Record<string, string>>({});
@@ -64,19 +66,19 @@ export default function AdminBlocked() {
   function openCreate() {
     mutation.clearError();
     setForm({ ip_address: '', reason: '', scopes: [], expires_at: '' });
-    setFormError('');
+    notifyForm('');
     setShowForm(true);
   }
 
   async function handleCreate() {
     await mutation.run(async () => {
-      setFormError('');
+      notifyForm('');
       if (!form.ip_address) {
-        setFormError('请填写IP地址');
+        notifyForm('请填写IP地址', 'error');
         return;
       }
       if (form.scopes.length === 0) {
-        setFormError('请选择至少一个封禁范围');
+        notifyForm('请选择至少一个封禁范围', 'error');
         return;
       }
       await api.admin.ipBans.create({
@@ -111,7 +113,7 @@ export default function AdminBlocked() {
   const configRequest = useLatestRequest(
     useCallback(() => api.admin.ipBans.getConfig(), []), '自动封禁配置加载失败，请重试',
   );
-  const [configNotice, setConfigNotice] = useState('');
+  const [configNotice, notifyConfig] = useAdminNotice();
   useEffect(() => {
     if (!configRequest.data) return;
     setAutoConfig(configRequest.data);
@@ -120,10 +122,10 @@ export default function AdminBlocked() {
 
   async function saveConfig() {
     if (!configRequest.data || configRequest.loading || configRequest.error) return;
-    setConfigNotice('');
+    notifyConfig('');
     await mutation.run(async () => {
       await api.admin.ipBans.updateConfig({ ...autoConfig, ip_ban_auto_scope: autoScope.join(',') });
-      setConfigNotice('配置已保存');
+      notifyConfig('配置已保存');
     }, '配置保存失败，请重试');
   }
 
@@ -132,11 +134,12 @@ export default function AdminBlocked() {
   }
 
   const totalPages = Math.ceil(total / pageSize);
+  const panelRef = useLocalTransition<HTMLDivElement>(tab === 'auto' ? 'auto' : loading || loadError ? null : data ?? null);
 
   return (
     <div className="admin-page">
-      <RequestFeedback error={loadError} onRetry={load} pending={loading} />
-      {!showForm && <RequestFeedback error={mutation.error} />}
+      <AdminRequestFeedback error={loadError} onRetry={load} pending={loading} />
+      {!showForm && <AdminRequestFeedback error={mutation.error} />}
       <AdminPageHeader title="封禁管理" description="管理访问限制与自动封禁规则。" section="系统管理">
         {tab === 'ip' && (
           <button disabled={mutation.pending} onClick={openCreate}
@@ -171,12 +174,12 @@ export default function AdminBlocked() {
       {tab === 'ip' && (
         <>
           {loading ? <Loading /> : loadError && items.length === 0 ? null : items.length === 0 ? (
-            <div className="text-center py-20" style={{ color: 'var(--text-secondary)' }}>
+            <div ref={panelRef} className="text-center py-20" style={{ color: 'var(--text-secondary)' }}>
               <ShieldOff className="w-12 h-12 mx-auto mb-3 opacity-30" />
               <p>暂无封禁记录</p>
             </div>
           ) : (
-            <div className="glass-card rounded-xl overflow-hidden">
+            <div ref={panelRef} className="glass-card rounded-xl overflow-hidden">
               <div className="admin-table-scroll" role="region" aria-label="封禁管理列表" tabIndex={0}>
                 <table className="admin-data-table w-full">
                   <thead>
@@ -281,9 +284,9 @@ export default function AdminBlocked() {
 
       {/* Auto-ban Config Tab */}
       {tab === 'auto' && (
-        <div className="glass-card rounded-xl p-5" style={{ border: '1px solid var(--glass-border)' }}>
-          <RequestFeedback error={configRequest.error} onRetry={configRequest.reload} pending={configRequest.loading} />
-          {configNotice && <p role="status" className="mb-3 text-sm">{configNotice}</p>}
+        <div ref={panelRef} className="glass-card rounded-xl p-5" style={{ border: '1px solid var(--glass-border)' }}>
+          <AdminRequestFeedback error={configRequest.error} onRetry={configRequest.reload} pending={configRequest.loading} />
+          <AdminToast {...configNotice} />
           <h2 className="text-lg font-bold mb-4" style={{ color: 'var(--text-primary)' }}>自动封禁配置</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <div>
@@ -347,12 +350,8 @@ export default function AdminBlocked() {
           className="admin-dialog-panel w-full max-w-lg rounded-xl shadow-2xl p-6"
           style={{ border: '1px solid var(--glass-border)' }}>
           <h2 className="text-lg font-bold mb-4" style={{ color: 'var(--text-primary)' }}>新增封禁</h2>
-          <RequestFeedback error={mutation.error} />
-          {formError && (
-            <div role="alert" className="mb-4 px-4 py-2.5 rounded-lg text-sm" style={{ background: 'var(--card-bg)', color: 'hsl(0, 60%, 55%)', border: '1px solid hsla(0, 60%, 55%, 0.2)' }}>
-              {formError}
-            </div>
-          )}
+          <AdminRequestFeedback error={mutation.error} />
+          <AdminToast {...formNotice} />
           <fieldset disabled={mutation.pending} className="space-y-4">
             <div>
               <label htmlFor="admin-blocked-field-4" className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>IP 地址</label>

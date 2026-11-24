@@ -9,7 +9,7 @@ import Link from 'next/link';
 import { ArrowUpRight, Check, FileText, Image, MessageSquare, PenLine, Upload } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useLatestRequest } from '@/lib/request-feedback';
-import { RequestFeedback } from '@/components/RequestFeedback';
+import { AdminRequestFeedback } from '@/components/AdminToast';
 import VisitTrendChart from '@/components/VisitTrendChart';
 import SystemHealth from '@/components/SystemHealth';
 
@@ -35,8 +35,8 @@ export default function AdminDashboard() {
         <Link href="/admin/posts?compose=1" className="admin-primary-action"><PenLine size={16} />写文章</Link>
       </div>
     </AdminPageHeader>
-    <RequestFeedback error={summary.error} onRetry={summary.reload} pending={summary.loading} />
-    <RequestFeedback error={overview.error} onRetry={overview.reload} pending={overview.loading} />
+    <AdminRequestFeedback error={summary.error} onRetry={summary.reload} pending={summary.loading} />
+    <AdminRequestFeedback error={overview.error} onRetry={overview.reload} pending={overview.loading} />
     <section className="admin-stat-strip" aria-label="内容与访问概况" aria-busy={summary.loading || overview.loading}>
       {cards.map(card => <Link key={card.label} href={card.href} className="admin-stat">
         <span className="admin-stat-label"><card.icon size={16} />{card.label}<ArrowUpRight size={14} className="ml-auto" /></span>
@@ -64,7 +64,7 @@ export default function AdminDashboard() {
       <section className="admin-panel admin-popular" aria-label="热门文章">
         <div className="admin-section-heading"><h2>读者在看</h2><Link href="/admin/posts">全部文章 <ArrowUpRight size={14} /></Link></div>
         <p className="admin-section-note">累计浏览最多的文章</p>
-        <RequestFeedback error={popular.error} onRetry={popular.reload} pending={popular.loading} />
+        <AdminRequestFeedback error={popular.error} onRetry={popular.reload} pending={popular.loading} />
         {popular.loading && !popular.data ? <p role="status" className="admin-empty-note">正在读取文章…</p> : <ol className="admin-popular-list">
           {(popular.data?.items ?? []).slice(0, 5).map((post: { id: string; title: string; slug: string; view_count: number }, index: number) => <li key={post.id}>
             <span className="admin-rank">{String(index + 1).padStart(2, '0')}</span>

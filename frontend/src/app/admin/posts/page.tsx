@@ -1,5 +1,7 @@
 'use client';
 
+import { useLocalTransition } from '@/lib/use-local-transition';
+
 import { AdminPageHeader } from '@/components/AdminPageHeader';
 
 import { Tooltip } from '@/components/ui/Tooltip';
@@ -11,7 +13,7 @@ import dynamic from 'next/dynamic';
 import { api, ApiError, type Post, type PostMutation } from '@/lib/api';
 import type { TaxonomyItem, SeriesItem } from '@/lib/admin-types';
 import { useFeedbackMutation, useLatestRequest } from '@/lib/request-feedback';
-import { RequestFeedback } from '@/components/RequestFeedback';
+import { AdminRequestFeedback } from '@/components/AdminToast';
 import { Plus, Pencil, Trash2, ExternalLink, Eye, Search, X, Check, FileText, Settings } from 'lucide-react';
 import { Loading } from '@/components/Loading';
 import { useConfirm, Select } from '@/components/ConfirmDialog';
@@ -51,6 +53,7 @@ export default function AdminPosts() {
     }), [page, pageSize, searchQuery, statusFilter]), '加载文章失败，请重试',
   );
   const posts: Post[] = listData?.items || [];
+  const resultsRef = useLocalTransition<HTMLDivElement>(loading || loadError ? null : listData ?? null);
   const total = listData?.total || 0;
   const metadata = useLatestRequest(
     useCallback(() => Promise.all([api.getCategories(), api.getTags()]), []), '分类和标签加载失败，请重试',
@@ -171,9 +174,9 @@ export default function AdminPosts() {
 
   return (
     <div className="admin-page">
-      <RequestFeedback error={openError} />
-      <RequestFeedback error={mutation.error} />
-      <RequestFeedback error={metadata.error} onRetry={metadata.reload} pending={metadata.loading} />
+      <AdminRequestFeedback error={openError} />
+      <AdminRequestFeedback error={mutation.error} />
+      <AdminRequestFeedback error={metadata.error} onRetry={metadata.reload} pending={metadata.loading} />
       <AdminPageHeader title="文章" description="管理草稿与发布内容，点击标题继续编辑。">
         <div className="flex items-center gap-2">
           <button onClick={() => api.admin.posts.export()}
@@ -190,7 +193,7 @@ export default function AdminPosts() {
         </div>
       </AdminPageHeader>
 
-      <RequestFeedback error={loadError} onRetry={load} pending={loading} />
+      <AdminRequestFeedback error={loadError} onRetry={load} pending={loading} />
       {/* Filters bar */}
       <div className="glass-card rounded-2xl mb-4">
         <div className="flex flex-wrap items-center gap-3 p-3 sm:p-4" style={{ borderBottom: '1px solid var(--glass-border)' }}>
@@ -248,7 +251,7 @@ export default function AdminPosts() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <div className="admin-table-scroll" role="region" aria-label="文章列表" tabIndex={0}>
+            <div ref={resultsRef} className="admin-table-scroll" role="region" aria-label="文章列表" tabIndex={0}>
               <table className="admin-data-table admin-post-table" data-detailed={detailed} aria-label="文章列表">
                 <thead>
                   <tr style={{ borderBottom: '1px solid var(--glass-border)' }}>

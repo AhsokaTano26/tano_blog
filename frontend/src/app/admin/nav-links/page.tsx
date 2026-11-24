@@ -9,7 +9,7 @@ import { useState, useCallback, useRef } from 'react';
 import { api } from '@/lib/api';
 import type { NavLinkItem } from '@/lib/admin-types';
 import { useLatestRequest, useFeedbackMutation } from '@/lib/request-feedback';
-import { RequestFeedback } from '@/components/RequestFeedback';
+import { AdminRequestFeedback } from '@/components/AdminToast';
 import { Plus, Pencil, Trash2, GripVertical, ExternalLink } from 'lucide-react';
 import { Loading } from '@/components/Loading';
 import { useConfirm } from '@/components/ConfirmDialog';
@@ -85,8 +85,8 @@ export default function AdminNavLinks() {
 
   return (
     <div className="admin-page">
-      <RequestFeedback error={loadError} onRetry={load} pending={loading || mutation.pending} />
-      {!showModal && <RequestFeedback error={mutation.error} />}
+      <AdminRequestFeedback error={loadError} onRetry={load} pending={loading || mutation.pending} />
+      {!showModal && <AdminRequestFeedback error={mutation.error} />}
       <AdminPageHeader title="导航管理" description="组织前台导航入口，调整链接与显示顺序。" section="站点管理">
         <button disabled={mutation.pending} onClick={openCreate}
           className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors cursor-pointer"
@@ -166,7 +166,7 @@ export default function AdminNavLinks() {
           <h2 className="text-lg font-bold mb-4" style={{ color: 'var(--text-primary)' }}>
             {editing ? '编辑导航' : '添加导航'}
           </h2>
-          <RequestFeedback error={mutation.error} />
+          <AdminRequestFeedback error={mutation.error} />
           <fieldset disabled={mutation.pending} className="space-y-3">
             <div>
               <label htmlFor="admin-nav-links-field-1" className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>标题 *</label>

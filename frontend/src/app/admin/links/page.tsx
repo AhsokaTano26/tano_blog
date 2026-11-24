@@ -1,5 +1,7 @@
 'use client';
 
+import { useLocalTransition } from '@/lib/use-local-transition';
+
 import { AdminPageHeader } from '@/components/AdminPageHeader';
 
 import { Tooltip } from '@/components/ui/Tooltip';
@@ -9,7 +11,7 @@ import { useState, useCallback } from 'react';
 import { api } from '@/lib/api';
 import type { FriendLinkItem } from '@/lib/admin-types';
 import { useLatestRequest, useFeedbackMutation } from '@/lib/request-feedback';
-import { RequestFeedback } from '@/components/RequestFeedback';
+import { AdminRequestFeedback } from '@/components/AdminToast';
 import { Plus, Pencil, Trash2, Check, X, Link as LinkIcon } from 'lucide-react';
 import { Loading } from '@/components/Loading';
 import { useConfirm, Select } from '@/components/ConfirmDialog';
@@ -106,10 +108,12 @@ export default function AdminLinks() {
 
   const filtered = items;
 
+  const resultsRef = useLocalTransition<HTMLDivElement>(loading || loadError ? null : data ?? null);
+
   return (
     <div className="admin-page">
-      <RequestFeedback error={loadError} onRetry={load} pending={loading} />
-      {!showModal && <RequestFeedback error={mutation.error} />}
+      <AdminRequestFeedback error={loadError} onRetry={load} pending={loading} />
+      {!showModal && <AdminRequestFeedback error={mutation.error} />}
       <AdminPageHeader title="友链管理" description="审核友链申请，维护博客之间的连接。">
         <div className="flex items-center gap-2">
           <button onClick={() => window.open(`${process.env.NEXT_PUBLIC_API_URL || ''}/api/v1/admin/links/export`, '_blank')}
@@ -141,7 +145,7 @@ export default function AdminLinks() {
       </div>
 
       {/* Table */}
-      <div className="glass-card rounded-xl overflow-hidden">
+      <div ref={resultsRef} className="glass-card rounded-xl overflow-hidden" aria-busy={loading}>
         {loading ? (
           <Loading />
         ) : filtered.length === 0 ? (
@@ -258,7 +262,7 @@ export default function AdminLinks() {
           <h2 className="text-lg font-bold mb-4" style={{ color: 'var(--text-primary)' }}>
             {editing ? '编辑友链' : '添加友链'}
           </h2>
-          <RequestFeedback error={mutation.error} />
+          <AdminRequestFeedback error={mutation.error} />
           <fieldset disabled={mutation.pending} className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <div>

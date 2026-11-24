@@ -10,7 +10,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { api } from '@/lib/api';
 import type { SeriesItem } from '@/lib/admin-types';
 import { useLatestRequest, useFeedbackMutation, requestError } from '@/lib/request-feedback';
-import { RequestFeedback } from '@/components/RequestFeedback';
+import { AdminRequestFeedback } from '@/components/AdminToast';
 import { Plus, Pencil, Trash2, Bookmark } from 'lucide-react';
 import { Loading } from '@/components/Loading';
 import { useConfirm, Checkbox, Select } from '@/components/ConfirmDialog';
@@ -75,8 +75,8 @@ export default function AdminSeries() {
 
   return (
     <div className="admin-page">
-      <RequestFeedback error={loadError} onRetry={load} pending={loading} />
-      {!showForm && <RequestFeedback error={mutation.error} />}
+      <AdminRequestFeedback error={loadError} onRetry={load} pending={loading} />
+      {!showForm && <AdminRequestFeedback error={mutation.error} />}
       <AdminPageHeader title="文章系列" description="把相关内容编排成系列，维护文章的阅读顺序。">
         <button disabled={mutation.pending} onClick={openCreate}
           className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium text-white transition-all hover:opacity-90"
@@ -157,7 +157,7 @@ export default function AdminSeries() {
           <h2 className="text-lg font-bold mb-4" style={{ color: 'var(--text-primary)' }}>
             {editItem ? '编辑系列' : '新建系列'}
           </h2>
-          <RequestFeedback error={mutation.error} />
+          <AdminRequestFeedback error={mutation.error} />
           <fieldset disabled={mutation.pending} className="space-y-3">
             <Input aria-label="名称 *" placeholder="名称 *" value={form.name}
               onChange={e => setForm({ ...form, name: e.target.value })}
@@ -294,8 +294,8 @@ function SetPostsModal({ series, onClose }: { series: SeriesItem; onClose: () =>
       </h2>
       <Input disabled={saving} aria-label="搜索系列文章" placeholder="搜索文章..." value={search}
         onChange={event => { setSearch(event.target.value); setPage(1); }} className="w-full mb-3 px-3 py-2 rounded-xl glass-card" />
-      <RequestFeedback error={mutation.error} />
-      {(error || postsError) && <p role="alert">{error || postsError} <button onClick={() => { setError(''); setRetry(value => value + 1); }}>重试</button></p>}
+      <AdminRequestFeedback error={mutation.error} />
+      <AdminRequestFeedback error={error || postsError} onRetry={() => { setError(''); setRetry(value => value + 1); }} />
       {(!membersLoaded || !postsLoaded) && !error && !postsError && <p role="status">正在读取文章...</p>}
       <div className="space-y-2">
         {membersLoaded && postsLoaded && allPosts.map((post: SeriesPost) => (

@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/Input';
 import { Textarea } from '@/components/ui/Textarea';
 import { FilePicker } from '@/components/ui/FilePicker';
 import { Disclosure } from '@/components/ui/Disclosure';
+import { AdminToast, useAdminNotice } from '@/components/AdminToast';
 
 const emptyConfig = (): EntryAnimationConfig => ({ overrides: {}, icon_data_url: '' });
 const controlStyle = { background: 'var(--surface-bg)', color: 'var(--text-primary)', border: '1px solid var(--glass-border)' };
@@ -17,8 +18,7 @@ export function EntryAnimationSettings() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [draft, setDraft] = useState<EntryAnimationConfig>(emptyConfig);
   const [busy, setBusy] = useState<'save' | 'preview' | 'icon' | null>(null);
-  const [message, setMessage] = useState('');
-  const [error, setError] = useState('');
+  const [notice, notify] = useAdminNotice();
   const [reload, setReload] = useState(0);
   const reader = useRef<FileReader | null>(null);
   const preview = useEntryAnimationPreview();
@@ -30,33 +30,33 @@ export function EntryAnimationSettings() {
       if (!active) return;
       setSettings(value);
       setDraft({ overrides: value.overrides, icon_data_url: value.icon_data_url });
-      setMessage(value.warning || '');
-    }).catch(e => { if (active) setError(e instanceof Error ? e.message : '读取失败'); });
+      notify(value.warning || '', 'info');
+    }).catch(e => { if (active) notify(e instanceof Error ? e.message : '读取失败', 'error'); });
     return () => { active = false; controller.abort(); reader.current?.abort(); };
-  }, [reload]);
+  }, [reload, notify]);
 
   async function run(action: 'save' | 'preview') {
-    setBusy(action); setMessage(''); setError('');
+    setBusy(action); notify('');
     try {
       if (action === 'save') {
         const value = await api.admin.entryAnimation.update(draft);
         setSettings(value);
         setDraft({ overrides: value.overrides, icon_data_url: value.icon_data_url });
-        setMessage('动画设置已保存');
+        notify('动画设置已保存');
       } else {
         const document = await api.admin.entryAnimation.preview(draft);
         preview?.(document);
-        setMessage('已预览当前草稿，尚未保存的修改仍保留在此处');
+        notify('已预览当前草稿，尚未保存的修改仍保留在此处', 'info');
       }
-    } catch (e) { setError(e instanceof Error ? e.message : '操作失败'); }
+    } catch (e) { notify(e instanceof Error ? e.message : '操作失败', 'error'); }
     finally { setBusy(null); }
   }
 
   function selectIcon(file: File | undefined) {
     if (!file) return;
-    setMessage(''); setError('');
+    notify('');
     if (!['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(file.type) || file.size > 512 * 1024) {
-      setError('请选择不超过 512 KiB 的 PNG、JPEG、WebP 或 GIF 图片');
+      notify('请选择不超过 512 KiB 的 PNG、JPEG、WebP 或 GIF 图片', 'error');
       return;
     }
     reader.current?.abort();
@@ -67,13 +67,15 @@ export function EntryAnimationSettings() {
       setDraft(value => ({ ...value, icon_data_url: String(next.result) }));
       setBusy(null);
     };
-    next.onerror = () => { setError('图标读取失败，请重新选择'); setBusy(null); };
+    next.onerror = () => { notify('图标读取失败，请重新选择', 'error'); setBusy(null); };
     next.readAsDataURL(file);
   }
 
-  if (!settings) return <div className="space-y-3 text-sm" role="status" style={{ color: 'var(--text-secondary)' }}>
-    {error || '正在读取动画设置…'}
-    {error && <button type="button" className={buttonClass} style={controlStyle} onClick={() => { setError(''); setReload(value => value + 1); }}>重试</button>}
+  if (!settings) return <div className="space-y-3 text-sm" style={{ color: 'var(--text-secondary)' }}>
+    <AdminToast {...notice} />
+    {notice.tone === 'error' && notice.message
+      ? <button type="button" className={buttonClass} style={controlStyle} onClick={() => { notify(''); setReload(value => value + 1); }}>重试</button>
+      : <p role="status">正在读取动画设置…</p>}
   </div>;
 
   const groups = Array.from(new Set(settings.fields.map(field => field.group)));
@@ -121,7 +123,7 @@ export function EntryAnimationSettings() {
               onChange: (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
                 const value = event.target.value;
                 setDraft(current => ({ ...current, overrides: { ...current.overrides, [field.key]: value } }));
-                setMessage('');
+                notify('');
               },
             };
             return <div key={field.key} className={field.multiline ? 'sm:col-span-2' : ''}>
@@ -133,15 +135,14 @@ export function EntryAnimationSettings() {
       </Disclosure>)}
     </div>
 
-    {error && <p role="alert" className="text-sm" style={{ color: 'hsl(0,65%,55%)' }}>{error}</p>}
-    {message && <p role="status" className="text-sm" style={{ color: 'var(--primary)' }}>{message}</p>}
+    <AdminToast {...notice} />
     <div className="flex flex-wrap gap-3 border-t pt-5" style={{ borderColor: 'var(--glass-border)' }}>
       <button type="button" disabled={busy !== null} className={buttonClass} style={{ background: 'var(--primary)', color: '#fff' }}
         onClick={() => void run('save')}><Save size={16} />{busy === 'save' ? '保存中…' : '保存动画设置'}</button>
       <button type="button" disabled={busy !== null || !preview} className={buttonClass} style={controlStyle}
         onClick={() => void run('preview')}><Play size={16} />{busy === 'preview' ? '准备预览…' : '预览当前草稿'}</button>
       <button type="button" disabled={busy !== null} className={buttonClass} style={controlStyle}
-        onClick={() => { setDraft(emptyConfig()); setError(''); setMessage('已恢复默认草稿，点击“保存动画设置”后生效'); }}>
+        onClick={() => { setDraft(emptyConfig()); notify('已恢复默认草稿，点击“保存动画设置”后生效', 'info'); }}>
         <RotateCcw size={16} />恢复默认
       </button>
     </div>

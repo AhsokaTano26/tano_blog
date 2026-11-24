@@ -1,5 +1,7 @@
 'use client';
 
+import { useLocalTransition } from '@/lib/use-local-transition';
+
 import { AdminPageHeader } from '@/components/AdminPageHeader';
 import { validTimeValue } from '@/lib/date-value';
 
@@ -13,7 +15,7 @@ import { Checkbox } from '@/components/ui/Checkbox';
 import { useState, useEffect, useRef } from 'react';
 import { api } from '@/lib/api';
 import { requestError } from '@/lib/request-feedback';
-import { RequestFeedback } from '@/components/RequestFeedback';
+import { AdminRequestFeedback, AdminToast, useAdminNotice } from '@/components/AdminToast';
 import { Download, Upload, Trash2, Plus, Link, FolderOpen, AlertTriangle, HardDrive, ServerCog, Play, RefreshCw, Save, Square } from 'lucide-react';
 import { Loading } from '@/components/Loading';
 import { useConfirm, Select } from '@/components/ConfirmDialog';
@@ -51,7 +53,7 @@ export default function AdminBackup() {
   const [backups, setBackups] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
-  const [message, setMessage] = useState('');
+  const [notice, notify] = useAdminNotice();
   const [listError, setListError] = useState('');
   const [progressError, setProgressError] = useState('');
   const [syncError, setSyncError] = useState('');
@@ -82,9 +84,9 @@ export default function AdminBackup() {
     setCancelling(true);
     try {
       await api.admin.backups.cancel();
-      setMessage('已请求取消，正在清理临时文件或回滚事务');
+      notify('已请求取消，正在清理临时文件或回滚事务', 'info');
     } catch (error) {
-      setMessage(requestError(error, '取消任务失败'));
+      notify(requestError(error, '取消任务失败'), 'error');
     } finally {
       setCancelling(false);
     }
@@ -96,7 +98,6 @@ export default function AdminBackup() {
   const [restoreUrl, setRestoreUrl] = useState('');
   const [restoreFilename, setRestoreFilename] = useState('');
   const [restoring, setRestoring] = useState(false);
-  const [restoreMessage, setRestoreMessage] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [syncConfig, setSyncConfig] = useState<Record<string, string>>({});
   const [syncStatus, setSyncStatus] = useState<any>(null);
@@ -143,9 +144,9 @@ export default function AdminBackup() {
       await api.admin.config.update(payload);
       setSyncPrivateKey('');
       setClearSyncPrivateKey(false);
-      setMessage('跨机同步配置已保存');
+      notify('跨机同步配置已保存');
       await loadSync();
-    } catch (e: any) { setMessage(requestError(e, '保存同步配置失败')); }
+    } catch (e: any) { notify(requestError(e, '保存同步配置失败'), 'error'); }
     setSyncSaving(false);
   }
 
@@ -154,21 +155,21 @@ export default function AdminBackup() {
     setSyncRunning(true);
     try {
       const result = await api.admin.sync.run();
-      setMessage(result.message || '同步任务已启动');
+      notify(result.message || '同步任务已启动');
       window.setTimeout(loadSync, 1000);
-    } catch (e: any) { setMessage(requestError(e, '启动同步失败')); }
+    } catch (e: any) { notify(requestError(e, '启动同步失败'), 'error'); }
     setSyncRunning(false);
   }
 
   async function handleCreate() {
     setCreating(true);
-    setMessage('');
+    notify('');
     try {
       const res = await api.admin.backups.create();
-      setMessage(`备份创建成功：${res.filename}`);
+      notify(`备份创建成功：${res.filename}`);
       await loadBackups();
     } catch (e: any) {
-      setMessage(requestError(e, '创建备份失败'));
+      notify(requestError(e, '创建备份失败'), 'error');
     }
     setCreating(false);
   }
@@ -177,10 +178,10 @@ export default function AdminBackup() {
     if (!await confirm(`确定要删除备份 ${filename} 吗？`)) return;
     try {
       await api.admin.backups.delete(filename);
-      setMessage('已删除');
+      notify('已删除');
       await loadBackups();
     } catch (e: any) {
-      setMessage(requestError(e, '删除失败'));
+      notify(requestError(e, '删除失败'), 'error');
     }
   }
 
@@ -188,15 +189,15 @@ export default function AdminBackup() {
     if (!restoreFile) return;
     if (!await confirm('确定要恢复数据吗？此操作将覆盖所有现有数据！')) return;
     setRestoring(true);
-    setRestoreMessage('');
+    notify('');
     try {
       const res = await api.admin.restore.upload(restoreFile);
-      setRestoreMessage(res.message || '恢复完成');
-      if (res.warning) setRestoreMessage(prev => `${prev}（${res.warning}）`);
+      const message = res.message || '恢复完成';
+      notify(res.warning ? `${message}（${res.warning}）` : message, res.warning ? 'info' : 'success');
       setRestoreFile(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
     } catch (e: any) {
-      setRestoreMessage(requestError(e, '恢复失败'));
+      notify(requestError(e, '恢复失败'), 'error');
     }
     setRestoring(false);
   }
@@ -205,13 +206,13 @@ export default function AdminBackup() {
     if (!restoreUrl.trim()) return;
     if (!await confirm('确定要恢复数据吗？此操作将覆盖所有现有数据！')) return;
     setRestoring(true);
-    setRestoreMessage('');
+    notify('');
     try {
       const res = await api.admin.restore.url(restoreUrl.trim());
-      setRestoreMessage(res.message || '恢复完成');
-      if (res.warning) setRestoreMessage(prev => `${prev}（${res.warning}）`);
+      const message = res.message || '恢复完成';
+      notify(res.warning ? `${message}（${res.warning}）` : message, res.warning ? 'info' : 'success');
     } catch (e: any) {
-      setRestoreMessage(requestError(e, '恢复失败'));
+      notify(requestError(e, '恢复失败'), 'error');
     }
     setRestoring(false);
   }
@@ -220,17 +221,18 @@ export default function AdminBackup() {
     if (!restoreFilename) return;
     if (!await confirm('确定要恢复数据吗？此操作将覆盖所有现有数据！')) return;
     setRestoring(true);
-    setRestoreMessage('');
+    notify('');
     try {
       const res = await api.admin.restore.local(restoreFilename);
-      setRestoreMessage(res.message || '恢复完成');
-      if (res.warning) setRestoreMessage(prev => `${prev}（${res.warning}）`);
+      const message = res.message || '恢复完成';
+      notify(res.warning ? `${message}（${res.warning}）` : message, res.warning ? 'info' : 'success');
     } catch (e: any) {
-      setRestoreMessage(requestError(e, '恢复失败'));
+      notify(requestError(e, '恢复失败'), 'error');
     }
     setRestoring(false);
   }
 
+  const panelRef = useLocalTransition<HTMLDivElement>(activeTab);
   const phaseLabels: Record<string, string> = { snapshot: '准备同步快照', export: '导出数据库', hash: '校验上传文件', uploads: '打包上传文件', upload: '接收备份文件', download: '下载备份文件', validate: '验证备份数据', restore: '恢复数据库', finalize: '完成恢复' };
   const inputClass = "w-full px-3 py-2.5 rounded-lg text-sm outline-none";
   const inputStyle = { border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' };
@@ -239,16 +241,11 @@ export default function AdminBackup() {
     <div className="admin-page">
       <AdminPageHeader title="备份与恢复" description="管理数据备份、恢复任务与主备同步。" section="系统管理" />
 
-      {message && (
-        <div role={message.includes('失败') ? 'alert' : 'status'} className="mb-4 px-4 py-2.5 rounded-lg text-sm flex items-center gap-2 glass-card"
-          style={{ color: message.includes('失败') ? 'hsl(0, 60%, 55%)' : 'hsl(142, 60%, 50%)' }}>
-          {message}
-        </div>
-      )}
+      <AdminToast {...notice} />
 
-      <RequestFeedback error={progressError} />
-      <RequestFeedback error={listError} onRetry={loadBackups} pending={loading} />
-      {activeTab === 'sync' && <RequestFeedback error={syncError} onRetry={loadSync} pending={syncSaving || syncRunning} />}
+      <AdminRequestFeedback error={progressError} />
+      <AdminRequestFeedback error={listError} onRetry={loadBackups} pending={loading} />
+      {activeTab === 'sync' && <AdminRequestFeedback error={syncError} onRetry={loadSync} pending={syncSaving || syncRunning} />}
       {backupProgress?.running && (
         <div role="status" aria-live="polite" className="mb-4 rounded-xl px-4 py-3 glass-card flex flex-wrap items-center justify-between gap-3">
           <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>
@@ -281,7 +278,7 @@ export default function AdminBackup() {
         </div>
 
         {/* Tab content */}
-        <div className="p-6">
+        <div ref={panelRef} className="p-6">
           {/* ===== Backup Management ===== */}
           {activeTab === 'manage' && (
             <div>
@@ -491,21 +488,6 @@ export default function AdminBackup() {
                 </div>
               </div>
 
-              {/* Restore message */}
-              {restoreMessage && (
-                <div role={restoreMessage.includes('失败') ? 'alert' : 'status'} className="text-sm p-3 rounded-lg"
-                  style={{
-                    color: restoreMessage.includes('失败') ? 'hsl(0, 60%, 55%)' : 'hsl(142, 60%, 50%)',
-                    background: restoreMessage.includes('失败')
-                      ? 'rgba(255, 100, 100, 0.1)'
-                      : 'rgba(100, 200, 100, 0.1)',
-                    border: '1px solid ' + (restoreMessage.includes('失败')
-                      ? 'rgba(255, 100, 100, 0.2)'
-                      : 'rgba(100, 200, 100, 0.2)'),
-                  }}>
-                  {restoreMessage}
-                </div>
-              )}
             </div>
           )}
         </div>

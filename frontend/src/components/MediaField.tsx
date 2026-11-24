@@ -8,7 +8,7 @@ import { FilePicker } from '@/components/ui/FilePicker';
 import { useState, useRef, useEffect } from 'react';
 import { api } from '@/lib/api';
 import { requestError } from '@/lib/request-feedback';
-import { RequestFeedback } from '@/components/RequestFeedback';
+import { AdminRequestFeedback } from '@/components/AdminToast';
 import { ImageWithFallback } from '@/components/ImageWithFallback';
 import type { MediaItem } from '@/lib/admin-types';
 
@@ -84,7 +84,7 @@ export function MediaField({ value, onChange, accept, placeholder, previewSize =
         compact
         className="flex-shrink-0"
       />
-      {uploadError && <div className="w-full"><RequestFeedback error={uploadError} /></div>}
+      <AdminRequestFeedback error={uploadError} />
       {showPicker && (
         <MediaPickerModal
           onSelect={(url) => { onChange(url); setShowPicker(false); }}
@@ -151,7 +151,7 @@ export function MediaPickerModal({ onSelect, onClose, onUpload, filterType }: { 
 
   const modalContent = (
     <>
-      <RequestFeedback error={tagError} onRetry={loadTags} />
+      <AdminRequestFeedback error={tagError} onRetry={loadTags} />
       <div className="flex items-center justify-between mb-2">
         <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>从媒体库选择</span>
         <div className="flex items-center gap-2">
@@ -233,9 +233,7 @@ export function MediaPickerModal({ onSelect, onClose, onUpload, filterType }: { 
           </button></Tooltip>
         ))}
       </div>
-      {loadError && <p role="alert" className="text-center text-sm mt-2" style={{ color: 'var(--color-error)' }}>
-        {loadError} <button onClick={() => setRetryKey(key => key + 1)} className="underline">重试</button>
-      </p>}
+      <AdminRequestFeedback error={loadError} onRetry={() => setRetryKey(key => key + 1)} />
       {loading && (
         <p className="text-center text-sm mt-2" style={{ color: 'var(--text-info)' }}>加载中...</p>
       )}

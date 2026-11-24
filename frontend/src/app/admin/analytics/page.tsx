@@ -1,6 +1,9 @@
 'use client';
 
+import { useLocalTransition } from '@/lib/use-local-transition';
+
 import { AdminPageHeader } from '@/components/AdminPageHeader';
+import { AdminRequestFeedback } from '@/components/AdminToast';
 import { validDateValue } from '@/lib/date-value';
 
 import { DatePicker } from '@/components/ui/DateTimePicker';
@@ -38,6 +41,7 @@ export default function AnalyticsPage() {
     const [byHour, setByHour] = useState<{ hour: number; count: number }[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
+    const resultsRef = useLocalTransition<HTMLDivElement>(loading || error ? null : timeRangeStats);
     const requestSequence = useRef(0);
 
     const loadData = useCallback(async () => {
@@ -101,11 +105,9 @@ export default function AnalyticsPage() {
             {loading ? (
                 <div role="status" className={styles.loading}>加载中…</div>
             ) : error ? (
-                <div role="alert" className="glass-card rounded-xl p-5 text-sm" style={{ color: 'var(--color-error)' }}>
-                    {error}<button onClick={() => void loadData()} className="ml-3 underline">重试</button>
-                </div>
+                <AdminRequestFeedback error={error} onRetry={loadData} />
             ) : (
-                <>
+                <div ref={resultsRef}>
                     {timeRangeStats && <>
                         <RequestSummary stats={timeRangeStats} />
                         <VisitTrendChart data={timeRangeStats.daily_counts} range={range} />
@@ -122,7 +124,7 @@ export default function AnalyticsPage() {
                         <RequestBreakdown title="浏览器分布" data={byBrowser} total={total} />
                         <RequestBreakdown title="操作系统" data={byOS} total={total} />
                     </div>
-                </>
+                </div>
             )}
         </div>
     );

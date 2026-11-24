@@ -1,5 +1,7 @@
 'use client';
 
+import { useLocalTransition } from '@/lib/use-local-transition';
+
 import { AdminPageHeader } from '@/components/AdminPageHeader';
 
 import { Checkbox } from '@/components/ui/Checkbox';
@@ -14,7 +16,7 @@ import { Select } from '@/components/ConfirmDialog';
 import { MediaField } from '@/components/MediaField';
 import { EntryAnimationSettings } from '@/components/EntryAnimationSettings';
 import { requestError, useLatestRequest } from '@/lib/request-feedback';
-import { RequestFeedback } from '@/components/RequestFeedback';
+import { AdminRequestFeedback, AdminToast, useAdminNotice } from '@/components/AdminToast';
 
 
 const contactTypes = [
@@ -46,8 +48,9 @@ export default function AdminSettings() {
   const latestConfig = useRef(config);
   useLayoutEffect(() => { latestConfig.current = config; }, [config]);
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState('');
+  const [notice, notify] = useAdminNotice();
   const [activeTab, setActiveTab] = useState('basic');
+  const panelRef = useLocalTransition<HTMLDivElement>(activeTab);
   const [testing, setTesting] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [clearStep, setClearStep] = useState(0); // 0=hidden, 1=first confirm, 2=type CLEAR_ALL
@@ -117,7 +120,7 @@ export default function AdminSettings() {
 
   async function handleSave() {
     setSaving(true);
-    setMessage('');
+    notify('');
     let saved = false;
     const submitted = config;
     try {
@@ -127,9 +130,9 @@ export default function AdminSettings() {
       const res = await api.admin.config.get();
       const newerEdits = latestConfig.current !== submitted;
       setConfig(current => current === submitted ? res.config : current);
-      setMessage(newerEdits ? '提交的设置已保存，仍有未保存的修改' : '设置已保存');
+      notify(newerEdits ? '提交的设置已保存，仍有未保存的修改' : '设置已保存');
     } catch (cause) {
-      setMessage(requestError(cause, saved ? '设置已保存，但重新读取配置失败' : '保存失败'));
+      notify(requestError(cause, saved ? '设置已保存，但重新读取配置失败' : '保存失败'), 'error');
     } finally {
       setSaving(false);
     }
@@ -137,24 +140,24 @@ export default function AdminSettings() {
 
   async function handleTestEmail() {
     setTesting(true);
-    setMessage('');
+    notify('');
     try {
       const res = await api.admin.config.testEmail();
-      setMessage(res.message || '测试邮件已发送');
+      notify(res.message || '测试邮件已发送');
     } catch (e: any) {
-      setMessage(requestError(e, '发送测试邮件失败'));
+      notify(requestError(e, '发送测试邮件失败'), 'error');
     }
     setTesting(false);
   }
 
   async function handleClearAll() {
     setClearing(true);
-    setMessage('');
+    notify('');
     try {
       const res = await api.admin.restore.clearAll();
-      setMessage(res.message || '已清空全站数据');
+      notify(res.message || '已清空全站数据');
     } catch (e: any) {
-      setMessage(requestError(e, '清空数据失败'));
+      notify(requestError(e, '清空数据失败'), 'error');
     }
     setClearing(false);
     setClearStep(0);
@@ -164,18 +167,13 @@ export default function AdminSettings() {
   const inputStyle = { border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', color: 'var(--text-primary)' };
 
   if (settings.loading && !settings.data) return <Loading />;
-  if (!settings.data) return <RequestFeedback error={settings.error} onRetry={settings.reload} pending={settings.loading} />;
+  if (!settings.data) return <AdminRequestFeedback error={settings.error} onRetry={settings.reload} pending={settings.loading} />;
 
   return (
     <div className="admin-page">
       <AdminPageHeader title="设置" description="调整站点信息、外观和功能，让博客保持你的风格。" section="站点管理" />
 
-      {message && (
-        <div role={message.includes('失败') ? 'alert' : 'status'} className="mb-4 px-4 py-2.5 rounded-lg text-sm flex items-center gap-2 glass-card"
-          style={{ color: message.includes('失败') ? 'hsl(0, 60%, 55%)' : 'hsl(142, 60%, 50%)' }}>
-          {message}
-        </div>
-      )}
+      <AdminToast {...notice} />
 
       <div className="glass-card rounded-xl overflow-hidden">
         {/* Tab navigation */}
@@ -194,10 +192,10 @@ export default function AdminSettings() {
         </div>
 
         {/* Tab content */}
-        <div className="p-6">
+        <div ref={panelRef} className={`p-6 mx-auto ${activeTab === 'injection' ? 'max-w-3xl' : 'max-w-2xl'}`}>
           {activeTab === 'entry-animation' && <EntryAnimationSettings />}
           {activeTab === 'basic' && (
-            <div className="space-y-5 max-w-2xl">
+            <div className="space-y-5">
               <div>
                 <label htmlFor="admin-settings-field-1" className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>站点标题</label>
                 <Input id="admin-settings-field-1" type="text" value={config.site_title || ''} onChange={e => setConfig({ ...config, site_title: e.target.value })}
@@ -244,7 +242,7 @@ export default function AdminSettings() {
           )}
 
           {activeTab === 'article' && (
-            <div className="space-y-5 max-w-2xl">
+            <div className="space-y-5">
               <div>
                 <label htmlFor="admin-settings-field-5" className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>每页文章数</label>
                 <Input id="admin-settings-field-5" type="number" min="1" max="50" value={config.posts_per_page || '10'} onChange={e => setConfig({ ...config, posts_per_page: e.target.value })}
@@ -259,7 +257,7 @@ export default function AdminSettings() {
           )}
 
           {activeTab === 'appearance' && (
-            <div className="space-y-5 max-w-2xl">
+            <div className="space-y-5">
               <div>
                 <Checkbox label="开放旧版界面" checked={config.legacy_ui_enabled === 'true'}
                   aria-describedby="legacy-ui-help"
@@ -324,7 +322,7 @@ export default function AdminSettings() {
           )}
 
           {activeTab === 'comment' && (
-            <div className="space-y-5 max-w-2xl">
+            <div className="space-y-5">
               <div>
                 <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>评论功能</label>
                 <div className="flex gap-2">
@@ -349,7 +347,7 @@ export default function AdminSettings() {
           )}
 
           {activeTab === 'turnstile' && (
-            <div className="space-y-5 max-w-2xl">
+            <div className="space-y-5">
               <div>
                 <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>Turnstile 人机验证</label>
                 <div className="flex gap-2 mb-3">
@@ -416,7 +414,7 @@ export default function AdminSettings() {
           )}
 
           {activeTab === 'ai' && (
-            <div className="space-y-5 max-w-2xl">
+            <div className="space-y-5">
               <div>
                 <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>AI 摘要生成</label>
                 <div className="flex gap-2">
@@ -462,7 +460,7 @@ export default function AdminSettings() {
           )}
 
           {activeTab === 'email' && (
-            <div className="space-y-5 max-w-2xl">
+            <div className="space-y-5">
               {/* Enable toggle */}
               <div>
                 <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>邮件通知</label>
@@ -561,7 +559,7 @@ export default function AdminSettings() {
           )}
 
           {activeTab === 'injection' && (
-            <div className="space-y-6 max-w-3xl">
+            <div className="space-y-6">
               <div>
                 <label htmlFor="admin-settings-field-21" className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>全局 Head 注入</label>
                 <p className="text-xs mb-2" style={{ color: 'var(--text-info)' }}>注入到所有页面的 &lt;head&gt; 中，可用于添加统计代码、自定义样式等</p>
@@ -586,7 +584,7 @@ export default function AdminSettings() {
               </div>
               <div>
                 <label htmlFor="admin-settings-field-23" className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>页脚注入</label>
-                <p className="text-xs mb-2" style={{ color: 'var(--text-info)' }}>注入到所有前台页面的页脚区域之前</p>
+                <p className="text-xs mb-2" style={{ color: 'var(--text-info)' }}>显示在页脚分割线下方、版权和导航上方</p>
                 <Textarea id="admin-settings-field-23"
                   value={config.footer_injection || ''}
                   onChange={e => setConfig({ ...config, footer_injection: e.target.value })}
@@ -599,7 +597,7 @@ export default function AdminSettings() {
           )}
 
           {activeTab === 'danger' && (
-            <div className="space-y-5 max-w-2xl">
+            <div className="space-y-5">
               <div className="px-4 py-3 rounded-lg text-sm flex items-start gap-2"
                 style={{ background: 'rgba(255, 100, 100, 0.1)', color: 'hsl(0, 60%, 55%)', border: '1px solid rgba(255, 100, 100, 0.2)' }}>
                 <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
@@ -667,7 +665,7 @@ export default function AdminSettings() {
           )}
 
           {activeTab === 'about' && (
-            <div className="space-y-5 max-w-2xl">
+            <div className="space-y-5">
               {/* Version */}
               <div className="admin-form-section py-5">
                 <h3 className="text-sm font-semibold mb-3 flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
@@ -748,7 +746,7 @@ export default function AdminSettings() {
                   </div>
                 </div>
               )}
-              <RequestFeedback error={versionError} onRetry={() => setVersionRetry(value => value + 1)} pending={checkingVersion} />
+              <AdminRequestFeedback error={versionError} onRetry={() => setVersionRetry(value => value + 1)} pending={checkingVersion} />
 
               {/* Links */}
               <div className="admin-form-section py-5">

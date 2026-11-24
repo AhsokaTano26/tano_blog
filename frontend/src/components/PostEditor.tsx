@@ -12,7 +12,7 @@ import { FilePicker } from '@/components/ui/FilePicker';
 import { useState, useEffect, useLayoutEffect, useRef, useMemo, useDeferredValue, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import { requestError, useLatestRequest } from '@/lib/request-feedback';
-import { RequestFeedback } from '@/components/RequestFeedback';
+import { AdminRequestFeedback, AdminToast, useAdminNotice } from '@/components/AdminToast';
 import { api, ApiError, type Post, type PostMutation, type PostRevision } from '@/lib/api';
 import { draftFromPost, postVersion, type EditorDraft } from '@/lib/editor-draft';
 import { useEditorDraft } from '@/lib/use-editor-draft';
@@ -76,7 +76,7 @@ type SavedPostResponse = { post?: Partial<Post> };
 
 /* ── Full-page post editor ── */
 export default function PostEditor({ post, onClose }: { post: Partial<Post> | null; onClose: () => void }) {
-  const { confirm, alert } = useConfirm();
+  const { confirm } = useConfirm();
   const mountedRef = useRef(false);
   useLayoutEffect(() => {
     mountedRef.current = true;
@@ -109,7 +109,9 @@ export default function PostEditor({ post, onClose }: { post: Partial<Post> | nu
   const categories = metadata.data?.categories || [];
   const tags = metadata.data?.tags || [];
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
+  const [errorNotice, setError] = useAdminNotice('error');
+  const [previewNotice, notifyPreview] = useAdminNotice();
+  const [previewFallback, setPreviewFallback] = useState('');
   const [authorName, setAuthorName] = useState(post?.author_name || '');
   const [excerptMode, setExcerptMode] = useState<'manual' | 'auto'>(post?.excerpt ? 'manual' : 'auto');
   const [scheduledAt, setScheduledAt] = useState(toDateTimeLocal(post?.scheduled_at));
@@ -716,14 +718,16 @@ export default function PostEditor({ post, onClose }: { post: Partial<Post> | nu
           {savedPostId && status === 'draft' && (
             <Tooltip content="复制预览链接"><button onClick={async () => {
               let previewUrl = '';
+              setPreviewFallback('');
               try {
                 const res = await api.admin.posts.generatePreviewToken(savedPostId);
                 const url = `${window.location.origin}/posts/preview?token=${res.token}`;
                 previewUrl = url;
                 await navigator.clipboard.writeText(url);
-                await alert('预览链接已复制到剪贴板');
+                notifyPreview('预览链接已复制到剪贴板');
               } catch (cause) {
-                await alert(previewUrl ? `${requestError(cause, '预览链接已生成，但复制失败')}\n${previewUrl}` : requestError(cause, '生成预览链接失败'));
+                setPreviewFallback(previewUrl);
+                notifyPreview(requestError(cause, previewUrl ? '预览链接已生成，但复制失败' : '生成预览链接失败'), 'error');
               }
             }}
               className="p-2 rounded-xl transition-colors btn-glass"
@@ -771,25 +775,23 @@ export default function PostEditor({ post, onClose }: { post: Partial<Post> | nu
         </div>
       </header>
 
+      <AdminToast {...previewNotice} />
+      {previewFallback && <div className="px-4 pt-2 text-sm flex-shrink-0">
+        <a href={previewFallback} target="_blank" rel="noopener noreferrer" className="underline" style={{ color: 'var(--primary)' }}>打开预览链接</a>
+      </div>}
+
       {mediaUploading && <div role="status" aria-live="polite" className="px-4 sm:px-6 pt-2 text-sm flex-shrink-0"
         style={{ color: 'var(--primary)' }}>
         正在上传 {mediaUploadCount} 个文件…
       </div>}
 
-      <div className="mx-4 flex-shrink-0"><RequestFeedback error={metadata.error} onRetry={metadata.reload} pending={metadata.loading} /></div>
-      {/* Error */}
-      {error && (
-        <div role="alert" className="mx-4 mt-3 px-4 py-2.5 rounded-xl text-sm flex-shrink-0 glass-card pe-slide-down"
-          style={{ color: 'var(--color-error)' }}>
-          {error}
-        </div>
-      )}
-
-      <div className={persistence.storageError ? 'px-4 sm:px-6 py-2 text-sm flex-shrink-0' : 'sr-only'} role={persistence.storageError ? 'alert' : 'status'}
-        style={{ color: persistence.storageError ? 'var(--color-error)' : 'var(--text-info)' }}>
-        {persistence.storageError ? <>{persistence.storageError} <button type="button" className="underline" onClick={persistence.retry}>重试草稿保存</button></>
-          : persistence.savedAt ? '本地草稿已保存' : persistence.isDirty ? '正在保留本地草稿…' : '修改后会自动保留本地草稿'}
-      </div>
+      <div className="mx-4 flex-shrink-0"><AdminRequestFeedback error={metadata.error} onRetry={metadata.reload} pending={metadata.loading} /></div>
+      <AdminToast {...errorNotice} />
+      {persistence.storageError ? <div className="px-4 sm:px-6 flex-shrink-0">
+        <AdminRequestFeedback error={persistence.storageError} onRetry={persistence.retry} retryLabel="重试草稿保存" />
+      </div> : <div className="sr-only" role="status">
+        {persistence.savedAt ? '本地草稿已保存' : persistence.isDirty ? '正在保留本地草稿…' : '修改后会自动保留本地草稿'}
+      </div>}
 
       {persistence.recoverable.length > 0 && (
         <div className="mx-4 mt-3 px-4 py-2.5 rounded-xl text-sm flex-shrink-0 flex flex-wrap items-center justify-between gap-2 glass-card pe-slide-down"
@@ -1057,7 +1059,7 @@ export default function PostEditor({ post, onClose }: { post: Partial<Post> | nu
                 </div>
               ) : (
                 <div className="space-y-2">
-                  <RequestFeedback error={revisionsError} onRetry={loadRevisions} pending={revisionsLoading} />
+                  <AdminRequestFeedback error={revisionsError} onRetry={loadRevisions} pending={revisionsLoading} />
                   {revisionsError ? null : revisionsLoading ? <p role="status">正在加载修订历史...</p> : revisions.length === 0 ? (
                     <p className="text-sm" style={{ color: 'var(--text-info)' }}>暂无修订历史</p>
                   ) : (

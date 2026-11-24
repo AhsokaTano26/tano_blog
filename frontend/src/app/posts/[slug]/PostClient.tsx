@@ -22,6 +22,7 @@ import { CommentMarkdown } from '@/components/CommentMarkdown';
 import { ImageWithFallback } from '@/components/ImageWithFallback';
 import { LoadMore } from '@/components/LoadMore';
 import { usePagedItems } from '@/lib/use-paged-items';
+import { useLocalTransition } from '@/lib/use-local-transition';
 import { mergeById } from '@/lib/pagination';
 import type { PostResponse } from '@/lib/server-post';
 import editorial from '@/components/Editorial.module.css';
@@ -231,6 +232,7 @@ export default function PostClient({ slug, initialData, initialError = '', initi
   const [passwordError, setPasswordError] = useState('');
   const [passwordVerifying, setPasswordVerifying] = useState(false);
   const [commentSort, setCommentSort] = useState('oldest');
+  const [commentListHeight, setCommentListHeight] = useState(0);
   const [turnstileEnabled, setTurnstileEnabled] = useState(false);
   const [turnstileSitekey, setTurnstileSitekey] = useState('');
   const [turnstileToken, setTurnstileToken] = useState('');
@@ -243,6 +245,7 @@ export default function PostClient({ slug, initialData, initialError = '', initi
     : Promise.resolve({ items: [], total: 0, page: 1, size: 20 }), [slug, commentSort, canRead]);
   const commentPages = usePagedItems<any>(fetchComments, 20, mergeById);
   const comments = commentPages.items;
+  const commentResultsRef = useLocalTransition<HTMLDivElement>(commentPages.loading || commentPages.error ? null : comments);
   const addCommentReactions = useCallback((items: any[]) => {
     setReactions(previous => ({ ...collectReactions(items), ...previous }));
   }, []);
@@ -727,108 +730,116 @@ export default function PostClient({ slug, initialData, initialError = '', initi
           </h2>
 
           {/* Sort buttons */}
-          <div className={styles.sort}>
+          <div className={styles.sort} role="group" aria-label="评论排序">
             {[{ key: 'oldest', label: '最早' }, { key: 'newest', label: '最新' }, { key: 'reactions', label: '最多点赞' }].map(opt => (
-              <button key={opt.key} onClick={() => setCommentSort(opt.key)}
-                aria-pressed={commentSort === opt.key}>
+              <button key={opt.key} type="button" aria-controls="article-comment-results" aria-pressed={commentSort === opt.key}
+                onClick={() => {
+                  if (commentSort === opt.key) return;
+                  setCommentListHeight(commentResultsRef.current?.offsetHeight ?? 0);
+                  setCommentSort(opt.key);
+                }}>
                 {opt.label}
               </button>
             ))}
           </div>
 
           {/* Comment list */}
-          <div className="mb-8">
-            {comments.map((comment: any) => (
-              <CommentItem key={`${commentSort}-${comment.id}`} slug={slug} sort={commentSort} onLoadReactions={addCommentReactions} comment={comment} depth={0} onReply={(c: any) => {
-                setReplyTo(c);
-                setCommentForm(prev => ({ ...prev, parent_id: c.id }));
-              }} reactions={reactions} onReaction={handleToggleReaction} />
-            ))}
-            {comments.length === 0 && !commentPages.loading && !commentPages.error && (
-              <p className="text-sm" style={{ color: 'var(--text-info)' }}>暂无评论</p>
-            )}
+          <div ref={commentResultsRef} id="article-comment-results" role="region" aria-label="评论列表" aria-busy={commentPages.loading}
+            className={styles.commentResults}
+            style={commentPages.initialLoading && commentListHeight ? { minHeight: commentListHeight } : undefined}>
+            <div className="mb-8">
+              {comments.map((comment: any) => (
+                <CommentItem key={`${commentSort}-${comment.id}`} slug={slug} sort={commentSort} onLoadReactions={addCommentReactions} comment={comment} depth={0} onReply={(c: any) => {
+                  setReplyTo(c);
+                  setCommentForm(prev => ({ ...prev, parent_id: c.id }));
+                }} reactions={reactions} onReaction={handleToggleReaction} />
+              ))}
+              {commentPages.initialLoading ? <p className={styles.listMessage}>正在加载评论…</p>
+                : comments.length === 0 && !commentPages.error && <p className={styles.listMessage}>暂无评论</p>}
+            </div>
+            {!commentPages.initialLoading && <LoadMore {...commentPages} />}
           </div>
 
-          <LoadMore {...commentPages} />
-
           {/* Comment form */}
-          <h3 className="text-lg font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>发表评论</h3>
-          {commentError && (
-            <div className={styles.notice} style={{ color: 'var(--color-error)' }}>
-              {commentError}
-            </div>
-          )}
-          {commentSuccess && (
-            <div className={styles.notice} style={{ color: 'var(--color-success)' }}>
-              {commentSuccess}
-            </div>
-          )}
-          {(commentsEnabled !== true || post.allow_comment === false) && (
-            <p role="status" className="text-sm mb-3" style={{ color: 'var(--text-secondary)' }}>
-              {commentsEnabled === null ? '正在加载评论设置…' : '评论已关闭，已有评论仍可浏览。'}
-            </p>
-          )}
-          <form onSubmit={handleComment} className="space-y-3 max-w-lg">
-            <fieldset disabled={commentsEnabled !== true || post.allow_comment === false} className="min-w-0 space-y-3 disabled:opacity-60">
-            {/* Honeypot - hidden from humans */}
-            <input type="text" name="website_confirm" value={commentForm.hp_field}
-              onChange={e => setCommentForm(prev => ({ ...prev, hp_field: e.target.value }))}
-              tabIndex={-1} aria-hidden="true" autoComplete="off"
-              className="absolute opacity-0 pointer-events-none" style={{ height: 0, width: 0, padding: 0, margin: 0 }} />
-            {replyTo && (
-              <div className={`${styles.notice} flex items-center gap-2`}
-                style={{ color: 'var(--text-secondary)' }}>
-                回复 <span className="font-medium" style={{ color: 'var(--primary)' }}>{replyTo.nickname}</span>
-                <button type="button" onClick={() => { setReplyTo(null); setCommentForm(prev => ({ ...prev, parent_id: '' })); }}
-                  className="ml-auto text-xs hover:opacity-80" style={{ color: 'var(--text-info)' }}>取消</button>
+          <div className={styles.commentForm}>
+            <h3 className="text-lg font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>发表评论</h3>
+            {commentError && (
+              <div className={styles.notice} style={{ color: 'var(--color-error)' }}>
+                {commentError}
               </div>
             )}
-            <div className="flex gap-3">
-              <input type="text" value={commentForm.nickname} onChange={e => setCommentForm({ ...commentForm, nickname: e.target.value })}
-                placeholder="昵称 *" required
-                className={`${editorial.field} flex-1`} aria-label="昵称"
-                style={{ color: 'var(--text-primary)' }} />
-              <input type="email" value={commentForm.email} onChange={e => setCommentForm({ ...commentForm, email: e.target.value })}
-                placeholder="邮箱（不公开）"
-                className={`${editorial.field} flex-1`} aria-label="邮箱（不公开）"
-                style={{ color: 'var(--text-primary)' }} />
-            </div>
-            <input type="url" value={commentForm.website} onChange={e => setCommentForm({ ...commentForm, website: e.target.value })}
-              placeholder="网站 (可选)"
-              className={`${editorial.field} w-full`} aria-label="网站（可选）"
-              style={{ color: 'var(--text-primary)' }} />
-            <textarea value={commentForm.content} onChange={e => setCommentForm({ ...commentForm, content: e.target.value })}
-              placeholder="评论内容 *" required rows={4}
-              className={`${editorial.field} w-full resize-none`} aria-label="评论内容"
-              style={{ color: 'var(--text-primary)' }} />
-            {/* Comment preview toggle */}
-            {commentForm.content && (
-              <div>
-                <button
-                  type="button"
-                  onClick={() => setShowPreview(!showPreview)}
-                  className={`${editorial.action} mb-2`}
-                  style={{ color: showPreview ? 'var(--primary)' : 'var(--text-secondary)' }}
-                >
-                  {showPreview ? '关闭预览' : '预览评论'}
-                </button>
-                {showPreview && (
-                  <div className={`${styles.preview} prose dark:prose-invert prose-sm max-w-none`}>
-                    <CommentMarkdown content={commentForm.content} />
+            {commentSuccess && (
+              <div className={styles.notice} style={{ color: 'var(--color-success)' }}>
+                {commentSuccess}
+              </div>
+            )}
+            {(commentsEnabled !== true || post.allow_comment === false) && (
+              <p role="status" className="text-sm mb-3" style={{ color: 'var(--text-secondary)' }}>
+                {commentsEnabled === null ? '正在加载评论设置…' : '评论已关闭，已有评论仍可浏览。'}
+              </p>
+            )}
+            <form onSubmit={handleComment} className="space-y-3">
+              <fieldset disabled={commentsEnabled !== true || post.allow_comment === false} className="min-w-0 space-y-3 disabled:opacity-60">
+                {/* Honeypot - hidden from humans */}
+                <input type="text" name="website_confirm" value={commentForm.hp_field}
+                  onChange={e => setCommentForm(prev => ({ ...prev, hp_field: e.target.value }))}
+                  tabIndex={-1} aria-hidden="true" autoComplete="off"
+                  className="absolute opacity-0 pointer-events-none" style={{ height: 0, width: 0, padding: 0, margin: 0 }} />
+                {replyTo && (
+                  <div className={`${styles.notice} flex items-center gap-2`}
+                    style={{ color: 'var(--text-secondary)' }}>
+                    回复 <span className="font-medium" style={{ color: 'var(--primary)' }}>{replyTo.nickname}</span>
+                    <button type="button" onClick={() => { setReplyTo(null); setCommentForm(prev => ({ ...prev, parent_id: '' })); }}
+                      className="ml-auto text-xs hover:opacity-80" style={{ color: 'var(--text-info)' }}>取消</button>
                   </div>
                 )}
-              </div>
-            )}
-            {turnstileEnabled && (
-              <Turnstile key={captchaAttempt} sitekey={turnstileSitekey} action="turnstile-spin-v2" onToken={setTurnstileToken} />
-            )}
-            <button type="submit"
-              disabled={commentsEnabled !== true || post.allow_comment === false}
-              className={styles.submit}>
-              提交评论
-            </button>
-            </fieldset>
-          </form>
+                <div className="flex gap-3">
+                  <input type="text" value={commentForm.nickname} onChange={e => setCommentForm({ ...commentForm, nickname: e.target.value })}
+                    placeholder="昵称 *" required
+                    className={`${editorial.field} flex-1`} aria-label="昵称"
+                    style={{ color: 'var(--text-primary)' }} />
+                  <input type="email" value={commentForm.email} onChange={e => setCommentForm({ ...commentForm, email: e.target.value })}
+                    placeholder="邮箱（不公开）"
+                    className={`${editorial.field} flex-1`} aria-label="邮箱（不公开）"
+                    style={{ color: 'var(--text-primary)' }} />
+                </div>
+                <input type="url" value={commentForm.website} onChange={e => setCommentForm({ ...commentForm, website: e.target.value })}
+                  placeholder="网站 (可选)"
+                  className={`${editorial.field} w-full`} aria-label="网站（可选）"
+                  style={{ color: 'var(--text-primary)' }} />
+                <textarea value={commentForm.content} onChange={e => setCommentForm({ ...commentForm, content: e.target.value })}
+                  placeholder="评论内容 *" required rows={4}
+                  className={`${editorial.field} w-full resize-none`} aria-label="评论内容"
+                  style={{ color: 'var(--text-primary)' }} />
+                {/* Comment preview toggle */}
+                {commentForm.content && (
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => setShowPreview(!showPreview)}
+                      className={`${editorial.action} mb-2`}
+                      style={{ color: showPreview ? 'var(--primary)' : 'var(--text-secondary)' }}
+                    >
+                      {showPreview ? '关闭预览' : '预览评论'}
+                    </button>
+                    {showPreview && (
+                      <div className={`${styles.preview} prose dark:prose-invert prose-sm max-w-none`}>
+                        <CommentMarkdown content={commentForm.content} />
+                      </div>
+                    )}
+                  </div>
+                )}
+                {turnstileEnabled && (
+                  <Turnstile key={captchaAttempt} sitekey={turnstileSitekey} action="turnstile-spin-v2" onToken={setTurnstileToken} />
+                )}
+                <button type="submit"
+                  disabled={commentsEnabled !== true || post.allow_comment === false}
+                  className={styles.submit}>
+                  提交评论
+                </button>
+              </fieldset>
+            </form>
+          </div>
         </section>
         </ScrollReveal>
 

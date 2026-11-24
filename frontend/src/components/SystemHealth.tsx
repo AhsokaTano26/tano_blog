@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import type { HealthAlert, StorageHealth, SystemMetrics } from '@/lib/system-health-types';
 import { requestError } from '@/lib/request-feedback';
-import { RequestFeedback } from './RequestFeedback';
+import { AdminRequestFeedback } from './AdminToast';
 
 const alertCopy: Record<string, { message: string; action: string }> = {
   request_error_rate: {
@@ -140,7 +140,7 @@ export default function SystemHealth() {
       </button>
     </div>
 
-    <RequestFeedback error={error} onRetry={() => void refresh()} pending={loading} />
+    <AdminRequestFeedback error={error} onRetry={() => void refresh()} pending={loading} />
     {error && metrics && <p className="mb-3 text-xs" style={{ color: 'var(--text-secondary)' }}>当前状态尚未确认，以下保留上次成功检查的数据。</p>}
     {!metrics && <p role="status" className="text-sm" style={{ color: 'var(--text-secondary)' }}>{loading ? '正在读取系统状态…' : '等待成功检查后显示指标。'}</p>}
     {metrics && <>

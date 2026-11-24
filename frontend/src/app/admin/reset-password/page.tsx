@@ -1,6 +1,7 @@
 'use client';
 
 import { Input } from '@/components/ui/Input';
+import { AdminToast, useAdminNotice } from '@/components/AdminToast';
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
@@ -13,8 +14,8 @@ function ResetContent() {
   const [token] = useState(() => searchParams.get('token') || '');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
-  const [message, setMessage] = useState('');
-  const [error, setError] = useState('');
+  const [notice, notify] = useAdminNotice();
+  const [resetComplete, setResetComplete] = useState(false);
   const [loading, setLoading] = useState(false);
 
   // Clear token from URL after reading it to prevent leakage via referrer/sharing
@@ -27,17 +28,18 @@ function ResetContent() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (password !== confirm) {
-      setError('两次密码不一致');
+      notify('两次密码不一致', 'error');
       return;
     }
-    setError('');
-    setMessage('');
+    notify('');
+    setResetComplete(false);
     setLoading(true);
     try {
       const res = await api.resetPassword(token, password);
-      setMessage(res.message);
+      notify(res.message);
+      setResetComplete(true);
     } catch (err: any) {
-      setError(err.message || '重置失败');
+      notify(err.message || '重置失败', 'error');
     }
     setLoading(false);
   }
@@ -47,7 +49,7 @@ function ResetContent() {
       <div className="admin-auth min-h-screen flex items-center justify-center px-4" style={{ background: 'var(--color-bg)' }}>
         <div className="admin-auth-card glass-card rounded-2xl p-8 text-center">
           <h1 className="text-xl font-semibold mb-3">链接不可用</h1>
-          <p role="alert" className="mb-4" style={{ color: 'var(--color-error)' }}>缺少重置令牌</p>
+          <AdminToast message="缺少重置令牌" tone="error" />
           <Link href="/admin/forgot-password" className="text-sm hover:underline" style={{ color: 'var(--primary)' }}>重新申请</Link>
         </div>
       </div>
@@ -60,16 +62,7 @@ function ResetContent() {
         <div className="admin-auth-card glass-card rounded-2xl p-8">
           <h1 className="text-xl font-bold text-center mb-6" style={{ color: 'var(--text-primary)' }}>重置密码</h1>
           <p className="admin-auth-description">设置新的登录密码，完成后返回登录。</p>
-          {message && (
-            <div role="status" className="mb-4 px-4 py-2.5 rounded-xl text-sm" style={{ background: 'var(--primary-sub)', color: 'var(--primary)' }}>
-              {message}
-            </div>
-          )}
-          {error && (
-            <div role="alert" className="mb-4 px-4 py-2.5 rounded-xl text-sm" style={{ color: 'var(--color-error)' }}>
-              {error}
-            </div>
-          )}
+          <AdminToast {...notice} />
           <form onSubmit={handleSubmit} className="space-y-4">
             <label htmlFor="reset-password" className="admin-field-label">新密码</label>
             <Input id="reset-password" autoComplete="new-password" type="password" value={password} onChange={e => setPassword(e.target.value)}
@@ -87,7 +80,7 @@ function ResetContent() {
               {loading ? '重置中...' : '重置密码'}
             </button>
           </form>
-          {message && (
+          {resetComplete && (
             <div className="mt-4 text-center">
               <Link href="/admin/login" className="text-sm hover:underline" style={{ color: 'var(--primary)' }}>去登录</Link>
             </div>
