@@ -105,7 +105,7 @@ export default function LinksPage() {
     <div className={styles.page}>
       <header className={styles.header}>
         <div>
-          <p className={styles.eyebrow}>FRIENDS · 友链</p>
+          <p className={styles.eyebrow}>友链</p>
           <h1>朋友们</h1>
           <p className={styles.intro}>在各自的小天地里，记录生活，也彼此照亮。</p>
         </div>
@@ -123,7 +123,7 @@ export default function LinksPage() {
 
       <section id="friend-application" className={styles.application} aria-labelledby="friend-application-title">
         <div className={styles.applicationInfo}>
-          <p className={styles.eyebrow}>APPLICATION · 友链申请</p>
+          <p className={styles.eyebrow}>友链申请</p>
           <h2 id="friend-application-title">把你的坐标放进来</h2>
           <p className={styles.applicationIntro}>欢迎交换友链。先把本站添加到你的网站，再点击下方按钮，留下你的信息。</p>
           <ul className={styles.guidelines}>
