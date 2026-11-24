@@ -1,0 +1,50 @@
+.page { max-width: 768px; margin-inline: auto; padding: clamp(36px, 7vw, 80px) 24px 56px; }
+:global(body):has(.page) :global(.banner-container) { max-height: clamp(116px, 26vh, 240px); }
+.layout { display: flex; flex-direction: column; align-items: center; gap: 22px; padding-block: 36px 20px; border-block: 1px solid var(--border-color); }
+.note {
+  --paper: color-mix(in srgb, var(--color-bg), var(--text-primary) 7%);
+  --paper-highlight: color-mix(in srgb, var(--paper), var(--text-primary) 4%);
+  --paper-edge: color-mix(in srgb, var(--text-primary) 16%, transparent);
+  --paper-rule: color-mix(in srgb, var(--text-primary) 6%, transparent);
+  --paper-fold: color-mix(in srgb, var(--paper), var(--text-primary) 20%);
+  --fold-size: 20px;
+  position: relative;
+  isolation: isolate;
+  width: min(100%, 282px);
+  padding: 36px 20px 26px;
+  color: var(--text-primary);
+  text-align: center;
+  filter: drop-shadow(1px 2px 2px rgb(0 0 0 / 10%)) drop-shadow(4px 10px 12px rgb(0 0 0 / 12%));
+  transform: rotate(-2.5deg);
+}
+.note::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  background:
+    linear-gradient(135deg, var(--paper-fold) 49%, transparent 50%) bottom right / var(--fold-size) var(--fold-size) no-repeat,
+    repeating-linear-gradient(transparent 0 23px, var(--paper-rule) 23px 24px),
+    linear-gradient(155deg, var(--paper-highlight), var(--paper));
+  box-shadow: inset 0 0 0 1px var(--paper-edge);
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - var(--fold-size)), calc(100% - var(--fold-size)) 100%, 0 100%);
+  content: '';
+}
+.note::after {
+  position: absolute;
+  top: -10px;
+  left: 50%;
+  width: 76px;
+  height: 20px;
+  background:
+    repeating-linear-gradient(95deg, transparent 0 4px, var(--paper-rule) 4px 5px),
+    color-mix(in srgb, var(--paper-highlight), var(--primary) 20%);
+  opacity: .9;
+  clip-path: polygon(2% 0, 100% 2%, 97% 24%, 100% 50%, 97% 76%, 100% 100%, 0 98%, 3% 74%, 0 50%, 3% 25%);
+  transform: translateX(-50%) rotate(6deg);
+  content: '';
+}
+:global(.light) .note { --paper-highlight: var(--color-surface-light); }
+.code { color: color-mix(in srgb, var(--text-primary) 60%, var(--primary)); font-family: Georgia, serif; font-size: clamp(66px, 12vw, 86px); line-height: .95; font-variant-numeric: lining-nums tabular-nums; white-space: nowrap; }
+.title { margin-top: 14px; font-family: 'Noto Serif SC', 'Songti SC', 'STSong', serif; font-size: clamp(21px, 5vw, 25px); font-weight: 500; line-height: 1.4; }
+.links { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 24px; }
+@media (max-width: 639px) { .page { padding-inline: 20px; } }

@@ -22,7 +22,8 @@ const readPost = cache(async (slug: string) => {
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { slug } = await params;
-  const { data } = await readPost(slug);
+  const { data, status } = await readPost(slug);
+  if (status === 404) return { title: '页面不见了', robots: { index: false } };
   const post = data?.post;
   if (!post) return { title: '文章暂时无法加载', robots: { index: false } };
   return {

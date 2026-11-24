@@ -82,7 +82,7 @@ async function verifyLegacyPortal(admin, visitor, site, articleSlug, protectedSl
   await visitor.bringToFront();
   await visitor.evaluate(() => window.dispatchEvent(new Event('focus')));
   await expect(legacy).toHaveCount(0);
-  await expect(visitor.getByRole('heading', { name: '页面走丢了', exact: true })).toBeVisible();
+  await expect(visitor.getByRole('heading', { name: '页面不见了', exact: true })).toBeVisible();
   for (const path of ['/legacy', '/legacy/posts', '/legacy/archive', '/legacy/gallery', '/legacy/links', '/legacy/about', '/legacy/login', `/legacy/posts/${articleSlug}`]) {
     assert.equal((await visitor.request.get(site + path)).status(), 404);
   }
